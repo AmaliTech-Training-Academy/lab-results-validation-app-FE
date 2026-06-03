@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 # Branch naming validation
 # Valid patterns: main, develop, feature/*, feat/*, chore/*, hotfix/*, fix/*, bugfix/*
 # Branch names must be lowercase with hyphens
-valid_branch_pattern="^(main|develop|feature\/[a-z0-9-]+|feat\/[a-z0-9-]+|chore\/[a-z0-9-]+|hotfix\/[a-z0-9-]+|fix\/[a-z0-9-]+|bugfix\/[a-z0-9-]+)$"
+valid_branch_pattern="^(main|dev|develop|feature\/[a-z0-9-]+|feat\/[a-z0-9-]+|chore\/[a-z0-9-]+|hotfix\/[a-z0-9-]+|fix\/[a-z0-9-]+|bugfix\/[a-z0-9-]+)$"
 
 if ! echo "$branch" | grep -qE "$valid_branch_pattern"; then
     echo "${RED}╔════════════════════════════════════════════════════════════╗${NC}"
