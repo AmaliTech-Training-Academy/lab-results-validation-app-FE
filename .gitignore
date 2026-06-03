@@ -42,3 +42,10 @@ Thumbs.db
 
 # Testing
 coverage/
+
+.claude/
+Validata Design System/
+
+# Root-level npm artefacts (app lives in frontend/)
+/package.json
+/package-lock.json
