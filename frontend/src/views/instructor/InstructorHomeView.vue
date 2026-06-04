@@ -1,0 +1,113 @@
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
+import { getInstructorDashboard } from '@/services/instructor.service'
+import type { InstructorDashboardData } from '@/types/dashboard.types'
+import VButton from '@/components/base/VButton.vue'
+import VPill from '@/components/base/VPill.vue'
+import VIcon from '@/components/base/VIcon.vue'
+
+const auth = useAuthStore()
+const router = useRouter()
+
+const data = ref<InstructorDashboardData | null>(null)
+const isLoading = ref(true)
+
+onMounted(async () => {
+  data.value = await getInstructorDashboard()
+  isLoading.value = false
+})
+</script>
+
+<template>
+  <div v-if="isLoading" class="empty">
+    <div class="spinner" />
+  </div>
+
+  <div v-else-if="data">
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">Dashboard</h1>
+        <p class="page-sub">Welcome back, {{ auth.user?.name }}</p>
+      </div>
+    </div>
+
+    <!-- Assigned modules -->
+    <h2 class="sec-title" style="margin-bottom: 16px">Assigned modules</h2>
+    <div class="mod-grid">
+      <div v-for="m in data.modules" :key="m.name" class="card card-pad mod-card">
+        <div class="mod-top">
+          <div>
+            <h3 class="mod-name">{{ m.name }}</h3>
+            <div class="mod-meta">{{ m.cohort }} · {{ m.specialization }}</div>
+          </div>
+          <span class="lab-badge">
+            <VIcon name="flask-conical" :size="14" />
+            Lab
+          </span>
+        </div>
+        <div class="mod-sub">
+          <VIcon name="clipboard-check" :size="17" color="var(--text-secondary)" />
+          {{ m.submitted }} results submitted
+        </div>
+        <VButton
+          variant="primary"
+          icon="upload-cloud"
+          style="width: 100%"
+          @click="router.push({ name: 'instructor-upload' })"
+        >
+          Upload results
+        </VButton>
+      </div>
+    </div>
+
+    <!-- My recent uploads -->
+    <div class="card" style="margin-top: 28px">
+      <div class="sec-head sec-head-navy">
+        <h2 class="sec-title" style="color: #fff">My recent uploads</h2>
+      </div>
+      <div class="tbl-wrap" style="border: none; border-radius: 0; box-shadow: none">
+        <table class="tbl tbl-light">
+          <thead>
+            <tr>
+              <th>File</th>
+              <th>Date</th>
+              <th>Accepted</th>
+              <th>Rejected</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(row, i) in data.recentUploads" :key="i">
+              <td>
+                <span style="display: inline-flex; align-items: center; gap: 9px">
+                  <VIcon name="file-text" :size="16" color="var(--text-secondary)" />
+                  <span class="mono">{{ row.file }}</span>
+                </span>
+              </td>
+              <td style="color: var(--text-secondary)">{{ row.date }}</td>
+              <td>{{ row.accepted }}</td>
+              <td
+                :style="{
+                  color: row.rejected > 0 ? 'var(--danger)' : 'inherit',
+                  fontWeight: row.rejected > 0 ? 600 : 400,
+                }"
+              >{{ row.rejected }}</td>
+              <td><VPill :tone="row.tone">{{ row.status }}</VPill></td>
+              <td>
+                <button
+                  v-if="row.hasReport"
+                  class="link"
+                  @click="router.push({ name: 'instructor-uploads' })"
+                >View report →</button>
+                <span v-else style="color: var(--text-muted)">—</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</template>
