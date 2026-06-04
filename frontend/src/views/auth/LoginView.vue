@@ -1,19 +1,49 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { loginApi } from '@/services/auth.service'
 import AuthBrandPanel from '@/components/auth/AuthBrandPanel.vue'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
+const route = useRoute()
 
 const role = ref<'admin' | 'instructor'>('admin')
-const email = ref('admin@organization.com')
+const email = ref('admin@amalitech.com')
 const password = ref('lab-admin-2024')
 const showPassword = ref(false)
+const emailTouched = ref(false)
+const passwordTouched = ref(false)
+const isLoading = ref(false)
+const error = ref<string | null>(null)
 const currentYear = new Date().getFullYear()
+
+const ALLOWED_DOMAINS = ['amalitech.com', 'amalitechtraining.com', 'amalitechtraining.org']
+
+const emailError = computed(() => {
+  if (!emailTouched.value || !email.value) return ''
+  const domain = email.value.split('@')[1]?.toLowerCase()
+  if (!domain || !ALLOWED_DOMAINS.includes(domain)) {
+    return 'Email must be from @amalitech.com, @amalitechtraining.com, or @amalitechtraining.org'
+  }
+  return ''
+})
+
+const isEmailValid = computed(() => {
+  const domain = email.value.split('@')[1]?.toLowerCase()
+  return !!domain && ALLOWED_DOMAINS.includes(domain)
+})
+
+const passwordError = computed(() => {
+  if (!passwordTouched.value || !password.value) return ''
+  if (password.value.length < 8) return 'Password must be at least 8 characters'
+  return ''
+})
+
+const isPasswordValid = computed(() => password.value.length >= 8)
 
 const features = [
   { icon: 'shield-check', title: 'Strict validation',  sub: 'Multi-tier verification engine' },
@@ -21,19 +51,42 @@ const features = [
   { icon: 'line-chart',   title: 'Power BI ready',      sub: 'Direct export for analytics tools' },
 ]
 
-const USERS = {
-  admin:      { name: 'David Kim',      role: 'admin' as const,      initials: 'DK' },
-  instructor: { name: 'Sarah Jenkins',  role: 'instructor' as const, initials: 'SJ' },
-}
-
 function selectRole(r: 'admin' | 'instructor') {
   role.value = r
-  email.value = r === 'admin' ? 'admin@organization.com' : 's.jenkins@organization.com'
+  email.value = r === 'admin' ? 'admin@amalitech.com' : 's.jenkins@amalitechtraining.org'
+  error.value = null
+  emailTouched.value = false
+  passwordTouched.value = false
 }
 
-function submit() {
-  auth.login(USERS[role.value])
-  router.push(role.value === 'admin' ? '/admin/dashboard' : '/instructor/dashboard')
+async function submit() {
+  emailTouched.value = true
+  passwordTouched.value = true
+  if (!isEmailValid.value || !isPasswordValid.value) return
+
+  error.value = null
+  isLoading.value = true
+  try {
+    const response = await loginApi(email.value, password.value)
+    auth.login(response)
+
+    if (response.mustChangePassword) {
+      router.push({ name: 'set-password' })
+      return
+    }
+
+    const redirect = route.query.redirect as string | undefined
+    if (redirect) {
+      router.push(redirect)
+      return
+    }
+
+    router.push(auth.isAdmin ? '/admin/dashboard' : '/instructor/dashboard')
+  } catch {
+    error.value = 'Invalid email or password.'
+  } finally {
+    isLoading.value = false
+  }
 }
 </script>
 
@@ -90,15 +143,20 @@ function submit() {
         <!-- Email -->
         <div class="field">
           <label>Email address</label>
-          <div class="input">
+          <div :class="['input', { 'input--error': emailError }]">
             <span class="lead"><VIcon name="mail" :size="17" /></span>
             <input
               v-model="email"
               type="email"
-              placeholder="name@organization.com"
+              placeholder="name@amalitech.com"
               autocomplete="email"
+              @blur="emailTouched = true"
             />
           </div>
+          <span v-if="emailError" class="field-error">
+            <VIcon name="alert-circle" :size="13" />
+            {{ emailError }}
+          </span>
         </div>
 
         <!-- Password -->
@@ -107,12 +165,13 @@ function submit() {
             <label>Password</label>
             <a class="link" href="#" @click.prevent>Forgot password?</a>
           </div>
-          <div class="input">
+          <div :class="['input', { 'input--error': passwordError }]">
             <span class="lead"><VIcon name="lock" :size="17" /></span>
             <input
               v-model="password"
               :type="showPassword ? 'text' : 'password'"
               autocomplete="current-password"
+              @blur="passwordTouched = true"
             />
             <button
               type="button"
@@ -123,10 +182,23 @@ function submit() {
               <VIcon :name="showPassword ? 'eye-off' : 'eye'" :size="18" />
             </button>
           </div>
+          <span v-if="passwordError" class="field-error">
+            <VIcon name="alert-circle" :size="13" />
+            {{ passwordError }}
+          </span>
         </div>
 
-        <VButton type="submit" variant="primary" icon-right="arrow-right" style="width: 100%">
-          Sign in
+        <!-- API-level error (wrong credentials, server error, etc.) -->
+        <p v-if="error" class="form-error">{{ error }}</p>
+
+        <VButton
+          type="submit"
+          variant="primary"
+          icon-right="arrow-right"
+          style="width: 100%"
+          :disabled="isLoading"
+        >
+          {{ isLoading ? 'Signing in…' : 'Sign in' }}
         </VButton>
 
         <div class="lc-foot">
