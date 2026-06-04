@@ -32,22 +32,22 @@ function buildUser(payload: JwtPayload): AuthUser {
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(localStorage.getItem('auth_token'))
-  const mustChangePassword = ref<boolean>(localStorage.getItem('must_change_password') === 'true')
+  const mustChangePassword = ref(false)
   const user = ref<AuthUser | null>(null)
 
-  // Hydrate from storage on store creation (survives page refresh)
+  // Hydrate from storage on store creation — only tokens that survived past password setup are persisted
   if (token.value) {
     try {
       user.value = buildUser(decodeJwtPayload(token.value))
     } catch {
       token.value = null
       localStorage.removeItem('auth_token')
-      localStorage.removeItem('must_change_password')
     }
   }
 
   const isAuthenticated = computed(() => user.value !== null)
-  const isAdmin = computed(() => user.value?.role === 'admin')
+  const ADMIN_ROLES: UserRole[] = ['admin', 'super_admin']
+  const isAdmin = computed(() => !!user.value && ADMIN_ROLES.includes(user.value.role))
   const isInstructor = computed(() => user.value?.role === 'instructor')
 
   function login(response: LoginResponse) {
@@ -55,17 +55,18 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = buildUser(payload)
     token.value = response.token
     mustChangePassword.value = response.mustChangePassword
-    localStorage.setItem('auth_token', response.token)
-    if (response.mustChangePassword) {
-      localStorage.setItem('must_change_password', 'true')
-    } else {
-      localStorage.removeItem('must_change_password')
+    // Only persist to localStorage once the account is fully set up
+    if (!response.mustChangePassword) {
+      localStorage.setItem('auth_token', response.token)
     }
   }
 
   function completedPasswordSetup() {
     mustChangePassword.value = false
-    localStorage.removeItem('must_change_password')
+    // Now it's safe to persist — the account is fully active
+    if (token.value) {
+      localStorage.setItem('auth_token', token.value)
+    }
   }
 
   function logout() {
@@ -73,7 +74,6 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = null
     mustChangePassword.value = false
     localStorage.removeItem('auth_token')
-    localStorage.removeItem('must_change_password')
   }
 
   return {
