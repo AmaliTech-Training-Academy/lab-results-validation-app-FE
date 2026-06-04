@@ -100,8 +100,11 @@ export function navigationGuard(to: RouteLocationNormalized): RouteLocationRaw |
   }
 
   // Role enforcement — only when a route declares allowedRole
-  if (to.meta.allowedRole && to.meta.allowedRole !== auth.user?.role) {
-    return { name: 'forbidden' }
+  if (to.meta.allowedRole) {
+    const allowed =
+      (to.meta.allowedRole === 'admin' && auth.isAdmin) ||
+      (to.meta.allowedRole === 'instructor' && auth.isInstructor)
+    if (!allowed) return { name: 'forbidden' }
   }
 
   return true
