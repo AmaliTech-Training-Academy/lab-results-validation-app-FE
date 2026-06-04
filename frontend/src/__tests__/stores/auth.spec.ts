@@ -136,10 +136,11 @@ describe('useAuthStore', () => {
       expect(localStorage.getItem('auth_token')).toBe(ADMIN_RESPONSE.token)
     })
 
-    it('writes must_change_password key to localStorage when true', () => {
+    it('does not persist token to localStorage when mustChangePassword is true', () => {
       const store = useAuthStore()
       store.login(INSTRUCTOR_RESPONSE)
-      expect(localStorage.getItem('must_change_password')).toBe('true')
+      expect(localStorage.getItem('auth_token')).toBeNull()
+      expect(localStorage.getItem('must_change_password')).toBeNull()
     })
 
     it('does not write must_change_password key when flag is false', () => {
@@ -166,11 +167,11 @@ describe('useAuthStore', () => {
       expect(store.isAuthenticated).toBe(true)
     })
 
-    it('restores mustChangePassword from localStorage', () => {
+    it('ignores stale must_change_password key in localStorage', () => {
       localStorage.setItem('auth_token', INSTRUCTOR_RESPONSE.token)
       localStorage.setItem('must_change_password', 'true')
       const store = useAuthStore()
-      expect(store.mustChangePassword).toBe(true)
+      expect(store.mustChangePassword).toBe(false)
     })
 
     it('clears storage and leaves user null when token is malformed', () => {
@@ -189,11 +190,12 @@ describe('useAuthStore', () => {
       expect(store.mustChangePassword).toBe(false)
     })
 
-    it('removes must_change_password key from localStorage', () => {
+    it('persists token to localStorage after password setup', () => {
       const store = useAuthStore()
       store.login(INSTRUCTOR_RESPONSE)
+      expect(localStorage.getItem('auth_token')).toBeNull()
       store.completedPasswordSetup()
-      expect(localStorage.getItem('must_change_password')).toBeNull()
+      expect(localStorage.getItem('auth_token')).toBe(INSTRUCTOR_RESPONSE.token)
     })
 
     it('leaves user and token intact', () => {
