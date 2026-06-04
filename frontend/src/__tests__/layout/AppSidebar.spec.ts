@@ -30,7 +30,7 @@ describe('AppSidebar', () => {
       const footItems = wrapper.findAll('.nav-foot .nav-item')
       // Settings + Logout
       expect(footItems).toHaveLength(2)
-      expect(footItems[0].text()).toContain('Settings')
+      expect(footItems[0]!.text()).toContain('Settings')
     })
 
     it('renders all expected admin nav labels', () => {
@@ -57,7 +57,7 @@ describe('AppSidebar', () => {
       const wrapper = mount(AppSidebar, { props: instructorProps })
       const footItems = wrapper.findAll('.nav-foot .nav-item')
       expect(footItems).toHaveLength(1)
-      expect(footItems[0].text()).toContain('Logout')
+      expect(footItems[0]!.text()).toContain('Logout')
     })
 
     it('renders all expected instructor nav labels', () => {

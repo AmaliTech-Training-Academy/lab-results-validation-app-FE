@@ -8,7 +8,7 @@ import { changePasswordApi } from '@/services/auth.service'
 import type { LoginResponse } from '@/types/auth.types'
 
 vi.mock('@/services/auth.service', () => ({
-  changePasswordApi: vi.fn(),
+  changePasswordApi: vi.fn<() => Promise<void>>(),
 }))
 
 // ---------------------------------------------------------------------------
