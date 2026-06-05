@@ -1,10 +1,4 @@
-# Frontend-only stack. The backend runs from its OWN repo/compose and publishes
-# port 8080 on the host; this frontend's nginx proxies /api → host:8080.
-#
-# Run order:
-#   1. In the backend repo:   docker compose up -d      (backend on localhost:8080)
-#   2. In this repo:          docker compose up --build  (frontend on localhost:3000)
-#   3. Open http://localhost:3000
+
 services:
   frontend:
     build:
