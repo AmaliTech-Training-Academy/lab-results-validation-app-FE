@@ -1,0 +1,21 @@
+# Frontend-only stack. The backend runs from its OWN repo/compose and publishes
+# port 8080 on the host; this frontend's nginx proxies /api → host:8080.
+#
+# Run order:
+#   1. In the backend repo:   docker compose up -d      (backend on localhost:8080)
+#   2. In this repo:          docker compose up --build  (frontend on localhost:3000)
+#   3. Open http://localhost:3000
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: runtime          # build-from-source stage (compiles dist/ in Docker)
+    container_name: lab-frontend
+    ports:
+      - "3000:8080"            # host 3000 → nginx 8080 (8080 is taken by the backend)
+    extra_hosts:
+      # Lets the container resolve the host machine (needed on Linux; already
+      # built in on Docker Desktop for Windows/Mac, harmless to keep).
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

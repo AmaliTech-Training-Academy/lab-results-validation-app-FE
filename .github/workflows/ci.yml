@@ -52,10 +52,7 @@ concurrency:
 
 env:
   NODE_VERSION: '24'
-  # The Vue app lives in this subdirectory, not the repo root.
   WORKDIR: frontend
-  # Name of the shared build output artifact (the app is built ONCE in `build`
-  # and reused by `sonarqube` and `trivy`, so it is never rebuilt downstream).
   BUILD_ARTIFACT: frontend-build
 
 jobs:
@@ -240,6 +237,107 @@ jobs:
           name: sonarqube-report
           path: sonar-report/
           if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # Trivy container scan
+  # Builds the runtime image from the PRE-BUILT dist/ (Dockerfile target
+  # `runtime-prebuilt`, no rebuild) and fails the job on any CRITICAL/HIGH.
+  # ---------------------------------------------------------------------------
+  trivy:
+    name: Trivy Container Scan
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: read
+      security-events: write   # for the optional SARIF upload below
+    env:
+      IMAGE: lab-results-validation-app-fe:ci-${{ github.sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download build output
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.BUILD_ARTIFACT }}
+          # Restores dist/ under frontend/ so `runtime-prebuilt` can COPY it.
+          path: ${{ env.WORKDIR }}
+
+      # Package the already-built dist/ into the runtime image — no rebuild.
+      - name: Build runtime image (from prebuilt dist)
+        run: docker build --target runtime-prebuilt -t "$IMAGE" .
+        working-directory: ${{ env.WORKDIR }}
+
+      # --- Reports (exit-code 0: never fail here, just produce the files) ------
+      - name: Trivy report (JSON)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}
+          format: json
+          output: trivy-report.json
+          severity: CRITICAL,HIGH
+          exit-code: '0'
+
+      - name: Trivy report (table)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}
+          format: table
+          output: trivy-report.txt
+          severity: CRITICAL,HIGH
+          exit-code: '0'
+
+      # SARIF for the GitHub Security tab (requires public repo or GHAS — hence
+      # continue-on-error on the upload below).
+      - name: Trivy report (SARIF)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          exit-code: '0'
+
+      - name: Publish Trivy summary
+        if: always()
+        run: |
+          {
+            echo "## Trivy Container Scan (CRITICAL/HIGH)"
+            echo ""
+            echo '```'
+            cat trivy-report.txt 2>/dev/null || echo "report not generated"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Trivy SARIF to Security tab
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+
+      - name: Upload Trivy reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report
+          path: |
+            trivy-report.json
+            trivy-report.txt
+            trivy-results.sarif
+          if-no-files-found: warn
+
+      # --- Gate (runs last so the reports above are saved even on failure) -----
+      # Non-zero exit on any CRITICAL/HIGH finding fails the job and the PR check.
+      - name: Trivy gate (fail on CRITICAL/HIGH)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          ignore-unfixed: false
 
   # ---------------------------------------------------------------------------
   # TruffleHog secret scan
