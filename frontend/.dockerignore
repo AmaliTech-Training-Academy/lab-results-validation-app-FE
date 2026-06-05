@@ -1,0 +1,15 @@
+node_modules
+build
+coverage
+.git
+.env
+.env.*
+Dockerfile
+.dockerignore
+*.md
+npm-debug.log*
+
+# NOTE: dist/ is intentionally NOT ignored. The `runtime-prebuilt` stage copies
+# the prebuilt assets produced by the CI `build` job. The default `runtime`
+# stage rebuilds from source, so a stale local dist/ copied into the builder is
+# harmless (it gets overwritten by `npm run build`).
