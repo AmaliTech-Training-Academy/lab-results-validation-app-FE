@@ -1,14 +1,45 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
+import type { LoginResponse } from '@/types/auth.types'
+
+// ---------------------------------------------------------------------------
+// Helpers — mirrors auth.service.ts mock JWT construction
+// ---------------------------------------------------------------------------
+function toBase64Url(str: string): string {
+  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+}
+
+function makeMockJwt(payload: object): string {
+  const header = toBase64Url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
+  const body = toBase64Url(JSON.stringify(payload))
+  return `${header}.${body}.mocksig`
+}
+
+// Payloads match backend's generateToken / buildToken exactly
+const ADMIN_RESPONSE: LoginResponse = {
+  token: makeMockJwt({ userId: '1', role: 'ADMIN', sub: 'david.kim@test.com' }),
+  email: 'david.kim@test.com',
+  role: 'ADMIN',
+  mustChangePassword: false,
+}
+
+const INSTRUCTOR_RESPONSE: LoginResponse = {
+  token: makeMockJwt({ userId: '2', role: 'INSTRUCTOR', sub: 's.jenkins@test.com' }),
+  email: 's.jenkins@test.com',
+  role: 'INSTRUCTOR',
+  mustChangePassword: true,
+}
+// ---------------------------------------------------------------------------
 
 beforeEach(() => {
+  localStorage.clear()
   setActivePinia(createPinia())
 })
 
 describe('useAuthStore', () => {
   describe('initial state', () => {
-    it('has no user on initialisation', () => {
+    it('has no user when localStorage is empty', () => {
       const store = useAuthStore()
       expect(store.user).toBeNull()
     })
@@ -27,65 +58,178 @@ describe('useAuthStore', () => {
       const store = useAuthStore()
       expect(store.isInstructor).toBe(false)
     })
+
+    it('mustChangePassword is false when localStorage is empty', () => {
+      const store = useAuthStore()
+      expect(store.mustChangePassword).toBe(false)
+    })
   })
 
   describe('login', () => {
-    it('sets the user payload', () => {
+    it('decodes role from JWT claim (lowercases the uppercase enum name)', () => {
       const store = useAuthStore()
-      store.login({ name: 'David Kim', role: 'admin', initials: 'DK' })
-      expect(store.user).toEqual({ name: 'David Kim', role: 'admin', initials: 'DK' })
+      store.login(ADMIN_RESPONSE)
+      expect(store.user?.role).toBe('admin')
+    })
+
+    it('derives name and initials from the email subject', () => {
+      const store = useAuthStore()
+      store.login(ADMIN_RESPONSE) // sub: david.kim@test.com
+      expect(store.user?.name).toBe('David Kim')
+      expect(store.user?.initials).toBe('DK')
+    })
+
+    it('derives single-part name when email has no dot in local-part', () => {
+      const response: LoginResponse = {
+        token: makeMockJwt({ userId: '3', role: 'ADMIN', sub: 'admin@test.com' }),
+        email: 'admin@test.com',
+        role: 'ADMIN',
+        mustChangePassword: false,
+      }
+      const store = useAuthStore()
+      store.login(response)
+      expect(store.user?.name).toBe('Admin')
+      expect(store.user?.initials).toBe('A')
+    })
+
+    it('stores the email from the JWT subject', () => {
+      const store = useAuthStore()
+      store.login(ADMIN_RESPONSE)
+      expect(store.user?.email).toBe('david.kim@test.com')
     })
 
     it('isAuthenticated becomes true after login', () => {
       const store = useAuthStore()
-      store.login({ name: 'David Kim', role: 'admin', initials: 'DK' })
+      store.login(ADMIN_RESPONSE)
       expect(store.isAuthenticated).toBe(true)
     })
 
-    it('isAdmin is true when role is admin', () => {
+    it('isAdmin is true for ADMIN role', () => {
       const store = useAuthStore()
-      store.login({ name: 'David Kim', role: 'admin', initials: 'DK' })
+      store.login(ADMIN_RESPONSE)
       expect(store.isAdmin).toBe(true)
       expect(store.isInstructor).toBe(false)
     })
 
-    it('isInstructor is true when role is instructor', () => {
+    it('isInstructor is true for INSTRUCTOR role', () => {
       const store = useAuthStore()
-      store.login({ name: 'Sarah Jenkins', role: 'instructor', initials: 'SJ' })
+      store.login(INSTRUCTOR_RESPONSE)
       expect(store.isInstructor).toBe(true)
       expect(store.isAdmin).toBe(false)
     })
 
-    it('overwrites a previous user on re-login', () => {
+    it('sets mustChangePassword from response flag', () => {
       const store = useAuthStore()
-      store.login({ name: 'David Kim', role: 'admin', initials: 'DK' })
-      store.login({ name: 'Sarah Jenkins', role: 'instructor', initials: 'SJ' })
-      expect(store.user?.name).toBe('Sarah Jenkins')
+      store.login(INSTRUCTOR_RESPONSE)
+      expect(store.mustChangePassword).toBe(true)
+    })
+
+    it('does not set mustChangePassword when flag is false', () => {
+      const store = useAuthStore()
+      store.login(ADMIN_RESPONSE)
+      expect(store.mustChangePassword).toBe(false)
+    })
+
+    it('persists token to localStorage', () => {
+      const store = useAuthStore()
+      store.login(ADMIN_RESPONSE)
+      expect(localStorage.getItem('auth_token')).toBe(ADMIN_RESPONSE.token)
+    })
+
+    it('does not persist token to localStorage when mustChangePassword is true', () => {
+      const store = useAuthStore()
+      store.login(INSTRUCTOR_RESPONSE)
+      expect(localStorage.getItem('auth_token')).toBeNull()
+      expect(localStorage.getItem('must_change_password')).toBeNull()
+    })
+
+    it('does not write must_change_password key when flag is false', () => {
+      const store = useAuthStore()
+      store.login(ADMIN_RESPONSE)
+      expect(localStorage.getItem('must_change_password')).toBeNull()
+    })
+
+    it('overwrites previous session on re-login', () => {
+      const store = useAuthStore()
+      store.login(ADMIN_RESPONSE)
+      store.login(INSTRUCTOR_RESPONSE)
+      expect(store.user?.role).toBe('instructor')
       expect(store.isInstructor).toBe(true)
     })
   })
 
-  describe('logout', () => {
-    it('clears user to null', () => {
+  describe('initFromStorage (page refresh)', () => {
+    it('hydrates user from a valid token in localStorage', () => {
+      localStorage.setItem('auth_token', ADMIN_RESPONSE.token)
       const store = useAuthStore()
-      store.login({ name: 'David Kim', role: 'admin', initials: 'DK' })
+      expect(store.user?.role).toBe('admin')
+      expect(store.user?.email).toBe('david.kim@test.com')
+      expect(store.isAuthenticated).toBe(true)
+    })
+
+    it('ignores stale must_change_password key in localStorage', () => {
+      localStorage.setItem('auth_token', INSTRUCTOR_RESPONSE.token)
+      localStorage.setItem('must_change_password', 'true')
+      const store = useAuthStore()
+      expect(store.mustChangePassword).toBe(false)
+    })
+
+    it('clears storage and leaves user null when token is malformed', () => {
+      localStorage.setItem('auth_token', 'not.a.valid.token')
+      const store = useAuthStore()
+      expect(store.user).toBeNull()
+      expect(localStorage.getItem('auth_token')).toBeNull()
+    })
+  })
+
+  describe('completedPasswordSetup', () => {
+    it('clears mustChangePassword ref', () => {
+      const store = useAuthStore()
+      store.login(INSTRUCTOR_RESPONSE)
+      store.completedPasswordSetup()
+      expect(store.mustChangePassword).toBe(false)
+    })
+
+    it('persists token to localStorage after password setup', () => {
+      const store = useAuthStore()
+      store.login(INSTRUCTOR_RESPONSE)
+      expect(localStorage.getItem('auth_token')).toBeNull()
+      store.completedPasswordSetup()
+      expect(localStorage.getItem('auth_token')).toBe(INSTRUCTOR_RESPONSE.token)
+    })
+
+    it('leaves user and token intact', () => {
+      const store = useAuthStore()
+      store.login(INSTRUCTOR_RESPONSE)
+      store.completedPasswordSetup()
+      expect(store.user).not.toBeNull()
+      expect(store.token).not.toBeNull()
+    })
+  })
+
+  describe('logout', () => {
+    it('clears user, token, and mustChangePassword', () => {
+      const store = useAuthStore()
+      store.login(INSTRUCTOR_RESPONSE)
       store.logout()
       expect(store.user).toBeNull()
+      expect(store.token).toBeNull()
+      expect(store.mustChangePassword).toBe(false)
     })
 
     it('isAuthenticated becomes false after logout', () => {
       const store = useAuthStore()
-      store.login({ name: 'David Kim', role: 'admin', initials: 'DK' })
+      store.login(ADMIN_RESPONSE)
       store.logout()
       expect(store.isAuthenticated).toBe(false)
     })
 
-    it('isAdmin and isInstructor are false after logout', () => {
+    it('wipes both localStorage keys on logout', () => {
       const store = useAuthStore()
-      store.login({ name: 'David Kim', role: 'admin', initials: 'DK' })
+      store.login(INSTRUCTOR_RESPONSE)
       store.logout()
-      expect(store.isAdmin).toBe(false)
-      expect(store.isInstructor).toBe(false)
+      expect(localStorage.getItem('auth_token')).toBeNull()
+      expect(localStorage.getItem('must_change_password')).toBeNull()
     })
   })
 })
