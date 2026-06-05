@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { AuthUser, LoginResponse, JwtPayload, UserRole } from '@/types/auth.types'
+import { logoutApi } from '@/services/auth.service'
 
 function decodeJwtPayload(token: string): JwtPayload {
   const base64Url = token.split('.')[1] ?? ''
@@ -69,12 +70,20 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  function logout() {
+  function clearSession() {
     user.value = null
     token.value = null
     mustChangePassword.value = false
     localStorage.removeItem('auth_token')
   }
+
+  async function logout() {
+    logoutApi().catch(() => {})
+    clearSession()
+  }
+
+  // http service dispatches this when refresh fails — session is already dead so skip the API call
+  window.addEventListener('auth:session-expired', clearSession)
 
   return {
     user,
