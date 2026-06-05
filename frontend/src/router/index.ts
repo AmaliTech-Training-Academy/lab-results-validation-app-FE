@@ -42,7 +42,8 @@ const router = createRouter({
       meta: { requiresAuth: true, allowedRole: 'admin' },
       children: [
         { path: 'dashboard', name: 'admin-dashboard', component: () => import('@/views/admin/AdminHomeView.vue') },
-        { path: 'cohorts',   name: 'admin-cohorts',   component: () => import('@/views/admin/CohortsView.vue') },
+        { path: 'cohorts',        name: 'admin-cohorts',      component: () => import('@/views/admin/CohortsView.vue') },
+        { path: 'cohorts/bulk-setup', name: 'admin-cohorts-bulk', component: () => import('@/views/admin/BulkSetupView.vue') },
         { path: 'reference', name: 'admin-reference', component: () => import('@/views/admin/ReferenceDataView.vue') },
         { path: 'learners',  name: 'admin-learners',  component: () => import('@/views/admin/LearnersView.vue') },
         { path: 'users',     name: 'admin-users',     component: () => import('@/views/admin/UserManagementView.vue') },
