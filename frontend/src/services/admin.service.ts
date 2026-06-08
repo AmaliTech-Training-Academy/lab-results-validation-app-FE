@@ -1,4 +1,5 @@
 import type { AdminDashboardData } from '@/types/dashboard.types'
+import type { AuditEntry, ValidationReport } from '@/types/report.types'
 
 // ---------------------------------------------------------------------------
 // Mock data — DELETE and replace service bodies when wiring the real API
@@ -67,4 +68,42 @@ export async function getAdminDashboard(): Promise<AdminDashboardData> {
   // TODO: replace with → return http.get<AdminDashboardData>('/admin/dashboard')
   await delay(300)
   return MOCK_DASHBOARD
+}
+
+// ---------------------------------------------------------------------------
+// Audit log + validation report mock data
+// ---------------------------------------------------------------------------
+const MOCK_AUDIT: AuditEntry[] = [
+  { id: 'UP-8F2A9…', instructor: 'Dr. Alan Grant',    file: 'lab_results_q3.csv',            uploadedAt: 'Oct 24, 09:41 AM', totalRows: 1240, accepted: 1240, rejected: 0,    status: 'success', statusLabel: 'Completed' },
+  { id: 'UP-4D7E2…', instructor: 'Dr. Ellie Sattler', file: 'botany_extract_v2.xlsx',         uploadedAt: 'Oct 23, 14:22 PM', totalRows: 850,  accepted: 812,  rejected: 38,   status: 'warning', statusLabel: 'Partial'   },
+  { id: 'UP-9C1B4…', instructor: 'Dr. Ian Malcolm',   file: 'chaos_theory_sim_final.csv',     uploadedAt: 'Oct 23, 11:05 AM', totalRows: 5000, accepted: 0,    rejected: 5000, status: 'danger',  statusLabel: 'Failed'    },
+  { id: 'UP-2A5F8…', instructor: 'Dr. Henry Wu',      file: 'genetics_batch_04.csv',          uploadedAt: 'Oct 22, 16:45 PM', totalRows: 3200, accepted: 3200, rejected: 0,    status: 'success', statusLabel: 'Completed' },
+  { id: 'UP-7E3B1…', instructor: 'Dr. Alan Grant',    file: 'excavation_logs_site_b.xlsx',    uploadedAt: 'Oct 21, 08:15 AM', totalRows: 450,  accepted: 448,  rejected: 2,    status: 'warning', statusLabel: 'Partial'   },
+]
+
+const MOCK_REPORT: ValidationReport = {
+  uploadId: 'UP-4D7E2…',
+  filename: 'lab_results_batch_Q3_final.csv',
+  uploadedAt: 'Oct 24, 2023 at 14:32 PST',
+  totalRows: 48,
+  accepted: 43,
+  rejected: 5,
+  rejectedRows: [
+    { row: 12, email: 'j.doe@example.com',          field: 'completion_date', ruleId: 'VAL-DATE-01', message: 'Invalid date format. Expected YYYY-MM-DD.'         },
+    { row: 18, email: 'smith.a@domain.org',          field: 'score_module_1', ruleId: 'VAL-NUM-03',  message: 'Value exceeds maximum allowed score of 100.'       },
+    { row: 24, email: 'williams_r@university.edu',   field: 'instructor_id',  ruleId: 'VAL-REQ-01',  message: 'Required field is missing or empty.'               },
+    { row: 41, email: 'invalid.email@',              field: 'learner_email',  ruleId: 'VAL-FMT-02',  message: 'Malformed email address string.'                   },
+  ],
+}
+
+export async function getAuditLog(): Promise<AuditEntry[]> {
+  // TODO: replace with → return http.get<AuditEntry[]>('/admin/reports/audit')
+  await delay(300)
+  return MOCK_AUDIT
+}
+
+export async function getUploadReport(uploadId: string): Promise<ValidationReport> {
+  // TODO: replace with → return http.get<ValidationReport>(`/admin/reports/${uploadId}`)
+  await delay(200)
+  return { ...MOCK_REPORT, uploadId }
 }
