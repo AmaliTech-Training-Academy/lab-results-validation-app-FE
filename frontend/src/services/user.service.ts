@@ -1,17 +1,12 @@
 import type { InstructorUser, ModuleGroup, InstructorPayload } from '@/types/user.types'
+import { http } from './http'
 
-// ---------------------------------------------------------------------------
-// Mock data — DELETE and replace service bodies when wiring the real API
-// ---------------------------------------------------------------------------
+export async function getInstructors(): Promise<InstructorUser[]> {
+  return http.get<InstructorUser[]>('/admin/users/instructors')
+}
 
-const MOCK_INSTRUCTORS: InstructorUser[] = [
-  { id: 1, email: 's.jenkins@amalitechtraining.org', assignedModuleIds: [1, 2, 5, 6], assignedModuleCount: 4, status: 'active' },
-  { id: 2, email: 'm.chen@amalitechtraining.org', assignedModuleIds: [3, 4], assignedModuleCount: 2, status: 'active' },
-  { id: 3, email: 'a.patel@amalitechtraining.org', assignedModuleIds: [7, 8, 9], assignedModuleCount: 3, status: 'active' },
-  { id: 4, email: 'j.wilson@amalitechtraining.org', assignedModuleIds: [], assignedModuleCount: 0, status: 'inactive' },
-]
+// ── Module groups & mutations — still mock until those endpoints are defined ──
 
-// Module IDs match those in reference.service.ts (active cohort 7)
 const MOCK_MODULE_GROUPS: ModuleGroup[] = [
   {
     specId: 1,
@@ -42,52 +37,25 @@ const MOCK_MODULE_GROUPS: ModuleGroup[] = [
   },
 ]
 
-let _nextId = 100
-
-function nextId() {
-  return ++_nextId
-}
-
-function delay(ms: number) {
-  return new Promise<void>((resolve) => setTimeout(resolve, ms))
-}
-
-// ---------------------------------------------------------------------------
-
-export async function getInstructors(): Promise<InstructorUser[]> {
-  // TODO: replace with → return http.get<InstructorUser[]>('/admin/users?role=instructor')
-  await delay(300)
-  return [...MOCK_INSTRUCTORS]
-}
-
 export async function getModuleGroups(): Promise<ModuleGroup[]> {
   // TODO: replace with → return http.get<ModuleGroup[]>('/admin/modules/groups')
-  await delay(250)
   return MOCK_MODULE_GROUPS
 }
 
 export async function addInstructor(payload: InstructorPayload): Promise<InstructorUser> {
   // TODO: replace with → return http.post<InstructorUser>('/admin/users', payload)
-  await delay(500)
-  const user: InstructorUser = {
-    id: nextId(),
+  return {
     email: payload.email,
-    assignedModuleIds: payload.assignedModuleIds,
-    assignedModuleCount: payload.assignedModuleIds.length,
-    status: payload.isActive ? 'active' : 'inactive',
+    active: payload.isActive,
+    assignedModules: [],
   }
-  MOCK_INSTRUCTORS.push(user)
-  return user
 }
 
-export async function updateInstructor(id: number, payload: InstructorPayload): Promise<InstructorUser> {
-  // TODO: replace with → return http.put<InstructorUser>(`/admin/users/${id}`, payload)
-  await delay(500)
-  const idx = MOCK_INSTRUCTORS.findIndex((u) => u.id === id)
-  if (idx !== -1) {
-    MOCK_INSTRUCTORS[idx]!.assignedModuleIds = payload.assignedModuleIds
-    MOCK_INSTRUCTORS[idx]!.assignedModuleCount = payload.assignedModuleIds.length
-    MOCK_INSTRUCTORS[idx]!.status = payload.isActive ? 'active' : 'inactive'
+export async function updateInstructor(email: string, payload: InstructorPayload): Promise<InstructorUser> {
+  // TODO: replace with → return http.put<InstructorUser>(`/admin/users/${encodeURIComponent(email)}`, payload)
+  return {
+    email,
+    active: payload.isActive,
+    assignedModules: [],
   }
-  return MOCK_INSTRUCTORS[idx]!
 }

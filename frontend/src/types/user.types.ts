@@ -1,11 +1,13 @@
-export type InstructorStatus = 'active' | 'inactive'
+export interface AssignedModule {
+  moduleId: string
+  moduleName: string
+  specializationName: string
+}
 
 export interface InstructorUser {
-  id: number
   email: string
-  assignedModuleIds: number[]
-  assignedModuleCount: number
-  status: InstructorStatus
+  active: boolean
+  assignedModules: AssignedModule[]
 }
 
 export interface ModuleOption {
