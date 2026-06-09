@@ -111,7 +111,7 @@ describe('SetPasswordView', () => {
     it('calls changePasswordApi with the entered password', async () => {
       const { wrapper } = mountView(ADMIN_RESPONSE)
       await fillAndSubmit(wrapper, 'securepass123!', 'securepass123!')
-      expect(changePasswordApi).toHaveBeenCalledWith('securepass123!')
+      expect(changePasswordApi).toHaveBeenCalledWith('', 'securepass123!')
     })
 
     it('calls completedPasswordSetup on success', async () => {

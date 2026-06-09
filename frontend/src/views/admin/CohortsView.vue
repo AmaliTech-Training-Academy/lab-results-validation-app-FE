@@ -188,7 +188,7 @@ async function toggleActive(cohort: CohortRow) {
     <div class="load-error-icon"><VIcon name="wifi-off" :size="28" /></div>
     <p class="load-error-title">Could not load cohorts</p>
     <p class="load-error-sub">{{ loadError }}</p>
-    <VButton variant="ghost" icon="rotate-ccw" @click="loadCohorts">Try again</VButton>
+    <VButton variant="ghost" icon="rotate-ccw" @click="() => loadCohorts()">Try again</VButton>
   </div>
 
   <!-- Table (loading skeleton + real data) -->

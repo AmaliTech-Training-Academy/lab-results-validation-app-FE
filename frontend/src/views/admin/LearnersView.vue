@@ -166,8 +166,8 @@ async function submitForm() {
     return
   }
 
-  const selectedCohort = cohortOptions.value.find((c) => c.id === form.value.cohortId)
-  const selectedSpec = formSpecOptions.value.find((s) => s.id === form.value.specId)
+  const selectedCohort = cohortOptions.value.find((c) => Number(c.id) === form.value.cohortId)
+  const selectedSpec = formSpecOptions.value.find((s) => Number(s.id) === form.value.specId)
   const cohortName = selectedCohort?.name ?? ''
   const specName = selectedSpec?.name ?? ''
 
