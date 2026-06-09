@@ -6,7 +6,6 @@ import VDrawer from '@/components/base/VDrawer.vue'
 import VModal from '@/components/base/VModal.vue'
 import { useToastStore } from '@/stores/toast'
 import {
-  getCohorts,
   getSpecializations,
   getModules,
   getLabs,
@@ -16,23 +15,26 @@ import {
   updateLab,
   forceEditLab,
 } from '@/services/reference.service'
-import type { Cohort, Specialization, Module, Lab } from '@/types/reference.types'
+import { getCohorts } from '@/services/cohort.service'
+import type { Specialization, Module, Lab } from '@/types/reference.types'
+import type { CohortRow } from '@/types/cohort.types'
 
 const toast = useToastStore()
 
 // ── Data ────────────────────────────────────────────────────────────────────
-const cohorts = ref<Cohort[]>([])
+const cohorts = ref<CohortRow[]>([])
 const specializations = ref<Specialization[]>([])
 const modules = ref<Module[]>([])
 const labs = ref<Lab[]>([])
 
 // ── Selection ────────────────────────────────────────────────────────────────
-const selectedCohortId = ref<number | null>(null)
-const selectedSpecId = ref<number | null>(null)
-const selectedModId = ref<number | null>(null)
+const selectedCohortId = ref<string | null>(null)
+const selectedSpecId = ref<string | null>(null)
+const selectedModId = ref<string | null>(null)
 
 // ── Loading ──────────────────────────────────────────────────────────────────
 const loading = ref({ specs: false, mods: false, labs: false })
+const loadErrors = ref({ specs: null as string | null, mods: null as string | null, labs: null as string | null })
 const submitting = ref(false)
 
 // ── Drawer / Modal visibility ────────────────────────────────────────────────
@@ -43,7 +45,7 @@ const editTarget = ref<Lab | null>(null)
 const forceEditTarget = ref<Lab | null>(null)
 
 // ── Forms ────────────────────────────────────────────────────────────────────
-const addSpecForm = ref({ name: '', error: '' })
+const addSpecForm = ref({ name: '', code: '', error: '' })
 const addModForm = ref({ name: '', code: '', error: '' })
 const addLabForm = ref({ title: '', maxScore: '', error: '' })
 const editLabForm = ref({ title: '', maxScore: '', error: '' })
@@ -53,6 +55,46 @@ const forceEditForm = ref({ maxScore: '', reason: '', error: '' })
 const selectedSpec = computed(() =>
   specializations.value.find((s) => s.id === selectedSpecId.value) ?? null,
 )
+const selectedCohort = computed(() =>
+  cohorts.value.find((c) => c.id === selectedCohortId.value) ?? null,
+)
+
+// ── Fetch helpers (also used by retry buttons) ────────────────────────────────
+async function fetchSpecs(id: string) {
+  loading.value.specs = true
+  loadErrors.value.specs = null
+  try {
+    specializations.value = await getSpecializations(id)
+  } catch {
+    loadErrors.value.specs = 'Failed to load specializations.'
+  } finally {
+    loading.value.specs = false
+  }
+}
+
+async function fetchMods(specId: string) {
+  loading.value.mods = true
+  loadErrors.value.mods = null
+  try {
+    modules.value = await getModules(specId)
+  } catch {
+    loadErrors.value.mods = 'Failed to load modules.'
+  } finally {
+    loading.value.mods = false
+  }
+}
+
+async function fetchLabs(id: string) {
+  loading.value.labs = true
+  loadErrors.value.labs = null
+  try {
+    labs.value = await getLabs(id)
+  } catch {
+    loadErrors.value.labs = 'Failed to load labs.'
+  } finally {
+    loading.value.labs = false
+  }
+}
 
 // ── Watchers ─────────────────────────────────────────────────────────────────
 watch(selectedCohortId, async (id) => {
@@ -61,50 +103,49 @@ watch(selectedCohortId, async (id) => {
   labs.value = []
   selectedSpecId.value = null
   selectedModId.value = null
+  loadErrors.value = { specs: null, mods: null, labs: null }
   if (id === null) return
-  loading.value.specs = true
-  specializations.value = await getSpecializations(id)
-  loading.value.specs = false
+  await fetchSpecs(id)
 })
 
-watch(selectedSpecId, async (id) => {
+watch(selectedSpecId, async (specId) => {
   modules.value = []
   labs.value = []
   selectedModId.value = null
-  if (id === null) return
-  loading.value.mods = true
-  modules.value = await getModules(id)
-  loading.value.mods = false
+  loadErrors.value.mods = null
+  loadErrors.value.labs = null
+  if (specId === null) return
+  await fetchMods(specId)
 })
 
 watch(selectedModId, async (id) => {
   labs.value = []
+  loadErrors.value.labs = null
   if (id === null) return
-  loading.value.labs = true
-  labs.value = await getLabs(id)
-  loading.value.labs = false
+  await fetchLabs(id)
 })
 
 // ── Mount ────────────────────────────────────────────────────────────────────
 onMounted(async () => {
-  cohorts.value = await getCohorts()
+  const result = await getCohorts(0, 100)
+  cohorts.value = result.content
   if (cohorts.value.length > 0) {
     selectedCohortId.value = cohorts.value[0]!.id
   }
 })
 
 // ── Actions ──────────────────────────────────────────────────────────────────
-function selectSpec(id: number) {
+function selectSpec(id: string) {
   selectedSpecId.value = id
 }
 
-function selectMod(id: number) {
+function selectMod(id: string) {
   selectedModId.value = id
 }
 
 function closeAddSpecDrawer() {
   showAddSpecDrawer.value = false
-  addSpecForm.value = { name: '', error: '' }
+  addSpecForm.value = { name: '', code: '', error: '' }
 }
 
 function closeAddModDrawer() {
@@ -139,16 +180,25 @@ function closeForceEdit() {
 
 async function submitAddSpec() {
   addSpecForm.value.error = ''
-  if (!addSpecForm.value.name.trim()) {
-    addSpecForm.value.error = 'Name is required.'
+  if (!addSpecForm.value.name.trim() || !addSpecForm.value.code.trim()) {
+    addSpecForm.value.error = 'Name and code are required.'
     return
   }
   submitting.value = true
-  const spec = await addSpecialization(selectedCohortId.value!, addSpecForm.value.name.trim())
-  specializations.value.push(spec)
-  submitting.value = false
-  closeAddSpecDrawer()
-  toast.show({ tone: 'success', title: 'Specialization added' })
+  try {
+    const spec = await addSpecialization(
+      selectedCohortId.value!,
+      addSpecForm.value.name.trim(),
+      addSpecForm.value.code.trim(),
+    )
+    specializations.value.push(spec)
+    closeAddSpecDrawer()
+    toast.show({ tone: 'success', title: 'Specialization added' })
+  } catch {
+    addSpecForm.value.error = 'Failed to add specialization. Please try again.'
+  } finally {
+    submitting.value = false
+  }
 }
 
 async function submitAddMod() {
@@ -158,15 +208,20 @@ async function submitAddMod() {
     return
   }
   submitting.value = true
-  const mod = await addModule(
-    selectedSpecId.value!,
-    addModForm.value.name.trim(),
-    addModForm.value.code.trim(),
-  )
-  modules.value.push(mod)
-  submitting.value = false
-  closeAddModDrawer()
-  toast.show({ tone: 'success', title: 'Module added' })
+  try {
+    const mod = await addModule(
+      selectedSpecId.value!,
+      addModForm.value.name.trim(),
+      addModForm.value.code.trim(),
+    )
+    modules.value.push(mod)
+    closeAddModDrawer()
+    toast.show({ tone: 'success', title: 'Module added' })
+  } catch {
+    addModForm.value.error = 'Failed to add module. Please try again.'
+  } finally {
+    submitting.value = false
+  }
 }
 
 async function submitAddLab() {
@@ -181,15 +236,20 @@ async function submitAddLab() {
     return
   }
   submitting.value = true
-  const lab = await addLab({
-    moduleId: selectedModId.value!,
-    title: addLabForm.value.title.trim(),
-    maxScore: max,
-  })
-  labs.value.push(lab)
-  submitting.value = false
-  closeAddLabDrawer()
-  toast.show({ tone: 'success', title: 'Lab added' })
+  try {
+    const lab = await addLab({
+      moduleId: selectedModId.value!,
+      title: addLabForm.value.title.trim(),
+      maxScore: max,
+    })
+    labs.value.push(lab)
+    closeAddLabDrawer()
+    toast.show({ tone: 'success', title: 'Lab added' })
+  } catch {
+    addLabForm.value.error = 'Failed to add lab. Please try again.'
+  } finally {
+    submitting.value = false
+  }
 }
 
 async function submitEditLab() {
@@ -204,15 +264,20 @@ async function submitEditLab() {
     return
   }
   submitting.value = true
-  await updateLab(editTarget.value!.id, editLabForm.value.title.trim(), max)
-  const idx = labs.value.findIndex((l) => l.id === editTarget.value!.id)
-  if (idx !== -1) {
-    labs.value[idx]!.title = editLabForm.value.title.trim()
-    labs.value[idx]!.maxScore = max
+  try {
+    await updateLab(editTarget.value!.id, editLabForm.value.title.trim(), max)
+    const idx = labs.value.findIndex((l) => l.id === editTarget.value!.id)
+    if (idx !== -1) {
+      labs.value[idx]!.title = editLabForm.value.title.trim()
+      labs.value[idx]!.maxScore = max
+    }
+    closeEditLab()
+    toast.show({ tone: 'success', title: 'Lab updated' })
+  } catch {
+    editLabForm.value.error = 'Failed to update lab. Please try again.'
+  } finally {
+    submitting.value = false
   }
-  submitting.value = false
-  closeEditLab()
-  toast.show({ tone: 'success', title: 'Lab updated' })
 }
 
 async function submitForceEdit() {
@@ -227,16 +292,21 @@ async function submitForceEdit() {
     return
   }
   submitting.value = true
-  await forceEditLab({
-    labId: forceEditTarget.value!.id,
-    maxScore: max,
-    reason: forceEditForm.value.reason.trim(),
-  })
-  const idx = labs.value.findIndex((l) => l.id === forceEditTarget.value!.id)
-  if (idx !== -1) labs.value[idx]!.maxScore = max
-  submitting.value = false
-  closeForceEdit()
-  toast.show({ tone: 'success', title: 'Lab updated', body: 'Change recorded in audit trail.' })
+  try {
+    await forceEditLab({
+      labId: forceEditTarget.value!.id,
+      maxScore: max,
+      reason: forceEditForm.value.reason.trim(),
+    })
+    const idx = labs.value.findIndex((l) => l.id === forceEditTarget.value!.id)
+    if (idx !== -1) labs.value[idx]!.maxScore = max
+    closeForceEdit()
+    toast.show({ tone: 'success', title: 'Lab updated', body: 'Change recorded in audit trail.' })
+  } catch {
+    forceEditForm.value.error = 'Failed to apply force-edit. Please try again.'
+  } finally {
+    submitting.value = false
+  }
 }
 </script>
 
@@ -259,9 +329,11 @@ async function submitForceEdit() {
           :value="selectedCohortId ?? ''"
           class="selectf-btn"
           style="appearance: none; -webkit-appearance: none; padding-right: 36px; cursor: pointer; width: 280px"
-          @change="selectedCohortId = Number(($event.target as HTMLSelectElement).value)"
+          @change="selectedCohortId = ($event.target as HTMLSelectElement).value"
         >
-          <option v-for="c in cohorts" :key="c.id" :value="c.id">{{ c.name }}</option>
+          <option v-for="c in cohorts" :key="c.id" :value="c.id">
+            {{ c.name }}{{ !c.active ? ' (archived)' : '' }}
+          </option>
         </select>
         <VIcon
           name="chevron-down"
@@ -280,7 +352,16 @@ async function submitForceEdit() {
         <h2 class="rd-coltitle">Specializations</h2>
         <button class="link" @click="showAddSpecDrawer = true">+ Add</button>
       </div>
-      <div v-if="loading.specs" class="empty"><div class="spinner" /></div>
+      <div v-if="loading.specs" class="rd-list">
+        <div v-for="i in 4" :key="i" class="rd-item" style="pointer-events: none">
+          <span class="skel" style="width: 65%" />
+        </div>
+      </div>
+      <div v-else-if="loadErrors.specs" class="empty">
+        <div class="load-error-icon"><VIcon name="wifi-off" :size="22" /></div>
+        <p class="load-error-title" style="font-size: 13px">Failed to load</p>
+        <button class="link" style="font-size: 13px" @click="selectedCohortId && fetchSpecs(selectedCohortId)">Try again</button>
+      </div>
       <div v-else-if="specializations.length" class="rd-list">
         <button
           v-for="s in specializations"
@@ -288,7 +369,10 @@ async function submitForceEdit() {
           :class="['rd-item', { on: s.id === selectedSpecId }]"
           @click="selectSpec(s.id)"
         >
-          <span>{{ s.name }}</span>
+          <span>
+            <span class="mono" style="font-size: 11px; color: var(--text-secondary); margin-right: 6px">{{ s.code }}</span>
+            {{ s.name }}
+          </span>
           <VIcon v-if="s.id === selectedSpecId" name="chevron-right" :size="16" />
         </button>
       </div>
@@ -305,7 +389,16 @@ async function submitForceEdit() {
         <h2 class="rd-coltitle">Modules</h2>
         <button v-if="selectedSpecId" class="link" @click="showAddModDrawer = true">+ Add</button>
       </div>
-      <div v-if="loading.mods" class="empty"><div class="spinner" /></div>
+      <div v-if="loading.mods" class="rd-list">
+        <div v-for="i in 4" :key="i" class="rd-item rd-item-mono" style="pointer-events: none">
+          <span class="skel" style="width: 60%" />
+        </div>
+      </div>
+      <div v-else-if="loadErrors.mods" class="empty">
+        <div class="load-error-icon"><VIcon name="wifi-off" :size="22" /></div>
+        <p class="load-error-title" style="font-size: 13px">Failed to load</p>
+        <button class="link" style="font-size: 13px" @click="selectedSpecId && fetchMods(selectedSpecId)">Try again</button>
+      </div>
       <div v-else-if="modules.length" class="rd-list">
         <button
           v-for="m in modules"
@@ -313,7 +406,7 @@ async function submitForceEdit() {
           :class="['rd-item rd-item-mono', { on: m.id === selectedModId }]"
           @click="selectMod(m.id)"
         >
-          <span><b>{{ m.code }}</b> · {{ m.name }}</span>
+          <span><b style="color: var(--text-secondary); font-weight: 500">{{ m.sequence }}.</b> {{ m.name }}</span>
           <VIcon v-if="m.id === selectedModId" name="chevron-right" :size="16" />
         </button>
       </div>
@@ -339,7 +432,17 @@ async function submitForceEdit() {
           @click="showAddLabDrawer = true"
         >Add lab</VButton>
       </div>
-      <div v-if="loading.labs" class="empty"><div class="spinner" /></div>
+      <div v-if="loading.labs" class="rd-list" style="border-top: 1px solid var(--border)">
+        <div v-for="i in 4" :key="i" class="rd-item" style="pointer-events: none">
+          <span class="skel" style="width: 55%" />
+          <span class="skel mono" style="width: 36px" />
+        </div>
+      </div>
+      <div v-else-if="loadErrors.labs" class="empty">
+        <div class="load-error-icon"><VIcon name="wifi-off" :size="22" /></div>
+        <p class="load-error-title" style="font-size: 13px">Failed to load</p>
+        <button class="link" style="font-size: 13px" @click="selectedModId && fetchLabs(selectedModId)">Try again</button>
+      </div>
       <template v-else-if="labs.length">
         <table class="tbl tbl-light" style="border-top: 1px solid var(--border)">
           <thead>
@@ -399,10 +502,17 @@ async function submitForceEdit() {
   <!-- Add Specialization Drawer -->
   <VDrawer
     :open="showAddSpecDrawer"
-    title="Add specialization"
+    :title="`Add specialization — ${selectedCohort?.name ?? ''}`"
     subtitle="Add a new specialization to the selected cohort."
     @close="closeAddSpecDrawer"
   >
+    <label class="ff">
+      <span class="ff-label">Code <span style="color: var(--danger)">*</span></span>
+      <span class="ff-input">
+        <input v-model="addSpecForm.code" class="mono" placeholder="e.g. DA" />
+      </span>
+      <span class="ff-hint">Short uppercase identifier used in validation.</span>
+    </label>
     <label class="ff">
       <span class="ff-label">Name <span style="color: var(--danger)">*</span></span>
       <span class="ff-input">
