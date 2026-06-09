@@ -13,6 +13,6 @@ export async function logoutApi(): Promise<void> {
   return http.post<void>('/auth/logout')
 }
 
-export async function changePasswordApi(_newPassword: string): Promise<void> {
-  // TODO: wire up when backend change-password endpoint is ready
+export async function changePasswordApi(currentPassword: string, newPassword: string): Promise<void> {
+  return http.post<void>('/auth/change-password', { currentPassword, newPassword })
 }

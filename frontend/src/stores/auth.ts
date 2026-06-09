@@ -34,6 +34,7 @@ function buildUser(payload: JwtPayload): AuthUser {
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(localStorage.getItem('auth_token'))
   const mustChangePassword = ref(false)
+  const tempPassword = ref<string | null>(null)
   const user = ref<AuthUser | null>(null)
 
   // Hydrate from storage on store creation — only tokens that survived past password setup are persisted
@@ -51,11 +52,12 @@ export const useAuthStore = defineStore('auth', () => {
   const isAdmin = computed(() => !!user.value && ADMIN_ROLES.includes(user.value.role))
   const isInstructor = computed(() => user.value?.role === 'instructor')
 
-  function login(response: LoginResponse) {
+  function login(response: LoginResponse, plainPassword?: string) {
     const payload = decodeJwtPayload(response.token)
     user.value = buildUser(payload)
     token.value = response.token
     mustChangePassword.value = response.mustChangePassword
+    tempPassword.value = response.mustChangePassword ? (plainPassword ?? null) : null
     // Only persist to localStorage once the account is fully set up
     if (!response.mustChangePassword) {
       localStorage.setItem('auth_token', response.token)
@@ -64,6 +66,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   function completedPasswordSetup() {
     mustChangePassword.value = false
+    tempPassword.value = null
     // Now it's safe to persist — the account is fully active
     if (token.value) {
       localStorage.setItem('auth_token', token.value)
@@ -74,6 +77,7 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
     token.value = null
     mustChangePassword.value = false
+    tempPassword.value = null
     localStorage.removeItem('auth_token')
   }
 
@@ -89,6 +93,7 @@ export const useAuthStore = defineStore('auth', () => {
     user,
     token,
     mustChangePassword,
+    tempPassword,
     isAuthenticated,
     isAdmin,
     isInstructor,
