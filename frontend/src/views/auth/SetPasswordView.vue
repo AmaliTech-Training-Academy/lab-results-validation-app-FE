@@ -55,7 +55,7 @@ async function submit() {
   error.value = null
   isLoading.value = true
   try {
-    await changePasswordApi(password.value)
+    await changePasswordApi(auth.tempPassword ?? '', password.value)
     auth.completedPasswordSetup()
     router.push({ name: auth.isAdmin ? 'admin-dashboard' : 'instructor-dashboard' })
   } catch {
