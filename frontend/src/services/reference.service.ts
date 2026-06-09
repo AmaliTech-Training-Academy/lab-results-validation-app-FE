@@ -1,4 +1,4 @@
-import type { Specialization, Module, Lab, AddLabPayload, ForceEditLabPayload } from '@/types/reference.types'
+import type { Specialization, Module, Lab, AddLabPayload, UpdateLabPayload, ForceEditLabPayload } from '@/types/reference.types'
 import { http } from './http'
 
 interface PagedResponse<T> {
@@ -25,7 +25,7 @@ export async function getModules(specializationId: string): Promise<Module[]> {
 
 export async function getLabs(moduleId: string): Promise<Lab[]> {
   const page = await http.get<PagedResponse<Lab>>(
-    `/admin/modules/${moduleId}/labs`,
+    `/admin/labs?moduleId=${moduleId}`,
   )
   return page.content
 }
@@ -41,14 +41,15 @@ export async function addModule(specializationId: string, name: string, code: st
 }
 
 export async function addLab(payload: AddLabPayload): Promise<Lab> {
-  return http.post<Lab>(`/admin/modules/${payload.moduleId}/labs`, {
+  return http.post<Lab>(`/admin/labs`, {
+    moduleId: payload.moduleId,
     title: payload.title,
     maxScore: payload.maxScore,
   })
 }
 
-export async function updateLab(labId: string, title: string, maxScore: number): Promise<void> {
-  return http.put(`/admin/labs/${labId}`, { title, maxScore })
+export async function updateLab(payload: UpdateLabPayload): Promise<void> {
+  return http.put(`/admin/labs/${payload.labId}`, { title: payload.title, maxScore: payload.maxScore })
 }
 
 export async function forceEditLab(payload: ForceEditLabPayload): Promise<void> {

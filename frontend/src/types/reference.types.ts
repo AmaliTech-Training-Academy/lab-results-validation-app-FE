@@ -32,6 +32,12 @@ export interface AddLabPayload {
   maxScore: number
 }
 
+export interface UpdateLabPayload {
+  labId: string
+  title: string
+  maxScore: number
+}
+
 export interface ForceEditLabPayload {
   labId: string
   maxScore: number
