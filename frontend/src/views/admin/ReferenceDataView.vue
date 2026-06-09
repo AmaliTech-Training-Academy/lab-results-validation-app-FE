@@ -265,7 +265,7 @@ async function submitEditLab() {
   }
   submitting.value = true
   try {
-    await updateLab(editTarget.value!.id, editLabForm.value.title.trim(), max)
+    await updateLab({ labId: editTarget.value!.id, title: editLabForm.value.title.trim(), maxScore: max })
     const idx = labs.value.findIndex((l) => l.id === editTarget.value!.id)
     if (idx !== -1) {
       labs.value[idx]!.title = editLabForm.value.title.trim()
