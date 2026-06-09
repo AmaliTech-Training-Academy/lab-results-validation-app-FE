@@ -12,13 +12,29 @@ const view = ref<'list' | 'report'>('list')
 const entries = ref<AuditEntry[]>([])
 const report = ref<ValidationReport | null>(null)
 const isLoading = ref(true)
+const loadError = ref<string | null>(null)
+const loadSlow = ref(false)
+const LOAD_TIMEOUT_MS = 8000
 const reportLoading = ref(false)
 const search = ref('')
 
-onMounted(async () => {
-  entries.value = await getAuditLog()
-  isLoading.value = false
-})
+async function loadData() {
+  isLoading.value = true
+  loadError.value = null
+  loadSlow.value = false
+  const slowTimer = setTimeout(() => { loadSlow.value = true }, LOAD_TIMEOUT_MS)
+  try {
+    entries.value = await getAuditLog()
+  } catch {
+    loadError.value = 'Failed to load audit log. Check your connection and try again.'
+  } finally {
+    clearTimeout(slowTimer)
+    isLoading.value = false
+    loadSlow.value = false
+  }
+}
+
+onMounted(loadData)
 
 const filteredEntries = computed(() => {
   const q = search.value.trim().toLowerCase()
@@ -91,7 +107,19 @@ function backToList() {
       </div>
     </div>
 
-    <div v-if="isLoading" class="empty"><div class="spinner" /></div>
+    <!-- Slow-connection warning -->
+    <div v-if="loadSlow && isLoading" class="load-slow-banner">
+      <VIcon name="clock" :size="15" />
+      This is taking longer than expected…
+    </div>
+
+    <!-- Error state -->
+    <div v-else-if="loadError && !isLoading" class="load-error-state">
+      <div class="load-error-icon"><VIcon name="wifi-off" :size="28" /></div>
+      <p class="load-error-title">Could not load audit log</p>
+      <p class="load-error-sub">{{ loadError }}</p>
+      <VButton variant="ghost" icon="rotate-ccw" @click="loadData">Try again</VButton>
+    </div>
 
     <div v-else class="tbl-wrap">
       <table class="tbl">
@@ -108,7 +136,20 @@ function backToList() {
             <th style="text-align: right">Actions</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody v-if="isLoading">
+          <tr v-for="i in 8" :key="i" class="skel-row">
+            <td><span class="skel mono" style="width: 90px" /></td>
+            <td><span class="skel" style="width: 55%" /></td>
+            <td><span class="skel mono" style="width: 70%" /></td>
+            <td><span class="skel" style="width: 80px" /></td>
+            <td style="text-align: right"><span class="skel mono" style="width: 40px; display: inline-block" /></td>
+            <td style="text-align: center"><span class="skel" style="width: 40px; border-radius: 999px; display: inline-block" /></td>
+            <td style="text-align: center"><span class="skel" style="width: 40px; border-radius: 999px; display: inline-block" /></td>
+            <td><span class="skel" style="width: 70px; border-radius: 999px" /></td>
+            <td style="text-align: right"><span class="skel" style="width: 48px; display: inline-block" /></td>
+          </tr>
+        </tbody>
+        <tbody v-else>
           <tr v-if="!filteredEntries.length">
             <td colspan="9" style="text-align: center; color: var(--text-secondary); padding: 32px">
               No uploads found.
@@ -159,7 +200,34 @@ function backToList() {
 
   <!-- ── Validation report detail ───────────────────────────────────────── -->
   <template v-else-if="view === 'report'">
-    <div v-if="reportLoading" class="empty"><div class="spinner" /></div>
+    <template v-if="reportLoading">
+      <div class="report-head card card-pad">
+        <div style="width: 100%">
+          <span class="skel" style="width: 80px; display: block; margin-bottom: 10px" />
+          <span class="skel" style="width: 200px; height: 24px; display: block; margin-bottom: 12px" />
+          <span class="skel" style="width: 280px; display: block" />
+        </div>
+      </div>
+      <div class="sum-row">
+        <div v-for="i in 3" :key="i" class="sum-card sum-neutral">
+          <span class="skel" style="width: 80px; display: block; margin-bottom: 12px" />
+          <span class="skel" style="width: 60px; height: 28px; display: block" />
+        </div>
+      </div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <tbody>
+            <tr v-for="i in 6" :key="i" class="skel-row">
+              <td><span class="skel mono" style="width: 30px" /></td>
+              <td><span class="skel" style="width: 60%" /></td>
+              <td><span class="skel" style="width: 50%" /></td>
+              <td><span class="skel" style="width: 60px" /></td>
+              <td><span class="skel" style="width: 75%" /></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </template>
 
     <template v-else-if="report">
       <div class="report-head card card-pad">

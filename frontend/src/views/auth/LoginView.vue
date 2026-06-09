@@ -11,9 +11,8 @@ const auth = useAuthStore()
 const router = useRouter()
 const route = useRoute()
 
-const role = ref<'admin' | 'instructor'>('admin')
-const email = ref('admin@amalitech.com')
-const password = ref('lab-admin-2024')
+const email = ref('')
+const password = ref('')
 const showPassword = ref(false)
 const emailTouched = ref(false)
 const passwordTouched = ref(false)
@@ -51,14 +50,6 @@ const features = [
   { icon: 'line-chart',   title: 'Power BI ready',      sub: 'Direct export for analytics tools' },
 ]
 
-function selectRole(r: 'admin' | 'instructor') {
-  role.value = r
-  email.value = r === 'admin' ? 'admin@amalitech.com' : 's.jenkins@amalitechtraining.org'
-  error.value = null
-  emailTouched.value = false
-  passwordTouched.value = false
-}
-
 async function submit() {
   emailTouched.value = true
   passwordTouched.value = true
@@ -68,7 +59,7 @@ async function submit() {
   isLoading.value = true
   try {
     const response = await loginApi(email.value, password.value)
-    auth.login(response)
+    auth.login(response, password.value)
 
     if (response.mustChangePassword) {
       router.push({ name: 'set-password' })
@@ -115,29 +106,6 @@ async function submit() {
         <div class="lc-head">
           <h1 class="lc-title">Sign in</h1>
           <p class="lc-sub">Access the internal lab results dashboard</p>
-        </div>
-
-        <!-- Role switcher -->
-        <div class="field">
-          <label>Sign in as</label>
-          <div class="seg">
-            <button
-              type="button"
-              :class="['seg-btn', { on: role === 'admin' }]"
-              @click="selectRole('admin')"
-            >
-              <VIcon name="shield" :size="15" />
-              Administrator
-            </button>
-            <button
-              type="button"
-              :class="['seg-btn', { on: role === 'instructor' }]"
-              @click="selectRole('instructor')"
-            >
-              <VIcon name="microscope" :size="15" />
-              Instructor
-            </button>
-          </div>
         </div>
 
         <!-- Email -->

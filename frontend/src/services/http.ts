@@ -3,8 +3,14 @@ const BASE_URL = '/api/v1'
 let isRefreshing = false
 let pendingQueue: Array<{ resolve: (token: string) => void; reject: (err: unknown) => void }> = []
 
+let tokenProvider: () => string | null = () => localStorage.getItem('auth_token')
+
+export function setTokenProvider(fn: () => string | null) {
+  tokenProvider = fn
+}
+
 function getToken(): string | null {
-  return localStorage.getItem('auth_token')
+  return tokenProvider()
 }
 
 function buildHeaders(tokenOverride?: string): HeadersInit {
@@ -99,5 +105,11 @@ export const http = {
   },
   async get<T>(path: string): Promise<T> {
     return request<T>('GET', path)
+  },
+  async put<T>(path: string, body?: unknown): Promise<T> {
+    return request<T>('PUT', path, body)
+  },
+  async patch<T>(path: string, body?: unknown): Promise<T> {
+    return request<T>('PATCH', path, body)
   },
 }

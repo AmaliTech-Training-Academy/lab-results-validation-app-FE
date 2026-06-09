@@ -14,6 +14,9 @@ const toast = useToastStore()
 const instructors = ref<InstructorUser[]>([])
 const moduleGroups = ref<ModuleGroup[]>([])
 const isLoading = ref(true)
+const loadError = ref<string | null>(null)
+const loadSlow = ref(false)
+const LOAD_TIMEOUT_MS = 8000
 
 // ── Drawer ────────────────────────────────────────────────────────────────────
 const showDrawer = ref(false)
@@ -37,10 +40,24 @@ function emailToName(email: string): string {
 }
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
-onMounted(async () => {
-  ;[instructors.value, moduleGroups.value] = await Promise.all([getInstructors(), getModuleGroups()])
-  isLoading.value = false
-})
+async function loadData() {
+  isLoading.value = true
+  loadError.value = null
+  loadSlow.value = false
+
+  const slowTimer = setTimeout(() => { loadSlow.value = true }, LOAD_TIMEOUT_MS)
+  try {
+    ;[instructors.value, moduleGroups.value] = await Promise.all([getInstructors(), getModuleGroups()])
+  } catch {
+    loadError.value = 'Failed to load instructors. Check your connection and try again.'
+  } finally {
+    clearTimeout(slowTimer)
+    isLoading.value = false
+    loadSlow.value = false
+  }
+}
+
+onMounted(loadData)
 
 // ── Actions ───────────────────────────────────────────────────────────────────
 function resetForm() {
@@ -56,8 +73,8 @@ function openAdd() {
 
 function openEdit(instructor: InstructorUser) {
   editTarget.value = instructor
-  form.value = { email: instructor.email, isActive: instructor.status === 'active', error: '' }
-  assignedIds.value = [...instructor.assignedModuleIds]
+  form.value = { email: instructor.email, isActive: instructor.active, error: '' }
+  assignedIds.value = []
   showDrawer.value = true
 }
 
@@ -107,18 +124,25 @@ async function submitForm() {
   }
 
   submitting.value = true
-  if (editTarget.value) {
-    const updated = await updateInstructor(editTarget.value.id, payload)
-    const idx = instructors.value.findIndex((u) => u.id === editTarget.value!.id)
-    if (idx !== -1) instructors.value[idx] = updated
-    toast.show({ tone: 'success', title: 'Instructor updated' })
-  } else {
-    const created = await addInstructor(payload)
-    instructors.value.push(created)
-    toast.show({ tone: 'success', title: 'Instructor added' })
+  try {
+    if (editTarget.value) {
+      const updated = await updateInstructor(editTarget.value.email, payload)
+      const idx = instructors.value.findIndex((u) => u.email === editTarget.value!.email)
+      if (idx !== -1) instructors.value[idx] = updated
+      toast.show({ tone: 'success', title: 'Instructor updated' })
+    } else {
+      const created = await addInstructor(payload)
+      instructors.value.push(created)
+      toast.show({ tone: 'success', title: 'Instructor added' })
+    }
+    closeDrawer()
+  } catch {
+    form.value.error = editTarget.value
+      ? 'Failed to update instructor. Please try again.'
+      : 'Failed to add instructor. Please try again.'
+  } finally {
+    submitting.value = false
   }
-  submitting.value = false
-  closeDrawer()
 }
 </script>
 
@@ -132,8 +156,19 @@ async function submitForm() {
     <VButton variant="primary" icon="user-plus" @click="openAdd">Add instructor</VButton>
   </div>
 
-  <!-- Loading -->
-  <div v-if="isLoading" class="empty"><div class="spinner" /></div>
+  <!-- Slow-connection warning -->
+  <div v-if="loadSlow && isLoading" class="load-slow-banner">
+    <VIcon name="clock" :size="15" />
+    This is taking longer than expected…
+  </div>
+
+  <!-- Error state -->
+  <div v-else-if="loadError && !isLoading" class="load-error-state">
+    <div class="load-error-icon"><VIcon name="wifi-off" :size="28" /></div>
+    <p class="load-error-title">Could not load instructors</p>
+    <p class="load-error-sub">{{ loadError }}</p>
+    <VButton variant="ghost" icon="rotate-ccw" @click="loadData">Try again</VButton>
+  </div>
 
   <!-- Table -->
   <div v-else class="tbl-wrap">
@@ -143,23 +178,32 @@ async function submitForm() {
           <th>Name</th>
           <th>Email</th>
           <th style="text-align: center">Assigned modules</th>
-          <th>Status</th>
+          <th style="text-align: center">Status</th>
           <th style="text-align: right">Actions</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody v-if="isLoading">
+        <tr v-for="i in 5" :key="i" class="skel-row">
+          <td><span class="skel" style="width: 45%" /></td>
+          <td><span class="skel mono" style="width: 65%" /></td>
+          <td style="text-align: center"><span class="skel" style="width: 24px; display: inline-block" /></td>
+          <td style="text-align: center"><span class="skel" style="width: 60px; border-radius: 999px; display: inline-block" /></td>
+          <td style="text-align: right"><span class="skel" style="width: 32px; display: inline-block" /></td>
+        </tr>
+      </tbody>
+      <tbody v-else>
         <tr v-if="!instructors.length">
           <td colspan="5" style="text-align: center; color: var(--text-secondary); padding: 32px">
             No instructors yet. Add one to get started.
           </td>
         </tr>
-        <tr v-for="u in instructors" :key="u.id">
+        <tr v-for="u in instructors" :key="u.email">
           <td style="font-weight: 600">{{ emailToName(u.email) }}</td>
           <td class="mono" style="color: var(--text-secondary)">{{ u.email }}</td>
-          <td style="text-align: center">{{ u.assignedModuleCount }}</td>
-          <td>
-            <VPill :tone="u.status === 'active' ? 'success' : 'danger'">
-              {{ u.status === 'active' ? 'Active' : 'Inactive' }}
+          <td style="text-align: center">{{ u.assignedModules.length }}</td>
+          <td style="text-align: center">
+            <VPill :tone="u.active ? 'success' : 'info'">
+              {{ u.active ? 'Active' : 'Inactive' }}
             </VPill>
           </td>
           <td style="text-align: right">
@@ -198,7 +242,21 @@ async function submitForm() {
       </label>
     </div>
 
-    <div class="ff-group-title" style="margin-top: 8px">Assigned modules</div>
+    <!-- Current assignments (edit mode only) -->
+    <template v-if="editTarget && editTarget.assignedModules.length">
+      <div class="ff-group-title" style="margin-top: 8px">Current assignments</div>
+      <div style="display: flex; flex-wrap: wrap; gap: 6px">
+        <span
+          v-for="m in editTarget.assignedModules"
+          :key="m.moduleId"
+          class="module-chip"
+        >{{ m.moduleName }}</span>
+      </div>
+    </template>
+
+    <div class="ff-group-title" style="margin-top: 8px">
+      {{ editTarget ? 'Update module assignments' : 'Assigned modules' }}
+    </div>
     <p class="ff-hint" style="margin-top: -4px">
       Instructors can only upload results for the modules selected here.
     </p>
@@ -233,3 +291,16 @@ async function submitForm() {
     </template>
   </VDrawer>
 </template>
+
+<style scoped>
+.module-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+</style>

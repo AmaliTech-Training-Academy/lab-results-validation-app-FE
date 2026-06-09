@@ -1,38 +1,39 @@
-export interface Cohort {
-  id: number
-  name: string
-  isActive: boolean
-}
-
 export interface Specialization {
-  id: number
-  cohortId: number
+  id: string
+  cohortId: string
   name: string
+  code: string
+  createdAt: string
+  updatedAt: string
 }
 
 export interface Module {
-  id: number
-  specializationId: number
-  code: string
+  id: string
   name: string
+  sequence: number
+  status: string
+  cohortId: string
+  cohortName: string
+  specializationId: string
+  specializationName: string
 }
 
 export interface Lab {
-  id: number
-  moduleId: number
+  id: string
+  moduleId: string
   title: string
   maxScore: number
   hasResults: boolean
 }
 
 export interface AddLabPayload {
-  moduleId: number
+  moduleId: string
   title: string
   maxScore: number
 }
 
 export interface ForceEditLabPayload {
-  labId: number
+  labId: string
   maxScore: number
   reason: string
 }
