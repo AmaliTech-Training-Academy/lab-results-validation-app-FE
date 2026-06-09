@@ -13,16 +13,68 @@ const router = useRouter()
 
 const data = ref<InstructorDashboardData | null>(null)
 const isLoading = ref(true)
+const loadError = ref<string | null>(null)
+const loadSlow = ref(false)
+const LOAD_TIMEOUT_MS = 8000
 
-onMounted(async () => {
-  data.value = await getInstructorDashboard()
-  isLoading.value = false
-})
+async function loadData() {
+  isLoading.value = true
+  loadError.value = null
+  loadSlow.value = false
+  const slowTimer = setTimeout(() => { loadSlow.value = true }, LOAD_TIMEOUT_MS)
+  try {
+    data.value = await getInstructorDashboard()
+  } catch {
+    loadError.value = 'Failed to load dashboard. Check your connection and try again.'
+  } finally {
+    clearTimeout(slowTimer)
+    isLoading.value = false
+    loadSlow.value = false
+  }
+}
+
+onMounted(loadData)
 </script>
 
 <template>
-  <div v-if="isLoading" class="empty">
-    <div class="spinner" />
+  <div v-if="loadSlow && isLoading" class="load-slow-banner">
+    <VIcon name="clock" :size="15" />
+    This is taking longer than expected…
+  </div>
+
+  <div v-else-if="loadError && !isLoading" class="load-error-state">
+    <div class="load-error-icon"><VIcon name="wifi-off" :size="28" /></div>
+    <p class="load-error-title">Could not load dashboard</p>
+    <p class="load-error-sub">{{ loadError }}</p>
+    <VButton variant="ghost" icon="rotate-ccw" @click="loadData">Try again</VButton>
+  </div>
+
+  <div v-else-if="isLoading">
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">Dashboard</h1>
+        <p class="page-sub">Loading your workspace…</p>
+      </div>
+    </div>
+    <h2 class="sec-title" style="margin-bottom: 16px">Assigned modules</h2>
+    <div class="mod-grid">
+      <div v-for="i in 3" :key="i" class="skel-card" style="border-radius: var(--r-md)" />
+    </div>
+    <div class="card" style="margin-top: 28px; overflow: hidden">
+      <div class="sec-head sec-head-navy" style="background: var(--navy); padding: 16px 20px">
+        <span class="skel" style="width: 160px; background: rgba(255,255,255,0.15)" />
+      </div>
+      <table class="tbl tbl-light"><tbody>
+        <tr v-for="i in 3" :key="i" class="skel-row">
+          <td><span class="skel mono" style="width: 65%" /></td>
+          <td><span class="skel" style="width: 80px" /></td>
+          <td><span class="skel" style="width: 30px; display:inline-block" /></td>
+          <td><span class="skel" style="width: 30px; display:inline-block" /></td>
+          <td><span class="skel" style="width: 60px; border-radius:999px; display:inline-block" /></td>
+          <td><span class="skel" style="width: 60px; display:inline-block" /></td>
+        </tr>
+      </tbody></table>
+    </div>
   </div>
 
   <div v-else-if="data">

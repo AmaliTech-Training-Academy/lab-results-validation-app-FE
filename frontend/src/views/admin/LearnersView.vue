@@ -18,6 +18,9 @@ const toast = useToastStore()
 const learners = ref<Learner[]>([])
 const cohortOptions = ref<CohortRow[]>([])
 const isLoading = ref(true)
+const loadError = ref<string | null>(null)
+const loadSlow = ref(false)
+const LOAD_TIMEOUT_MS = 8000
 
 // ── Filters ───────────────────────────────────────────────────────────────────
 const searchQuery = ref('')
@@ -72,9 +75,26 @@ const filteredLearners = computed(() => {
 const drawerTitle = computed(() => editTarget.value ? 'Edit learner' : 'Add learner')
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
-onMounted(async () => {
-  ;[learners.value, cohortOptions.value] = await Promise.all([getLearners(), getCohorts()])
-  isLoading.value = false
+async function loadData() {
+  isLoading.value = true
+  loadError.value = null
+  loadSlow.value = false
+  const slowTimer = setTimeout(() => { loadSlow.value = true }, LOAD_TIMEOUT_MS)
+  try {
+    const [learnersResult, cohortsResult] = await Promise.all([getLearners(), getCohorts(0, 100)])
+    learners.value = learnersResult
+    cohortOptions.value = cohortsResult.content
+  } catch {
+    loadError.value = 'Failed to load learners. Check your connection and try again.'
+  } finally {
+    clearTimeout(slowTimer)
+    isLoading.value = false
+    loadSlow.value = false
+  }
+}
+
+onMounted(() => {
+  loadData()
   window.addEventListener('click', closeKebab)
 })
 
@@ -114,7 +134,7 @@ async function openEdit(learner: Learner) {
     status: learner.status,
     error: '',
   }
-  formSpecOptions.value = await getSpecializations(learner.cohortId)
+  formSpecOptions.value = await getSpecializations(String(learner.cohortId))
   form.value.specId = learner.specializationId
   showDrawer.value = true
 }
@@ -131,7 +151,7 @@ async function onFormCohortChange(event: Event) {
   form.value.specId = null
   formSpecOptions.value = []
   if (form.value.cohortId) {
-    formSpecOptions.value = await getSpecializations(form.value.cohortId)
+    formSpecOptions.value = await getSpecializations(String(form.value.cohortId))
   }
 }
 
@@ -200,8 +220,19 @@ async function toggleStatus(learner: Learner) {
     </div>
   </div>
 
-  <!-- Loading -->
-  <div v-if="isLoading" class="empty"><div class="spinner" /></div>
+  <!-- Slow-connection warning -->
+  <div v-if="loadSlow && isLoading" class="load-slow-banner">
+    <VIcon name="clock" :size="15" />
+    This is taking longer than expected…
+  </div>
+
+  <!-- Error state -->
+  <div v-else-if="loadError && !isLoading" class="load-error-state">
+    <div class="load-error-icon"><VIcon name="wifi-off" :size="28" /></div>
+    <p class="load-error-title">Could not load learners</p>
+    <p class="load-error-sub">{{ loadError }}</p>
+    <VButton variant="ghost" icon="rotate-ccw" @click="loadData">Try again</VButton>
+  </div>
 
   <div v-else class="card" style="overflow: hidden">
     <!-- Toolbar -->
@@ -264,7 +295,18 @@ async function toggleStatus(learner: Learner) {
           <th style="text-align: right">Actions</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody v-if="isLoading">
+        <tr v-for="i in 6" :key="i" class="skel-row">
+          <td><span class="skel" style="width: 16px; display: inline-block" /></td>
+          <td><span class="skel" style="width: 55%" /></td>
+          <td><span class="skel mono" style="width: 65%" /></td>
+          <td><span class="skel" style="width: 70%" /></td>
+          <td><span class="skel" style="width: 80%" /></td>
+          <td><span class="skel" style="width: 60px; border-radius: 999px; display: inline-block" /></td>
+          <td style="text-align: right"><span class="skel" style="width: 32px; display: inline-block" /></td>
+        </tr>
+      </tbody>
+      <tbody v-else>
         <tr v-if="!filteredLearners.length">
           <td colspan="7" style="text-align: center; color: var(--text-secondary); padding: 32px">
             No learners found.
@@ -315,7 +357,7 @@ async function toggleStatus(learner: Learner) {
     </table>
 
     <!-- Pagination -->
-    <div class="pager">
+    <div v-if="!isLoading" class="pager">
       <span class="pager-count">
         Showing {{ filteredLearners.length ? 1 : 0 }} to {{ filteredLearners.length }} of {{ filteredLearners.length }} entries
       </span>
