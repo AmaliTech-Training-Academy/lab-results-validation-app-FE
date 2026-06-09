@@ -1,17 +1,24 @@
-export type CohortStatus = 'active' | 'completed' | 'pending'
-
 export interface CohortRow {
-  id: number
+  id: string
   name: string
   startDate: string
   endDate: string
-  specializationCount: number
-  status: CohortStatus
+  active: boolean
+  createdAt: string
+  updatedAt: string
 }
 
 export interface CreateCohortPayload {
   name: string
   startDate: string
   endDate: string
-  status: CohortStatus
+}
+
+export interface PagedCohorts {
+  content: CohortRow[]
+  page: number
+  size: number
+  totalElements: number
+  totalPages: number
+  last: boolean
 }
