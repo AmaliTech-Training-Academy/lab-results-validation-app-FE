@@ -2,25 +2,108 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getAdminDashboard } from '@/services/admin.service'
+import { getInstructors } from '@/services/user.service'
+import { getCohorts } from '@/services/cohort.service'
 import type { AdminDashboardData } from '@/types/dashboard.types'
 import VStatCard from '@/components/base/VStatCard.vue'
 import VPill from '@/components/base/VPill.vue'
 import VIcon from '@/components/base/VIcon.vue'
+import VButton from '@/components/base/VButton.vue'
 
 const router = useRouter()
 
+const STAT_ROUTES: Record<string, string> = {
+  Cohorts: 'admin-cohorts',
+  Learners: 'admin-learners',
+  Instructors: 'admin-users',
+}
+
 const data = ref<AdminDashboardData | null>(null)
 const isLoading = ref(true)
+const loadError = ref<string | null>(null)
+const loadSlow = ref(false)
+const LOAD_TIMEOUT_MS = 8000
 
-onMounted(async () => {
-  data.value = await getAdminDashboard()
-  isLoading.value = false
-})
+async function loadData() {
+  isLoading.value = true
+  loadError.value = null
+  loadSlow.value = false
+  const slowTimer = setTimeout(() => { loadSlow.value = true }, LOAD_TIMEOUT_MS)
+  try {
+    const [dashboard, instructors, cohortsPage] = await Promise.all([
+      getAdminDashboard(),
+      getInstructors(),
+      getCohorts(0, 100),
+    ])
+
+    const activeInstructors = instructors.filter((i) => i.active).length
+    const instructorStat = dashboard.stats.find((s) => s.label === 'Instructors')
+    if (instructorStat) {
+      instructorStat.value = String(instructors.length)
+      instructorStat.footText = `${activeInstructors} Active · ${instructors.length - activeInstructors} Inactive`
+    }
+
+    const today = new Date().toISOString().split('T')[0]!
+    const activeCohorts = cohortsPage.content.filter((c) => c.active && c.endDate >= today).length
+    const completedCohorts = cohortsPage.content.filter((c) => c.endDate < today).length
+    const archivedCohorts = cohortsPage.content.filter((c) => !c.active && c.endDate >= today).length
+    const cohortStat = dashboard.stats.find((s) => s.label === 'Cohorts')
+    if (cohortStat) {
+      cohortStat.value = String(cohortsPage.totalElements)
+      cohortStat.footText = `${activeCohorts} Active · ${completedCohorts} Completed · ${archivedCohorts} Archived`
+    }
+
+    data.value = dashboard
+  } catch {
+    loadError.value = 'Failed to load dashboard. Check your connection and try again.'
+  } finally {
+    clearTimeout(slowTimer)
+    isLoading.value = false
+    loadSlow.value = false
+  }
+}
+
+onMounted(loadData)
 </script>
 
 <template>
-  <div v-if="isLoading" class="empty">
-    <div class="spinner" />
+  <div v-if="loadSlow && isLoading" class="load-slow-banner">
+    <VIcon name="clock" :size="15" />
+    This is taking longer than expected…
+  </div>
+
+  <div v-else-if="loadError && !isLoading" class="load-error-state">
+    <div class="load-error-icon"><VIcon name="wifi-off" :size="28" /></div>
+    <p class="load-error-title">Could not load dashboard</p>
+    <p class="load-error-sub">{{ loadError }}</p>
+    <VButton variant="ghost" icon="rotate-ccw" @click="loadData">Try again</VButton>
+  </div>
+
+  <div v-else-if="isLoading">
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">Dashboard</h1>
+        <p class="page-sub">Overview of current validation system status.</p>
+      </div>
+    </div>
+    <div class="stats">
+      <div v-for="i in 4" :key="i" class="skel-stat" />
+    </div>
+    <div class="dash-grid" style="margin-top: 24px">
+      <div class="card" style="overflow: hidden">
+        <div style="padding: 20px 20px 0"><span class="skel" style="width: 140px; margin-bottom: 16px" /></div>
+        <table class="tbl"><tbody>
+          <tr v-for="i in 4" :key="i" class="skel-row">
+            <td><span class="skel" style="width: 55%" /></td>
+            <td><span class="skel mono" style="width: 70%" /></td>
+            <td><span class="skel" style="width: 30px; display:inline-block" /></td>
+            <td><span class="skel" style="width: 30px; display:inline-block" /></td>
+            <td><span class="skel" style="width: 60px; border-radius: 999px; display:inline-block" /></td>
+          </tr>
+        </tbody></table>
+      </div>
+      <div class="card card-pad skel-card" />
+    </div>
   </div>
 
   <div v-else-if="data">
@@ -43,6 +126,8 @@ onMounted(async () => {
         :chip-fg="s.chipFg"
         :foot-dot="s.footDot"
         :foot-text="s.footText"
+        :style="STAT_ROUTES[s.label] ? 'cursor: pointer' : ''"
+        @click="STAT_ROUTES[s.label] && router.push({ name: STAT_ROUTES[s.label] })"
       />
     </div>
 

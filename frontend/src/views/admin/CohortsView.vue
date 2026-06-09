@@ -5,10 +5,10 @@ import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import VPill from '@/components/base/VPill.vue'
 import VDrawer from '@/components/base/VDrawer.vue'
+import VDatePicker from '@/components/base/VDatePicker.vue'
 import { useToastStore } from '@/stores/toast'
-import { getCohorts, createCohort, updateCohort, setCohortStatus } from '@/services/cohort.service'
-import type { CohortRow, CohortStatus } from '@/types/cohort.types'
-import type { Tone } from '@/types/dashboard.types'
+import { getCohorts, createCohort, updateCohort, toggleCohortActive } from '@/services/cohort.service'
+import type { CohortRow } from '@/types/cohort.types'
 
 const router = useRouter()
 const toast = useToastStore()
@@ -16,38 +16,57 @@ const toast = useToastStore()
 // ── Data ─────────────────────────────────────────────────────────────────────
 const cohorts = ref<CohortRow[]>([])
 const isLoading = ref(true)
+const loadError = ref<string | null>(null)
+const loadSlow = ref(false)
+const LOAD_TIMEOUT_MS = 8000
 
 // ── Drawer ────────────────────────────────────────────────────────────────────
 const showDrawer = ref(false)
 const editTarget = ref<CohortRow | null>(null)
 const submitting = ref(false)
-const form = ref({ name: '', startDate: '', endDate: '', status: 'pending' as CohortStatus, error: '' })
+const form = ref({ name: '', startDate: '', endDate: '', error: '' })
 
 // ── Kebab ─────────────────────────────────────────────────────────────────────
-const activeKebabId = ref<number | null>(null)
+const activeKebabId = ref<string | null>(null)
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const STATUS_TONE: Record<CohortStatus, Tone> = {
-  active: 'warning',
-  pending: 'info',
-  completed: 'success',
-}
-
-const STATUS_LABEL: Record<CohortStatus, string> = {
-  active: 'Active',
-  pending: 'Pending',
-  completed: 'Completed',
-}
-
 const drawerTitle = computed(() => editTarget.value ? 'Edit cohort' : 'Create new cohort')
 
+const dateRangeError = computed(() => {
+  if (!form.value.startDate || !form.value.endDate) return ''
+  return form.value.endDate < form.value.startDate ? 'End date must be after start date.' : ''
+})
+
 // ── Pagination ────────────────────────────────────────────────────────────────
-const total = computed(() => cohorts.value.length)
+const currentPage = ref(0)
+const totalElements = ref(0)
+const totalPages = ref(0)
+const PAGE_SIZE = 10
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
-onMounted(async () => {
-  cohorts.value = await getCohorts()
-  isLoading.value = false
+async function loadCohorts(page = currentPage.value) {
+  isLoading.value = true
+  loadError.value = null
+  loadSlow.value = false
+
+  const slowTimer = setTimeout(() => { loadSlow.value = true }, LOAD_TIMEOUT_MS)
+  try {
+    const result = await getCohorts(page, PAGE_SIZE)
+    cohorts.value = result.content
+    currentPage.value = result.page
+    totalElements.value = result.totalElements
+    totalPages.value = result.totalPages
+  } catch {
+    loadError.value = 'Failed to load cohorts. Check your connection and try again.'
+  } finally {
+    clearTimeout(slowTimer)
+    isLoading.value = false
+    loadSlow.value = false
+  }
+}
+
+onMounted(() => {
+  loadCohorts()
   window.addEventListener('click', closeKebab)
 })
 
@@ -60,28 +79,28 @@ function closeKebab() {
   activeKebabId.value = null
 }
 
-function toggleKebab(event: MouseEvent, id: number) {
+function toggleKebab(event: MouseEvent, id: string) {
   event.stopPropagation()
   activeKebabId.value = activeKebabId.value === id ? null : id
 }
 
 function openCreate() {
   editTarget.value = null
-  form.value = { name: '', startDate: '', endDate: '', status: 'pending', error: '' }
+  form.value = { name: '', startDate: '', endDate: '',  error: '' }
   showDrawer.value = true
 }
 
 function openEdit(cohort: CohortRow) {
   activeKebabId.value = null
   editTarget.value = cohort
-  form.value = { name: cohort.name, startDate: cohort.startDate, endDate: cohort.endDate, status: cohort.status, error: '' }
+  form.value = { name: cohort.name, startDate: cohort.startDate, endDate: cohort.endDate, error: '' }
   showDrawer.value = true
 }
 
 function closeDrawer() {
   showDrawer.value = false
   editTarget.value = null
-  form.value = { name: '', startDate: '', endDate: '', status: 'pending', error: '' }
+  form.value = { name: '', startDate: '', endDate: '', error: '' }
 }
 
 async function submitForm() {
@@ -90,34 +109,52 @@ async function submitForm() {
     form.value.error = 'Name, start date, and end date are required.'
     return
   }
-  submitting.value = true
-  const payload = { name: form.value.name.trim(), startDate: form.value.startDate, endDate: form.value.endDate, status: form.value.status }
-  if (editTarget.value) {
-    const updated = await updateCohort(editTarget.value.id, payload)
-    const idx = cohorts.value.findIndex((c) => c.id === editTarget.value!.id)
-    if (idx !== -1) {
-      cohorts.value[idx]!.name = updated.name
-      cohorts.value[idx]!.startDate = updated.startDate
-      cohorts.value[idx]!.endDate = updated.endDate
-      cohorts.value[idx]!.status = updated.status
-    }
-    toast.show({ tone: 'success', title: 'Cohort updated' })
-  } else {
-    const created = await createCohort(payload)
-    cohorts.value.push(created)
-    toast.show({ tone: 'success', title: 'Cohort created' })
+  if (dateRangeError.value) {
+    form.value.error = dateRangeError.value
+    return
   }
-  submitting.value = false
-  closeDrawer()
+  submitting.value = true
+  const payload = { name: form.value.name.trim(), startDate: form.value.startDate, endDate: form.value.endDate }
+  try {
+    if (editTarget.value) {
+      const updated = await updateCohort(editTarget.value.id, payload)
+      const idx = cohorts.value.findIndex((c) => c.id === editTarget.value!.id)
+      if (idx !== -1) {
+        cohorts.value[idx]!.name = updated.name
+        cohorts.value[idx]!.startDate = updated.startDate
+        cohorts.value[idx]!.endDate = updated.endDate
+      }
+      toast.show({ tone: 'success', title: 'Cohort updated' })
+    } else {
+      const created = await createCohort(payload)
+      cohorts.value.push(created)
+      toast.show({ tone: 'success', title: 'Cohort created' })
+    }
+    closeDrawer()
+  } catch {
+    form.value.error = editTarget.value ? 'Failed to update cohort. Please try again.' : 'Failed to create cohort. Please try again.'
+  } finally {
+    submitting.value = false
+  }
 }
 
-async function toggleStatus(cohort: CohortRow) {
+function cohortStatus(c: CohortRow): 'active' | 'completed' | 'archived' {
+  const today = new Date().toISOString().split('T')[0]!
+  if (c.endDate < today) return 'completed'
+  return c.active ? 'active' : 'archived'
+}
+
+async function toggleActive(cohort: CohortRow) {
   activeKebabId.value = null
-  const newStatus: CohortStatus = cohort.status === 'completed' ? 'active' : 'completed'
-  await setCohortStatus(cohort.id, newStatus)
-  const idx = cohorts.value.findIndex((c) => c.id === cohort.id)
-  if (idx !== -1) cohorts.value[idx]!.status = newStatus
-  toast.show({ tone: 'success', title: newStatus === 'completed' ? 'Cohort archived' : 'Cohort restored' })
+  const newActive = !cohort.active
+  try {
+    await toggleCohortActive(cohort.id, newActive)
+    const idx = cohorts.value.findIndex((c) => c.id === cohort.id)
+    if (idx !== -1) cohorts.value[idx]!.active = newActive
+    toast.show({ tone: 'success', title: newActive ? 'Cohort restored' : 'Cohort archived' })
+  } catch {
+    toast.show({ tone: 'warning', title: 'Action failed. Please try again.' })
+  }
 }
 </script>
 
@@ -140,10 +177,21 @@ async function toggleStatus(cohort: CohortRow) {
     </div>
   </div>
 
-  <!-- Loading -->
-  <div v-if="isLoading" class="empty"><div class="spinner" /></div>
+  <!-- Slow-connection warning -->
+  <div v-if="loadSlow && isLoading" class="load-slow-banner">
+    <VIcon name="clock" :size="15" />
+    This is taking longer than expected…
+  </div>
 
-  <!-- Table -->
+  <!-- Error state -->
+  <div v-if="loadError && !isLoading" class="load-error-state">
+    <div class="load-error-icon"><VIcon name="wifi-off" :size="28" /></div>
+    <p class="load-error-title">Could not load cohorts</p>
+    <p class="load-error-sub">{{ loadError }}</p>
+    <VButton variant="ghost" icon="rotate-ccw" @click="loadCohorts">Try again</VButton>
+  </div>
+
+  <!-- Table (loading skeleton + real data) -->
   <div v-else class="tbl-wrap">
     <table class="tbl">
       <thead>
@@ -151,19 +199,28 @@ async function toggleStatus(cohort: CohortRow) {
           <th>Cohort Name</th>
           <th>Start Date</th>
           <th>End Date</th>
-          <th style="text-align: right">Specializations</th>
           <th style="text-align: center">Status</th>
           <th></th>
         </tr>
       </thead>
-      <tbody>
+      <tbody v-if="isLoading">
+        <tr v-for="i in 5" :key="i" class="skel-row">
+          <td><span class="skel" style="width: 55%" /></td>
+          <td><span class="skel mono" style="width: 80px" /></td>
+          <td><span class="skel mono" style="width: 80px" /></td>
+          <td style="text-align: center"><span class="skel" style="width: 64px; border-radius: 999px" /></td>
+          <td style="text-align: right"><span class="skel" style="width: 24px; display: inline-block" /></td>
+        </tr>
+      </tbody>
+      <tbody v-else>
         <tr v-for="c in cohorts" :key="c.id">
           <td style="font-weight: 600">{{ c.name }}</td>
           <td class="mono" style="color: var(--text-secondary)">{{ c.startDate }}</td>
           <td class="mono" style="color: var(--text-secondary)">{{ c.endDate }}</td>
-          <td style="text-align: right">{{ c.specializationCount }}</td>
           <td style="text-align: center">
-            <VPill :tone="STATUS_TONE[c.status]">{{ STATUS_LABEL[c.status] }}</VPill>
+            <VPill :tone="cohortStatus(c) === 'active' ? 'warning' : cohortStatus(c) === 'completed' ? 'success' : 'info'">
+              {{ cohortStatus(c) === 'active' ? 'Active' : cohortStatus(c) === 'completed' ? 'Completed' : 'Archived' }}
+            </VPill>
           </td>
           <td style="text-align: right; width: 48px; position: relative">
             <button class="kebab" aria-label="Actions" @click="toggleKebab($event, c.id)">
@@ -187,10 +244,10 @@ async function toggleStatus(cohort: CohortRow) {
                 style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 16px; border: none; background: none; font-family: inherit; font-size: 14px; color: var(--text); cursor: pointer; text-align: left"
                 @mouseenter="($event.target as HTMLElement).style.background = 'var(--bg)'"
                 @mouseleave="($event.target as HTMLElement).style.background = 'none'"
-                @click="toggleStatus(c)"
+                @click="toggleActive(c)"
               >
-                <VIcon :name="c.status === 'completed' ? 'rotate-ccw' : 'archive'" :size="15" style="color: var(--text-secondary)" />
-                {{ c.status === 'completed' ? 'Restore' : 'Archive' }}
+                <VIcon :name="c.active ? 'archive' : 'rotate-ccw'" :size="15" style="color: var(--text-secondary)" />
+                {{ c.active ? 'Archive' : 'Restore' }}
               </button>
             </div>
           </td>
@@ -199,12 +256,23 @@ async function toggleStatus(cohort: CohortRow) {
     </table>
 
     <!-- Pagination -->
-    <div class="pager">
-      <span class="pager-count">Showing 1 to {{ total }} of {{ total }} entries</span>
+    <div v-if="!isLoading && totalElements > 0" class="pager">
+      <span class="pager-count">
+        Showing {{ currentPage * PAGE_SIZE + 1 }}–{{ Math.min((currentPage + 1) * PAGE_SIZE, totalElements) }} of {{ totalElements }}
+      </span>
       <div class="pager-ctrls">
-        <button class="pg-arrow" aria-label="Previous" disabled><VIcon name="chevron-left" :size="16" /></button>
-        <button class="pg-num on">1</button>
-        <button class="pg-arrow" aria-label="Next" disabled><VIcon name="chevron-right" :size="16" /></button>
+        <button class="pg-arrow" aria-label="Previous" :disabled="currentPage === 0" @click="loadCohorts(currentPage - 1)">
+          <VIcon name="chevron-left" :size="16" />
+        </button>
+        <button
+          v-for="p in totalPages"
+          :key="p"
+          :class="['pg-num', { on: p - 1 === currentPage }]"
+          @click="loadCohorts(p - 1)"
+        >{{ p }}</button>
+        <button class="pg-arrow" aria-label="Next" :disabled="currentPage >= totalPages - 1" @click="loadCohorts(currentPage + 1)">
+          <VIcon name="chevron-right" :size="16" />
+        </button>
       </div>
     </div>
   </div>
@@ -223,35 +291,20 @@ async function toggleStatus(cohort: CohortRow) {
       </span>
     </label>
     <div class="ff-row">
-      <label class="ff">
-        <span class="ff-label">Start date <span style="color: var(--danger)">*</span></span>
-        <span class="ff-input">
-          <input v-model="form.startDate" class="mono" placeholder="YYYY-MM-DD" />
-        </span>
-      </label>
-      <label class="ff">
-        <span class="ff-label">End date <span style="color: var(--danger)">*</span></span>
-        <span class="ff-input">
-          <input v-model="form.endDate" class="mono" placeholder="YYYY-MM-DD" />
-        </span>
-      </label>
+      <VDatePicker
+        v-model="form.startDate"
+        label="Start date"
+        required
+        :max="form.endDate || undefined"
+      />
+      <VDatePicker
+        v-model="form.endDate"
+        label="End date"
+        required
+        :min="form.startDate || undefined"
+        :error="dateRangeError"
+      />
     </div>
-    <label class="ff">
-      <span class="ff-label">Status</span>
-      <div style="position: relative; display: flex; align-items: center">
-        <select
-          v-model="form.status"
-          class="ff-input"
-          style="appearance: none; -webkit-appearance: none; width: 100%; padding-right: 36px; cursor: pointer"
-        >
-          <option value="pending">Pending</option>
-          <option value="active">Active</option>
-          <option value="completed">Completed</option>
-        </select>
-        <VIcon name="chevron-down" :size="16" style="position: absolute; right: 12px; pointer-events: none; color: var(--text-secondary)" />
-      </div>
-      <span class="ff-hint">Soft-archival flag — set to Active when the cohort begins.</span>
-    </label>
     <p v-if="form.error" class="field-error">
       <VIcon name="alert-circle" :size="14" />{{ form.error }}
     </p>
@@ -263,3 +316,4 @@ async function toggleStatus(cohort: CohortRow) {
     </template>
   </VDrawer>
 </template>
+
