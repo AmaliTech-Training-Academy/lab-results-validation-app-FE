@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import VPill from '@/components/base/VPill.vue'
@@ -11,6 +12,8 @@ import { getSpecializations } from '@/services/reference.service'
 import type { Learner, LearnerStatus } from '@/types/learner.types'
 import type { CohortRow } from '@/types/cohort.types'
 import type { Specialization } from '@/types/reference.types'
+
+const router = useRouter()
 
 const toast = useToastStore()
 
@@ -254,16 +257,19 @@ function goToPage(page: number) {
 <template>
   <!-- Page header -->
   <div class="page-head">
-    <h1 class="page-title">Learner roster</h1>
+    <div>
+      <div class="crumbs" style="margin-bottom: 6px">
+        <span>Admin</span>
+        <VIcon name="chevron-right" :size="14" />
+        <span class="cur">Learner roster</span>
+      </div>
+      <h1 class="page-title">Learner roster</h1>
+    </div>
     <div style="display: flex; gap: 12px">
-      <VButton variant="ghost" icon="user-plus" @click="openAdd">Add learner</VButton>
-      <VButton
-        variant="primary"
-        icon="upload"
-        @click="toast.show({ tone: 'info', title: 'CSV import coming soon', body: 'This will be available once the bulk-upload endpoint is live.' })"
-      >
-        Import CSV
+      <VButton variant="ghost" icon="upload" @click="router.push({ name: 'admin-learners-bulk' })">
+        Bulk setup
       </VButton>
+      <VButton variant="primary" icon="user-plus" @click="openAdd">Add learner</VButton>
     </div>
   </div>
 
