@@ -82,7 +82,7 @@ export async function downloadLearnerTemplate(): Promise<void> {
   const blob = await res.blob()
   const disposition = res.headers.get('Content-Disposition') ?? ''
   const match = disposition.match(/filename[^;=\n]*=(['"]?)([^'";\n]+)\1/)
-  const filename = match ? match[2].trim() : 'learners-template.csv'
+  const filename = match?.[2]?.trim() ?? 'learners-template.csv'
 
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

@@ -59,7 +59,7 @@ async function handleImport() {
     selectedFile.value = null
   } catch (err) {
     const msg = err instanceof Error ? err.message : ''
-    toast.show({ tone: 'danger', title: 'Import failed', body: msg || 'Could not process the CSV. Check the file and try again.' })
+    toast.show({ tone: 'warning', title: 'Import failed', body: msg || 'Could not process the CSV. Check the file and try again.' })
   } finally {
     importing.value = false
   }
