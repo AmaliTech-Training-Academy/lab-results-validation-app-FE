@@ -241,7 +241,7 @@ async function toggleStatus(learner: Learner) {
     loadLearners(currentPage.value)
     toast.show({ tone: 'success', title: newStatus === 'ARCHIVED' ? 'Learner archived' : 'Learner restored' })
   } catch {
-    toast.show({ tone: 'danger', title: 'Failed to update status' })
+    toast.show({ tone: 'warning', title: 'Failed to update status' })
   }
 }
 

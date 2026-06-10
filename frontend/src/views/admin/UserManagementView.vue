@@ -6,7 +6,7 @@ import VPill from '@/components/base/VPill.vue'
 import VDrawer from '@/components/base/VDrawer.vue'
 import { useToastStore } from '@/stores/toast'
 import { getInstructors, getModuleGroups, addInstructor, assignInstructorModules, removeInstructorModules, updateInstructor } from '@/services/user.service'
-import type { InstructorUser, ModuleGroup } from '@/types/user.types'
+import type { InstructorUser, ModuleGroup, AssignModulesResponse } from '@/types/user.types'
 
 const toast = useToastStore()
 
@@ -113,10 +113,21 @@ function toggleGroup(group: ModuleGroup) {
   }
 }
 
+const ALLOWED_DOMAINS = ['amalitech.com', 'amalitechtraining.com', 'amalitechtraining.org']
+
+function isAllowedDomain(email: string): boolean {
+  const domain = email.trim().toLowerCase().split('@')[1]
+  return !!domain && ALLOWED_DOMAINS.includes(domain)
+}
+
 async function submitForm() {
   form.value.error = ''
   if (!form.value.email.trim()) {
     form.value.error = 'Email address is required.'
+    return
+  }
+  if (!isAllowedDomain(form.value.email)) {
+    form.value.error = 'Email must belong to @amalitech.com, @amalitechtraining.com, or @amalitechtraining.org.'
     return
   }
 
