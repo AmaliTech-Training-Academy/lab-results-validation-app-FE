@@ -196,7 +196,7 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .drawer-sub { font-size: 14px; color: var(--text-secondary); margin: 4px 0 0; }
 .drawer-x { width: 36px; height: 36px; border: none; background: transparent; border-radius: var(--r-sm); color: var(--text-secondary); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; cursor: pointer; }
 .drawer-x:hover { background: var(--bg); }
-.drawer-body { padding: 24px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 18px; }
+.drawer-body { padding: 24px; overflow-y: auto; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 18px; }
 .drawer-foot { padding: 18px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 12px; }
 
 /* ---------- Modal ---------- */
@@ -355,8 +355,181 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .upload-card { max-width: 620px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
 .upload-title { font-family: var(--font-display); font-weight: 700; font-size: 22px; text-align: center; margin: 4px 0 0; }
 
+/* ---------- Loading UX (shared across all page-level loaders) ---------- */
+.load-slow-banner { display: flex; align-items: center; gap: 8px; padding: 10px 16px; margin-bottom: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-md); font-size: 13px; color: var(--text-secondary); }
+.load-error-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 64px 24px; text-align: center; }
+.load-error-icon { display: flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 50%; background: var(--bg); color: var(--text-secondary); margin-bottom: 4px; }
+.load-error-title { font-size: 15px; font-weight: 600; color: var(--text); margin: 0; }
+.load-error-sub { font-size: 13px; color: var(--text-secondary); margin: 0 0 8px; max-width: 340px; }
+.skel-row td { padding-top: 14px; padding-bottom: 14px; }
+.skel { display: block; height: 14px; border-radius: 6px; background: linear-gradient(90deg, var(--bg) 25%, #e8e6df 50%, var(--bg) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
+.skel-stat { height: 110px; border-radius: var(--r-md); background: linear-gradient(90deg, var(--bg) 25%, #e8e6df 50%, var(--bg) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
+.skel-card { height: 180px; border-radius: var(--r-md); background: linear-gradient(90deg, var(--bg) 25%, #e8e6df 50%, var(--bg) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
+
 /* ---------- Keyframes ---------- */
 @keyframes scrim       { from { opacity: 0; }                        to { opacity: 1; } }
 @keyframes toastin     { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes spin        { to   { transform: rotate(360deg); } }
 @keyframes indeterminate { 0% { margin-left: -40%; } 100% { margin-left: 100%; } }
+@keyframes shimmer     { 0%   { background-position: 200% 0; }       100% { background-position: -200% 0; } }
+
+/* ============================================================
+   Accessibility
+   ============================================================ */
+
+/* Skip navigation link — visible only on focus */
+.skip-link {
+  position: absolute;
+  top: -200%;
+  left: 16px;
+  z-index: 9999;
+  background: var(--orange);
+  color: #fff;
+  padding: 10px 20px;
+  border-radius: 0 0 var(--r-md) var(--r-md);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.skip-link:focus { top: 0; outline: 3px solid var(--orange-deep); outline-offset: 2px; }
+
+/* Skip-to target should not show outline */
+#main-content:focus { outline: none; }
+
+/* Form-level error message */
+.form-error {
+  color: var(--danger);
+  font-size: 13px;
+  margin: 0;
+  padding: 10px 14px;
+  background: var(--danger-bg);
+  border: 1px solid rgba(163, 45, 45, 0.2);
+  border-radius: var(--r-sm);
+}
+
+/* Global focus-visible ring for all interactive elements */
+a:focus-visible,
+button:focus-visible,
+[tabindex]:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid var(--orange);
+  outline-offset: 2px;
+}
+/* Suppress the global outline for elements that already manage their own focus state */
+.input:focus-within a:focus-visible,
+.input:focus-within button:focus-visible { outline: none; }
+
+/* ============================================================
+   Desktop guard — shown on viewports narrower than 1024 px
+   ============================================================ */
+
+.desktop-guard { display: none; }
+
+@media (max-width: 1023px) {
+  /* Block access to the app completely */
+  .desktop-guard {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 24px;
+    overflow: hidden;
+    background: linear-gradient(155deg, #08283B 0%, #0C2230 60%, #102a36 100%);
+  }
+
+  /* Decorative glow — matches the login brand panel */
+  .desktop-guard::before {
+    content: '';
+    position: absolute;
+    width: 420px;
+    height: 420px;
+    border-radius: 50%;
+    background: var(--orange);
+    opacity: 0.14;
+    filter: blur(90px);
+    top: -170px;
+    left: -130px;
+    pointer-events: none;
+  }
+
+  .desktop-guard-card {
+    position: relative;
+    max-width: 360px;
+    text-align: center;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .desktop-guard-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .desktop-guard-mark {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--r-md);
+    background: var(--orange);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .desktop-guard-name {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 24px;
+    letter-spacing: -0.5px;
+  }
+
+  .desktop-guard-icon-wrap {
+    width: 72px;
+    height: 72px;
+    border-radius: var(--r-lg);
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .desktop-guard-title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 22px;
+    line-height: 1.3;
+    margin: 0;
+  }
+
+  .desktop-guard-body {
+    font-size: 15px;
+    line-height: 1.65;
+    color: rgba(255, 255, 255, 0.70);
+    margin: 0;
+  }
+
+  .desktop-guard-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.30);
+    padding-top: 4px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    width: 100%;
+    justify-content: center;
+  }
+}
