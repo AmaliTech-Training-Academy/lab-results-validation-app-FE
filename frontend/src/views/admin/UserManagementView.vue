@@ -5,7 +5,7 @@ import VIcon from '@/components/base/VIcon.vue'
 import VPill from '@/components/base/VPill.vue'
 import VDrawer from '@/components/base/VDrawer.vue'
 import { useToastStore } from '@/stores/toast'
-import { getInstructors, getModuleGroups, addInstructor, updateInstructor } from '@/services/user.service'
+import { getInstructors, getModuleGroups, addInstructor, assignInstructorModules, removeInstructorModules, updateInstructor } from '@/services/user.service'
 import type { InstructorUser, ModuleGroup } from '@/types/user.types'
 
 const toast = useToastStore()
@@ -23,7 +23,8 @@ const showDrawer = ref(false)
 const editTarget = ref<InstructorUser | null>(null)
 const submitting = ref(false)
 const form = ref({ email: '', isActive: true, error: '' })
-const assignedIds = ref<number[]>([])
+const assignedIds = ref<string[]>([])
+const originalIds = ref<string[]>([])
 
 // ── Computed ──────────────────────────────────────────────────────────────────
 const drawerTitle = computed(() => (editTarget.value ? 'Edit instructor' : 'Add instructor'))
@@ -74,7 +75,9 @@ function openAdd() {
 function openEdit(instructor: InstructorUser) {
   editTarget.value = instructor
   form.value = { email: instructor.email, isActive: instructor.active, error: '' }
-  assignedIds.value = []
+  const currentIds = instructor.assignedModules.map((m) => m.moduleId)
+  assignedIds.value = [...currentIds]
+  originalIds.value = [...currentIds]
   showDrawer.value = true
 }
 
@@ -84,7 +87,7 @@ function closeDrawer() {
   resetForm()
 }
 
-function toggleModule(moduleId: number) {
+function toggleModule(moduleId: string) {
   const idx = assignedIds.value.indexOf(moduleId)
   if (idx === -1) {
     assignedIds.value.push(moduleId)
@@ -117,29 +120,119 @@ async function submitForm() {
     return
   }
 
-  const payload = {
-    email: form.value.email.trim(),
-    isActive: form.value.isActive,
-    assignedModuleIds: [...assignedIds.value],
-  }
-
   submitting.value = true
   try {
     if (editTarget.value) {
-      const updated = await updateInstructor(editTarget.value.email, payload)
-      const idx = instructors.value.findIndex((u) => u.email === editTarget.value!.email)
-      if (idx !== -1) instructors.value[idx] = updated
-      toast.show({ tone: 'success', title: 'Instructor updated' })
+      const target = editTarget.value
+
+      // ── Detect what actually changed ─────────────────────────────────────────
+      const profileChanged =
+        form.value.email.trim() !== target.email || form.value.isActive !== target.active
+      const oldSet = new Set(originalIds.value)
+      const newSet = new Set(assignedIds.value)
+      const toAdd    = assignedIds.value.filter((id) => !oldSet.has(id))
+      const toRemove = originalIds.value.filter((id) => !newSet.has(id))
+
+      if (!profileChanged && toAdd.length === 0 && toRemove.length === 0) {
+        closeDrawer()
+        return
+      }
+
+      // ── Build only the needed operations ─────────────────────────────────────
+      type OpKey = 'profile' | 'add' | 'remove'
+      const ops: [OpKey, Promise<unknown>][] = []
+      if (profileChanged) ops.push(['profile', updateInstructor(target.id, { email: form.value.email.trim(), isActive: form.value.isActive })])
+      if (toAdd.length)    ops.push(['add',     assignInstructorModules(target.id, toAdd)])
+      if (toRemove.length) ops.push(['remove',  removeInstructorModules(target.id, toRemove)])
+
+      const settled = await Promise.allSettled(ops.map(([, p]) => p))
+      const results = Object.fromEntries(
+        ops.map(([key], i) => [key, settled[i]!]),
+      ) as Partial<Record<OpKey, PromiseSettledResult<unknown>>>
+
+      const profileFailed = results.profile?.status === 'rejected'
+      const addFailed     = results.add?.status === 'rejected'
+      const removeFailed  = results.remove?.status === 'rejected'
+
+      if (profileFailed) console.error('[instructor:update] profile stage failed', (results.profile as PromiseRejectedResult).reason)
+      if (addFailed)     console.error('[instructor:update] module-assign stage failed', (results.add as PromiseRejectedResult).reason)
+      if (removeFailed)  console.error('[instructor:update] module-remove stage failed', (results.remove as PromiseRejectedResult).reason)
+
+      if (settled.every((r) => r.status === 'rejected')) {
+        form.value.error = 'All updates failed. Please try again.'
+        return
+      }
+
+      // ── Reconstruct local state from what succeeded ───────────────────────────
+      let updatedInstructor: InstructorUser = { ...target }
+
+      if (profileChanged && !profileFailed) {
+        const p = (results.profile as PromiseFulfilledResult<InstructorUser>).value
+        updatedInstructor = { ...updatedInstructor, email: p.email, active: p.active }
+      }
+
+      let updatedModules = [...target.assignedModules]
+      if (toRemove.length && !removeFailed) {
+        const removedSet = new Set(toRemove)
+        updatedModules = updatedModules.filter((m) => !removedSet.has(m.moduleId))
+      }
+      if (toAdd.length && !addFailed) {
+        const added = (results.add as PromiseFulfilledResult<AssignModulesResponse>).value.assignedModules
+        const existing = new Set(updatedModules.map((m) => m.moduleId))
+        updatedModules = [...updatedModules, ...added.filter((m) => !existing.has(m.moduleId))]
+      }
+      updatedInstructor.assignedModules = updatedModules
+
+      const idx = instructors.value.findIndex((u) => u.id === target.id)
+      if (idx !== -1) instructors.value[idx] = updatedInstructor
+
+      const anyFailed = settled.some((r) => r.status === 'rejected')
+      if (anyFailed) {
+        const parts = [
+          profileFailed && 'profile update',
+          addFailed     && 'module assignment',
+          removeFailed  && 'module removal',
+        ].filter(Boolean).join(' and ')
+        toast.show({ tone: 'warning', title: 'Partially saved', body: `${parts} failed — edit the instructor to retry.` })
+      } else {
+        toast.show({ tone: 'success', title: 'Instructor updated' })
+      }
+      closeDrawer()
     } else {
-      const created = await addInstructor(payload)
-      instructors.value.push(created)
+      // Stage 1 — create the account
+      const created = await addInstructor({
+        email: form.value.email.trim(),
+        isActive: form.value.isActive,
+      })
+
+      // Stage 2 — assign modules (best-effort; instructor already exists if this fails)
+      if (assignedIds.value.length > 0) {
+        try {
+          const result = await assignInstructorModules(created.id, [...assignedIds.value])
+          instructors.value.push({ id: created.id, email: created.email, active: form.value.isActive, assignedModules: result.assignedModules })
+        } catch (err) {
+          console.error('[instructor:create] module-assign stage failed', err)
+          instructors.value.push({ id: created.id, email: created.email, active: form.value.isActive, assignedModules: [] })
+          toast.show({ tone: 'warning', title: 'Instructor created', body: 'Module assignment failed — edit the instructor to retry.' })
+          closeDrawer()
+          return
+        }
+      } else {
+        instructors.value.push({ id: created.id, email: created.email, active: form.value.isActive, assignedModules: [] })
+      }
+
       toast.show({ tone: 'success', title: 'Instructor added' })
+      closeDrawer()
     }
-    closeDrawer()
-  } catch {
+  } catch (err) {
+    if (editTarget.value) {
+      console.error('[instructor:update] unexpected error', err)
+    } else {
+      console.error('[instructor:create] account stage failed', err)
+    }
     form.value.error = editTarget.value
       ? 'Failed to update instructor. Please try again.'
-      : 'Failed to add instructor. Please try again.'
+      : 'Failed to create instructor. Please try again.'
   } finally {
     submitting.value = false
   }
@@ -197,7 +290,7 @@ async function submitForm() {
             No instructors yet. Add one to get started.
           </td>
         </tr>
-        <tr v-for="u in instructors" :key="u.email">
+        <tr v-for="u in instructors" :key="u.id">
           <td style="font-weight: 600">{{ emailToName(u.email) }}</td>
           <td class="mono" style="color: var(--text-secondary)">{{ u.email }}</td>
           <td style="text-align: center">{{ u.assignedModules.length }}</td>
@@ -242,41 +335,30 @@ async function submitForm() {
       </label>
     </div>
 
-    <!-- Current assignments (edit mode only) -->
-    <template v-if="editTarget && editTarget.assignedModules.length">
-      <div class="ff-group-title" style="margin-top: 8px">Current assignments</div>
-      <div style="display: flex; flex-wrap: wrap; gap: 6px">
-        <span
-          v-for="m in editTarget.assignedModules"
-          :key="m.moduleId"
-          class="module-chip"
-        >{{ m.moduleName }}</span>
-      </div>
-    </template>
-
-    <div class="ff-group-title" style="margin-top: 8px">
-      {{ editTarget ? 'Update module assignments' : 'Assigned modules' }}
+    <div>
+      <div class="ff-group-title">Module assignments</div>
+      <p class="ff-hint" style="margin-top: 4px">
+        Instructors can only upload results for the modules selected here.
+      </p>
     </div>
-    <p class="ff-hint" style="margin-top: -4px">
-      Instructors can only upload results for the modules selected here.
-    </p>
 
-    <div
-      v-for="group in moduleGroups"
-      :key="group.specId"
-      style="border: 1px solid var(--border); border-radius: var(--r-sm); overflow: hidden"
-    >
-      <div class="mg-head">
-        <span class="mg-spec">{{ group.specName }}</span>
-        <button class="link" @click="toggleGroup(group)">
-          {{ isGroupAllSelected(group) ? 'Deselect all' : 'Select all' }}
-        </button>
+    <div class="mod-assign-list">
+      <p v-if="!moduleGroups.length" class="mod-assign-empty">
+        <VIcon name="layers" :size="15" />
+        No modules available.
+      </p>
+      <div v-for="group in moduleGroups" :key="group.specId" class="mg">
+        <div class="mg-head">
+          <span class="mg-spec">{{ group.specName }}</span>
+          <button class="link" @click="toggleGroup(group)">
+            {{ isGroupAllSelected(group) ? 'Deselect all' : 'Select all' }}
+          </button>
+        </div>
+        <label v-for="m in group.modules" :key="m.id" class="mg-row" style="cursor: pointer">
+          <input type="checkbox" :checked="assignedIds.includes(m.id)" @change="toggleModule(m.id)" />
+          <span>{{ m.name }}</span>
+        </label>
       </div>
-      <label v-for="m in group.modules" :key="m.id" class="mg-row" style="cursor: pointer">
-        <input type="checkbox" :checked="assignedIds.includes(m.id)" @change="toggleModule(m.id)" />
-        <span class="mono mg-code">{{ m.code }}</span>
-        <span>{{ m.name }}</span>
-      </label>
     </div>
 
     <p v-if="form.error" class="field-error">
@@ -293,14 +375,19 @@ async function submitForm() {
 </template>
 
 <style scoped>
-.module-chip {
-  display: inline-flex;
+.mod-assign-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mod-assign-empty {
+  display: flex;
   align-items: center;
-  padding: 3px 10px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--r-pill);
-  font-size: 12px;
+  gap: 7px;
+  font-size: 13px;
   color: var(--text-secondary);
+  padding: 16px 4px;
+  margin: 0;
 }
 </style>
