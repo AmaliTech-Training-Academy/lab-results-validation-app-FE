@@ -32,8 +32,15 @@ async function handleResponse<T>(res: Response): Promise<T> {
     throw new Error(text || `HTTP ${res.status}`)
   }
   if (!text) return undefined as T
-  const json = JSON.parse(text)
-  return 'data' in json && 'success' in json ? (json as ApiEnvelope<T>).data : (json as T)
+  const json = JSON.parse(text) as Record<string, unknown>
+  if ('data' in json && 'success' in json) {
+    const envelope = json as unknown as ApiEnvelope<T>
+    if (!envelope.success) {
+      throw new Error(envelope.message || 'Request failed')
+    }
+    return envelope.data
+  }
+  return json as unknown as T
 }
 
 // Calls the refresh endpoint directly (bypasses the interceptor to avoid infinite loops)
@@ -111,5 +118,8 @@ export const http = {
   },
   async patch<T>(path: string, body?: unknown): Promise<T> {
     return request<T>('PATCH', path, body)
+  },
+  async delete<T>(path: string, body?: unknown): Promise<T> {
+    return request<T>('DELETE', path, body)
   },
 }
