@@ -81,7 +81,7 @@ async function submit() {
     </AuthBrandPanel>
 
     <div class="login-form-pane">
-      <form class="login-card" @submit.prevent="submit">
+      <form class="login-card" novalidate @submit.prevent="submit">
         <div class="lc-head">
           <h1 class="lc-title">Set your password</h1>
           <p class="lc-sub">This is your first login. Choose a secure password to continue.</p>
@@ -89,13 +89,16 @@ async function submit() {
 
         <!-- New password -->
         <div class="field">
-          <label>New password</label>
+          <label for="setpw-new">New password</label>
           <div :class="['input', { 'input--error': passwordError }]">
             <input
+              id="setpw-new"
               v-model="password"
               :type="showPassword ? 'text' : 'password'"
               placeholder="Enter your new password"
               autocomplete="new-password"
+              :aria-describedby="`setpw-strength${passwordError ? ' setpw-new-error' : ''}`"
+              :aria-invalid="!!passwordError"
               @blur="passwordTouched = true"
             />
             <button
@@ -107,14 +110,19 @@ async function submit() {
               <VIcon :name="showPassword ? 'eye-off' : 'eye'" :size="18" />
             </button>
           </div>
-          <span v-if="passwordError" class="field-error">
+          <span
+            v-if="passwordError"
+            id="setpw-new-error"
+            class="field-error"
+            role="alert"
+          >
             <VIcon name="alert-circle" :size="13" />
             {{ passwordError }}
           </span>
         </div>
 
         <!-- Strength meter -->
-        <div>
+        <div id="setpw-strength" aria-live="polite" aria-atomic="true">
           <div class="strength-head">
             <span class="ff-label">Password strength</span>
             <span
@@ -125,7 +133,7 @@ async function submit() {
               {{ SCORE_LABELS[score] }}
             </span>
           </div>
-          <div class="strength-bars">
+          <div class="strength-bars" role="presentation">
             <span
               v-for="i in 4"
               :key="i"
@@ -142,13 +150,16 @@ async function submit() {
 
         <!-- Confirm password -->
         <div class="field">
-          <label>Confirm password</label>
+          <label for="setpw-confirm">Confirm password</label>
           <div :class="['input', { 'input--error': confirmError }]">
             <input
+              id="setpw-confirm"
               v-model="confirmPassword"
               :type="showConfirm ? 'text' : 'password'"
               placeholder="Re-enter your password"
               autocomplete="new-password"
+              :aria-describedby="confirmError ? 'setpw-confirm-error' : undefined"
+              :aria-invalid="!!confirmError"
               @blur="confirmTouched = true"
             />
             <button
@@ -160,20 +171,26 @@ async function submit() {
               <VIcon :name="showConfirm ? 'eye-off' : 'eye'" :size="18" />
             </button>
           </div>
-          <span v-if="confirmError" class="field-error">
+          <span
+            v-if="confirmError"
+            id="setpw-confirm-error"
+            class="field-error"
+            role="alert"
+          >
             <VIcon name="alert-circle" :size="13" />
             {{ confirmError }}
           </span>
         </div>
 
         <!-- API-level error -->
-        <p v-if="error" class="form-error">{{ error }}</p>
+        <p v-if="error" class="form-error" role="alert">{{ error }}</p>
 
         <VButton
           type="submit"
           variant="primary"
           style="width: 100%"
           :disabled="isLoading"
+          :aria-busy="isLoading"
         >
           {{ isLoading ? 'Saving…' : 'Set password &amp; continue' }}
         </VButton>

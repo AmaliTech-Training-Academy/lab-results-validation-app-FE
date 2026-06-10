@@ -19,6 +19,7 @@ defineEmits<{
 
 <template>
   <div class="app">
+    <a href="#main-content" class="skip-link">Skip to main content</a>
     <AppSidebar
       :role="role"
       :active-id="activeId"
@@ -32,7 +33,7 @@ defineEmits<{
         :user-role="userRole"
         :user-initials="userInitials"
       />
-      <div class="content">
+      <div id="main-content" class="content" tabindex="-1">
         <div class="container">
           <slot />
         </div>

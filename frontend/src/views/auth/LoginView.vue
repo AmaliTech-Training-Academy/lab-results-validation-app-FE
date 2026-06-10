@@ -102,7 +102,7 @@ async function submit() {
     </AuthBrandPanel>
 
     <div class="login-form-pane">
-      <form class="login-card" @submit.prevent="submit">
+      <form class="login-card" novalidate @submit.prevent="submit">
         <div class="lc-head">
           <h1 class="lc-title">Sign in</h1>
           <p class="lc-sub">Access the internal lab results dashboard</p>
@@ -110,18 +110,29 @@ async function submit() {
 
         <!-- Email -->
         <div class="field">
-          <label>Email address</label>
-          <div :class="['input', { 'input--error': emailError }]">
-            <span class="lead"><VIcon name="mail" :size="17" /></span>
+          <label for="login-email">Email address</label>
+          <div
+            :class="['input', { 'input--error': emailError }]"
+            :aria-invalid="!!emailError"
+          >
+            <span class="lead" aria-hidden="true"><VIcon name="mail" :size="17" /></span>
             <input
+              id="login-email"
               v-model="email"
               type="email"
               placeholder="name@amalitech.com"
               autocomplete="email"
+              :aria-describedby="emailError ? 'login-email-error' : undefined"
+              :aria-invalid="!!emailError"
               @blur="emailTouched = true"
             />
           </div>
-          <span v-if="emailError" class="field-error">
+          <span
+            v-if="emailError"
+            id="login-email-error"
+            class="field-error"
+            role="alert"
+          >
             <VIcon name="alert-circle" :size="13" />
             {{ emailError }}
           </span>
@@ -130,15 +141,18 @@ async function submit() {
         <!-- Password -->
         <div class="field">
           <div style="display: flex; justify-content: space-between; align-items: center">
-            <label>Password</label>
+            <label for="login-password">Password</label>
             <a class="link" href="#" @click.prevent>Forgot password?</a>
           </div>
           <div :class="['input', { 'input--error': passwordError }]">
-            <span class="lead"><VIcon name="lock" :size="17" /></span>
+            <span class="lead" aria-hidden="true"><VIcon name="lock" :size="17" /></span>
             <input
+              id="login-password"
               v-model="password"
               :type="showPassword ? 'text' : 'password'"
               autocomplete="current-password"
+              :aria-describedby="passwordError ? 'login-password-error' : undefined"
+              :aria-invalid="!!passwordError"
               @blur="passwordTouched = true"
             />
             <button
@@ -150,14 +164,19 @@ async function submit() {
               <VIcon :name="showPassword ? 'eye-off' : 'eye'" :size="18" />
             </button>
           </div>
-          <span v-if="passwordError" class="field-error">
+          <span
+            v-if="passwordError"
+            id="login-password-error"
+            class="field-error"
+            role="alert"
+          >
             <VIcon name="alert-circle" :size="13" />
             {{ passwordError }}
           </span>
         </div>
 
-        <!-- API-level error (wrong credentials, server error, etc.) -->
-        <p v-if="error" class="form-error">{{ error }}</p>
+        <!-- API-level error -->
+        <p v-if="error" class="form-error" role="alert">{{ error }}</p>
 
         <VButton
           type="submit"
@@ -165,6 +184,7 @@ async function submit() {
           icon-right="arrow-right"
           style="width: 100%"
           :disabled="isLoading"
+          :aria-busy="isLoading"
         >
           {{ isLoading ? 'Signing in…' : 'Sign in' }}
         </VButton>
@@ -176,7 +196,7 @@ async function submit() {
         </div>
       </form>
 
-      <div class="lc-secure">
+      <div class="lc-secure" aria-hidden="true">
         <VIcon name="shield" :size="12" />
         SECURE 256-BIT ENCRYPTED SESSION
       </div>

@@ -48,9 +48,9 @@ function footerItems(role: 'admin' | 'instructor') {
 </script>
 
 <template>
-  <aside class="sidebar">
+  <aside class="sidebar" aria-label="Application navigation">
     <div>
-      <div class="brand">
+      <div class="brand" aria-hidden="true">
         <div class="mark">
           <VIcon name="microscope" :size="18" color="#fff" />
         </div>
@@ -59,12 +59,13 @@ function footerItems(role: 'admin' | 'instructor') {
           <div class="sub">Internal Tool</div>
         </div>
       </div>
-      <nav class="nav">
+      <nav class="nav" aria-label="Main menu">
         <button
           v-for="item in navItems(role)"
           :key="item.id"
           :class="['nav-item', { active: activeId === item.id }]"
           type="button"
+          :aria-current="activeId === item.id ? 'page' : undefined"
           @click="emit('navigate', item.id)"
         >
           <VIcon :name="item.icon" :size="18" />
@@ -78,6 +79,7 @@ function footerItems(role: 'admin' | 'instructor') {
         :key="item.id"
         :class="['nav-item', { active: activeId === item.id }]"
         type="button"
+        :aria-current="activeId === item.id ? 'page' : undefined"
         @click="emit('navigate', item.id)"
       >
         <VIcon :name="item.icon" :size="18" />

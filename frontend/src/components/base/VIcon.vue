@@ -28,5 +28,5 @@ const icon = computed(() => {
 </script>
 
 <template>
-  <component :is="icon" v-if="icon" :size="size" :color="color" />
+  <component :is="icon" v-if="icon" :size="size" :color="color" aria-hidden="true" focusable="false" />
 </template>
