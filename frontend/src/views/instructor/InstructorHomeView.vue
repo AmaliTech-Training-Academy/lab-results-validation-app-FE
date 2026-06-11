@@ -150,9 +150,9 @@ onMounted(loadData)
               <td><VPill :tone="row.tone">{{ row.status }}</VPill></td>
               <td>
                 <button
-                  v-if="row.hasReport"
+                  v-if="row.hasReport && row.uploadId"
                   class="link"
-                  @click="router.push({ name: 'instructor-uploads' })"
+                  @click="router.push({ name: 'instructor-uploads', query: { uploadId: row.uploadId } })"
                 >View report →</button>
                 <span v-else style="color: var(--text-muted)">—</span>
               </td>

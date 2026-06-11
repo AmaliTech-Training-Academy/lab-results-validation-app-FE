@@ -8,6 +8,7 @@ const iconMap: Record<string, string> = {
   success: 'check-circle',
   warning: 'alert-triangle',
   info: 'info',
+  danger: 'alert-circle',
 }
 </script>
 
