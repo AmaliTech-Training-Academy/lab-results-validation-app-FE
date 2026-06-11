@@ -1,5 +1,9 @@
 import type { Learner, PagedLearners, AddLearnerPayload, LearnerStatus, LearnerFilters } from '@/types/learner.types'
+import { BulkImportError } from '@/types/bulk.types'
+import type { BulkRowError } from '@/types/bulk.types'
 import { http } from './http'
+
+export { BulkImportError }
 
 const BASE_URL = '/api/v1'
 
@@ -42,9 +46,44 @@ export async function uploadLearnersBulk(file: File): Promise<void> {
     body: formData,
   })
 
+  // Always read the body — the API returns a BulkUploadResponse even on partial/full failure
+  const text = await res.text().catch(() => '')
+
+  interface BulkUploadResponse {
+    acceptedCount?: number
+    rejectedCount?: number
+    errors?: Array<{ rowNumber?: number; field?: string; message?: string }>
+  }
+
+  // Unwrap the standard envelope: { success, message, data: BulkUploadResponse }
+  let bulk: BulkUploadResponse | null = null
+  let envelopeMessage: string | undefined
+  if (text) {
+    try {
+      const json = JSON.parse(text) as Record<string, unknown>
+      if (typeof json.message === 'string') envelopeMessage = json.message
+      bulk = (json.data ?? json) as BulkUploadResponse
+    } catch { /* fall through */ }
+  }
+
+  // Partial or full rejection: rejectedCount > 0 regardless of HTTP status
+  if (bulk?.rejectedCount && bulk.rejectedCount > 0) {
+    const rowErrors: BulkRowError[] = (bulk.errors ?? []).map((e) => ({
+      row: typeof e.rowNumber === 'number' ? e.rowNumber : undefined,
+      field: typeof e.field === 'string' ? e.field : undefined,
+      message: typeof e.message === 'string' ? e.message : '',
+    }))
+    throw new BulkImportError(
+      `${bulk.rejectedCount} row${bulk.rejectedCount !== 1 ? 's' : ''} failed validation.`,
+      rowErrors,
+      bulk.acceptedCount,
+      bulk.rejectedCount,
+    )
+  }
+
+  // Non-2xx without a structured bulk body (unexpected server error, auth error, etc.)
   if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(text || `HTTP ${res.status}`)
+    throw new BulkImportError(envelopeMessage ?? text ?? `HTTP ${res.status}`, [])
   }
 }
 
