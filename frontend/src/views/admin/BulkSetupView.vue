@@ -1,28 +1,46 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import { useToastStore } from '@/stores/toast'
+import { uploadProgramStructureBulk, downloadProgramStructureTemplate, fetchProgramStructureTemplateHeaders, BulkImportError } from '@/services/cohort.service'
+import type { BulkRowError } from '@/types/bulk.types'
 
 const router = useRouter()
 const toast = useToastStore()
 
-const STRUCTURE_COLS = [
-  'cohort_name', 'specialization_name', 'specialization_code',
-  'module_name', 'module_sequence', 'lab_title', 'lab_max_score',
-]
+const templateCols = ref<string[]>([])
+const colsLoading = ref(true)
+
+onMounted(async () => {
+  try {
+    templateCols.value = await fetchProgramStructureTemplateHeaders()
+  } catch {
+    // silently fall back to empty — the toggle simply won't show columns
+  } finally {
+    colsLoading.value = false
+  }
+})
 
 const dragOver = ref(false)
-const selectedFile = ref<string | null>(null)
+const selectedFile = ref<File | null>(null)
 const showCols = ref(false)
 const importing = ref(false)
+const downloadingTemplate = ref(false)
+
+const bulkErrors = ref<BulkRowError[]>([])
+const bulkErrorSummary = ref('')
 
 function onDrop(event: DragEvent) {
   event.preventDefault()
   dragOver.value = false
   const file = event.dataTransfer?.files[0]
-  if (file) selectedFile.value = file.name
+  if (file) {
+    selectedFile.value = file
+    bulkErrors.value = []
+    bulkErrorSummary.value = ''
+  }
 }
 
 function onFileClick() {
@@ -31,18 +49,63 @@ function onFileClick() {
   input.accept = '.csv'
   input.onchange = (e) => {
     const file = (e.target as HTMLInputElement).files?.[0]
-    if (file) selectedFile.value = file.name
+    if (file) {
+      selectedFile.value = file
+      bulkErrors.value = []
+      bulkErrorSummary.value = ''
+    }
   }
   input.click()
 }
 
-async function handleImport() {
-  importing.value = true
-  await new Promise((r) => setTimeout(r, 800))
-  importing.value = false
-  // TODO: replace with → await http.post('/admin/cohorts/bulk-import', formData)
-  toast.show({ tone: 'success', title: 'Structure imported', body: 'Cohort hierarchy created successfully.' })
+function clearFile() {
   selectedFile.value = null
+  bulkErrors.value = []
+  bulkErrorSummary.value = ''
+}
+
+function dismissErrors() {
+  bulkErrors.value = []
+  bulkErrorSummary.value = ''
+}
+
+async function handleImport() {
+  if (!selectedFile.value) return
+  importing.value = true
+  bulkErrors.value = []
+  bulkErrorSummary.value = ''
+  try {
+    await uploadProgramStructureBulk(selectedFile.value)
+    toast.show({ tone: 'success', title: 'Structure imported', body: 'Cohort hierarchy created successfully.' })
+    selectedFile.value = null
+  } catch (err) {
+    if (err instanceof BulkImportError && err.errors.length > 0) {
+      bulkErrors.value = err.errors
+      const failCount = err.failed ?? err.errors.length
+      const createdCount = err.created
+      bulkErrorSummary.value = createdCount !== undefined
+        ? `${failCount} row${failCount !== 1 ? 's' : ''} failed — ${createdCount} imported successfully.`
+        : `${failCount} row${failCount !== 1 ? 's' : ''} failed validation.`
+      toast.show({ tone: 'warning', title: 'Import completed with errors', body: bulkErrorSummary.value })
+    } else {
+      const msg = err instanceof Error ? err.message : ''
+      toast.show({ tone: 'warning', title: 'Import failed', body: msg || 'Could not process the CSV. Check the file and try again.' })
+    }
+  } finally {
+    importing.value = false
+  }
+}
+
+async function handleDownloadTemplate() {
+  downloadingTemplate.value = true
+  try {
+    await downloadProgramStructureTemplate()
+    toast.show({ tone: 'success', title: 'Template downloaded' })
+  } catch {
+    toast.show({ tone: 'warning', title: 'Download failed', body: 'Could not download the CSV template. Please try again.' })
+  } finally {
+    downloadingTemplate.value = false
+  }
 }
 </script>
 
@@ -74,7 +137,7 @@ async function handleImport() {
       >
         <div class="dz-icon"><VIcon name="upload-cloud" :size="32" /></div>
         <template v-if="selectedFile">
-          <p class="dz-title">{{ selectedFile }}</p>
+          <p class="dz-title">{{ selectedFile.name }}</p>
           <p class="dz-sub">Ready to validate the cohort hierarchy</p>
         </template>
         <template v-else>
@@ -82,15 +145,59 @@ async function handleImport() {
           <p class="dz-sub">Maximum file size: 10 MB. Must be .csv format.</p>
         </template>
       </div>
-      <VButton
-        variant="primary"
-        icon="play"
-        :disabled="!selectedFile || importing"
-        style="width: 100%"
-        @click="handleImport"
-      >
-        {{ importing ? 'Importing…' : 'Validate &amp; import' }}
-      </VButton>
+      <div style="display: flex; gap: 8px">
+        <VButton
+          variant="primary"
+          icon="play"
+          :disabled="!selectedFile || importing"
+          style="flex: 1"
+          @click="handleImport"
+        >
+          {{ importing ? 'Importing…' : 'Validate &amp; import' }}
+        </VButton>
+        <VButton
+          v-if="selectedFile"
+          variant="ghost"
+          icon="x"
+          :disabled="importing"
+          @click="clearFile"
+        >
+          Clear
+        </VButton>
+      </div>
+
+      <div v-if="bulkErrors.length" class="bulk-error-log" role="alert" aria-live="polite">
+        <div class="bulk-error-log-head">
+          <VIcon name="alert-triangle" :size="16" style="color: var(--danger); flex-shrink: 0" />
+          <p class="bulk-error-log-title">{{ bulkErrorSummary || `${bulkErrors.length} row${bulkErrors.length !== 1 ? 's' : ''} failed validation` }}</p>
+          <button class="bulk-error-log-dismiss" aria-label="Dismiss errors" @click="dismissErrors">
+            <VIcon name="x" :size="16" />
+          </button>
+        </div>
+        <div class="bulk-error-log-body tbl-wrap" style="border: none; border-radius: 0; box-shadow: none">
+          <table class="tbl tbl-light">
+            <thead>
+              <tr>
+                <th style="width: 60px">Row</th>
+                <th style="width: 140px">Field</th>
+                <th>Error</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(err, i) in bulkErrors" :key="i">
+                <td style="font-variant-numeric: tabular-nums; color: var(--text-secondary)">
+                  {{ err.row ?? '—' }}
+                </td>
+                <td>
+                  <span v-if="err.field" class="rule-id">{{ err.field }}</span>
+                  <span v-else style="color: var(--text-secondary)">—</span>
+                </td>
+                <td style="color: var(--danger)">{{ err.message }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <!-- Right: template + callout -->
@@ -104,15 +211,21 @@ async function handleImport() {
           Ensure your import goes smoothly by starting with our formatted CSV template.
           It includes all required headers and sample data formatting.
         </p>
-        <VButton variant="ghost" icon="download" style="width: 100%">
-          Download template
+        <VButton
+          variant="ghost"
+          icon="download"
+          :disabled="downloadingTemplate"
+          style="width: 100%"
+          @click="handleDownloadTemplate"
+        >
+          {{ downloadingTemplate ? 'Downloading…' : 'Download template' }}
         </VButton>
-        <button class="bulk-cols-toggle" @click="showCols = !showCols">
+        <button v-if="!colsLoading && templateCols.length" class="bulk-cols-toggle" @click="showCols = !showCols">
           <span>VIEW REQUIRED COLUMNS</span>
           <VIcon :name="showCols ? 'chevron-up' : 'chevron-down'" :size="16" />
         </button>
         <div v-if="showCols" class="bulk-cols">
-          <span v-for="col in STRUCTURE_COLS" :key="col" class="rule-id">{{ col }}</span>
+          <span v-for="col in templateCols" :key="col" class="rule-id">{{ col }}</span>
         </div>
       </div>
 
