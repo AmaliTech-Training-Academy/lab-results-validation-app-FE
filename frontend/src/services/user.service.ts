@@ -22,7 +22,7 @@ export async function getModuleGroups(): Promise<ModuleGroup[]> {
 }
 
 export async function addInstructor(payload: CreateInstructorPayload): Promise<CreatedInstructor> {
-  return http.post<CreatedInstructor>('/admin/users', payload)
+  return http.post<CreatedInstructor>('/admin/users/instructors', payload)
 }
 
 export async function assignInstructorModules(instructorId: string, moduleIds: string[]): Promise<AssignModulesResponse> {
