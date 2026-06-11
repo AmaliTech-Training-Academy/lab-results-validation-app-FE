@@ -19,6 +19,11 @@ export async function getSpecializations(cohortId: string): Promise<Specializati
   return page.content
 }
 
+export async function getAllSpecializations(): Promise<Specialization[]> {
+  const page = await http.get<PagedResponse<Specialization>>('/admin/specializations?size=100')
+  return page.content
+}
+
 export async function getModules(specializationId: string): Promise<Module[]> {
   return http.get<Module[]>(`/modules?specializationId=${specializationId}`)
 }

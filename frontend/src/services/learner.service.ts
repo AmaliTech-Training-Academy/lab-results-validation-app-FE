@@ -1,49 +1,93 @@
-import type { Learner, AddLearnerPayload, LearnerStatus } from '@/types/learner.types'
+import type { Learner, PagedLearners, AddLearnerPayload, LearnerStatus, LearnerFilters } from '@/types/learner.types'
+import { http } from './http'
 
-// ---------------------------------------------------------------------------
-// Mock data — DELETE and replace service bodies when wiring the real API
-// ---------------------------------------------------------------------------
+const BASE_URL = '/api/v1'
 
-const MOCK_LEARNERS: Learner[] = [
-  { id: 1, fullName: 'Abena Mensah', email: 'a.mensah@amalitechtraining.org', cohortId: 7, cohortName: 'Cohort 7 — Spring 2026', specializationId: 1, specName: 'Data Analytics', status: 'active' },
-  { id: 2, fullName: 'Kwame Asante', email: 'k.asante@amalitechtraining.org', cohortId: 7, cohortName: 'Cohort 7 — Spring 2026', specializationId: 2, specName: 'Software Engineering', status: 'active' },
-  { id: 3, fullName: 'Ama Boateng', email: 'a.boateng@amalitechtraining.org', cohortId: 7, cohortName: 'Cohort 7 — Spring 2026', specializationId: 1, specName: 'Data Analytics', status: 'active' },
-  { id: 4, fullName: 'Kofi Frimpong', email: 'k.frimpong@amalitechtraining.org', cohortId: 6, cohortName: 'Cohort 6 — Fall 2025', specializationId: 4, specName: 'Data Analytics', status: 'active' },
-  { id: 5, fullName: 'Efua Darko', email: 'e.darko@amalitechtraining.org', cohortId: 6, cohortName: 'Cohort 6 — Fall 2025', specializationId: 5, specName: 'Software Engineering', status: 'archived' },
-  { id: 6, fullName: 'Yaw Oppong', email: 'y.oppong@amalitechtraining.org', cohortId: 7, cohortName: 'Cohort 7 — Spring 2026', specializationId: 3, specName: 'Cloud & DevOps', status: 'active' },
-]
-
-let _nextId = 100
-
-function nextId() {
-  return ++_nextId
+export async function getLearners(filters: LearnerFilters = {}): Promise<PagedLearners> {
+  const params = new URLSearchParams()
+  if (filters.cohortId) params.set('cohortId', filters.cohortId)
+  if (filters.specializationId) params.set('specializationId', filters.specializationId)
+  if (filters.status) params.set('status', filters.status)
+  if (filters.search) params.set('search', filters.search)
+  if (filters.page !== undefined) params.set('page', String(filters.page))
+  if (filters.size !== undefined) params.set('size', String(filters.size))
+  const qs = params.toString()
+  return http.get<PagedLearners>(`/admin/learners${qs ? `?${qs}` : ''}`)
 }
 
-function delay(ms: number) {
-  return new Promise<void>((resolve) => setTimeout(resolve, ms))
+export async function addLearner(payload: AddLearnerPayload): Promise<Learner> {
+  return http.post<Learner>('/admin/learners', payload)
 }
 
-// ---------------------------------------------------------------------------
-
-export async function getLearners(): Promise<Learner[]> {
-  // TODO: replace with → return http.get<Learner[]>('/admin/learners')
-  await delay(300)
-  return MOCK_LEARNERS
+export async function updateLearner(id: string, payload: AddLearnerPayload): Promise<Learner> {
+  return http.put<Learner>(`/admin/learners/${id}`, payload)
 }
 
-export async function addLearner(payload: AddLearnerPayload, cohortName: string, specName: string): Promise<Learner> {
-  // TODO: replace with → return http.post<Learner>('/admin/learners', payload)
-  await delay(400)
-  return { id: nextId(), cohortName, specName, ...payload }
+export async function setLearnerStatus(id: string, status: LearnerStatus): Promise<void> {
+  return http.patch(`/admin/learners/${id}/status`, { status })
 }
 
-export async function updateLearner(id: number, payload: AddLearnerPayload, cohortName: string, specName: string): Promise<Learner> {
-  // TODO: replace with → return http.put<Learner>(`/admin/learners/${id}`, payload)
-  await delay(400)
-  return { id, cohortName, specName, ...payload }
+export async function uploadLearnersBulk(file: File): Promise<void> {
+  const token = localStorage.getItem('auth_token')
+  const headers: HeadersInit = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const res = await fetch(`${BASE_URL}/admin/learners/bulk`, {
+    method: 'POST',
+    headers,
+    credentials: 'include',
+    body: formData,
+  })
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(text || `HTTP ${res.status}`)
+  }
 }
 
-export async function setLearnerStatus(_id: number, _status: LearnerStatus): Promise<void> {
-  // TODO: replace with → await http.patch(`/admin/learners/${_id}/status`, { status: _status })
-  await delay(300)
+export async function fetchLearnerTemplateHeaders(): Promise<string[]> {
+  const token = localStorage.getItem('auth_token')
+  const headers: HeadersInit = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(`${BASE_URL}/admin/learners/template`, {
+    method: 'GET',
+    headers,
+    credentials: 'include',
+  })
+
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+  const text = await res.text()
+  const firstLine = text.split(/\r?\n/)[0] ?? ''
+  return firstLine.split(',').map((col) => col.replace(/^"|"$/g, '').trim()).filter(Boolean)
+}
+
+export async function downloadLearnerTemplate(): Promise<void> {
+  const token = localStorage.getItem('auth_token')
+  const headers: HeadersInit = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(`${BASE_URL}/admin/learners/template`, {
+    method: 'GET',
+    headers,
+    credentials: 'include',
+  })
+
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+  const blob = await res.blob()
+  const disposition = res.headers.get('Content-Disposition') ?? ''
+  const match = disposition.match(/filename[^;=\n]*=(['"]?)([^'";\n]+)\1/)
+  const filename = match?.[2]?.trim() ?? 'learners-template.csv'
+
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
 }
