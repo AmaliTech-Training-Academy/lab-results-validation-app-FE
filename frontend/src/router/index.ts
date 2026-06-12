@@ -26,6 +26,11 @@ const router = createRouter({
       component: () => import('@/views/auth/SetPasswordView.vue'),
       meta: { requiresAuth: true },
     },
+    {
+      path: '/forgot-password',
+      name: 'forgot-password',
+      component: () => import('@/views/auth/ForgotPasswordView.vue'),
+    },
 
     // 403
     {
