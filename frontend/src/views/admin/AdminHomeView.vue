@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { getAdminDashboard } from '@/services/admin.service'
 import { getInstructors } from '@/services/user.service'
 import { getCohorts } from '@/services/cohort.service'
+import { getLearners } from '@/services/learner.service'
 import type { AdminDashboardData } from '@/types/dashboard.types'
 import VStatCard from '@/components/base/VStatCard.vue'
 import VPill from '@/components/base/VPill.vue'
@@ -30,10 +31,12 @@ async function loadData() {
   loadSlow.value = false
   const slowTimer = setTimeout(() => { loadSlow.value = true }, LOAD_TIMEOUT_MS)
   try {
-    const [dashboard, instructors, cohortsPage] = await Promise.all([
+    const [dashboard, instructors, cohortsPage, learnersPage, activeLearnersPage] = await Promise.all([
       getAdminDashboard(),
       getInstructors(),
       getCohorts(0, 100),
+      getLearners({ page: 0, size: 1 }),
+      getLearners({ status: 'ACTIVE', page: 0, size: 1 }),
     ])
 
     const activeInstructors = instructors.filter((i) => i.active).length
@@ -51,6 +54,15 @@ async function loadData() {
     if (cohortStat) {
       cohortStat.value = String(cohortsPage.totalElements)
       cohortStat.footText = `${activeCohorts} Active · ${completedCohorts} Completed · ${archivedCohorts} Archived`
+    }
+
+    const totalLearners = learnersPage.totalElements
+    const activeLearners = activeLearnersPage.totalElements
+    const archivedLearners = totalLearners - activeLearners
+    const learnerStat = dashboard.stats.find((s) => s.label === 'Learners')
+    if (learnerStat) {
+      learnerStat.value = String(totalLearners)
+      learnerStat.footText = `${activeLearners} Active · ${archivedLearners} Archived`
     }
 
     data.value = dashboard
