@@ -142,7 +142,7 @@ async function submit() {
         <div class="field">
           <div style="display: flex; justify-content: space-between; align-items: center">
             <label for="login-password">Password</label>
-            <a class="link" href="#" @click.prevent>Forgot password?</a>
+            <RouterLink to="/forgot-password" class="link">Forgot password?</RouterLink>
           </div>
           <div :class="['input', { 'input--error': passwordError }]">
             <span class="lead" aria-hidden="true"><VIcon name="lock" :size="17" /></span>
