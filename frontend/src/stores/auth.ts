@@ -28,6 +28,7 @@ function buildUser(payload: JwtPayload): AuthUser {
     name,
     role: payload.role.toLowerCase() as UserRole,
     initials,
+    userId: payload.userId,
   }
 }
 

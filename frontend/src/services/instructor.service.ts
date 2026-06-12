@@ -1,6 +1,15 @@
-import type { InstructorDashboardData, MyUpload } from '@/types/dashboard.types'
+import type { InstructorDashboardData, MyUpload, AssignedModule } from '@/types/dashboard.types'
 import type { TemplateData } from '@/types/instructor.types'
 import type { ValidationReport } from '@/types/report.types'
+import { http } from './http'
+
+const BASE_URL = '/api/v1'
+
+interface InstructorModuleItem {
+  moduleId: string
+  moduleName: string
+  specializationName: string
+}
 
 // ---------------------------------------------------------------------------
 // Mock data — DELETE and replace service bodies when wiring the real API
@@ -45,7 +54,7 @@ const MOCK_TEMPLATE: TemplateData = {
     { name: 'score',           desc: 'Numeric score achieved. Must not exceed max score.',          req: true  },
     { name: 'submitted_on',    desc: 'Date in YYYY-MM-DD format.',                                  req: true  },
     { name: 'attempt_number',  desc: 'Integer — 1 (first) or 2 (retake).',                         req: true  },
-    { name: 'graded_by',       desc: 'Optional qualitative feedback / instructor name.',            req: false },
+    { name: 'graded_by',       desc: 'Optional qualitative feedback / instructor name.',            req: true  },
   ],
 }
 
@@ -76,6 +85,16 @@ function delay(ms: number) {
 }
 // ---------------------------------------------------------------------------
 
+export async function getInstructorModules(instructorId: string): Promise<AssignedModule[]> {
+  const items = await http.get<InstructorModuleItem[]>(`/admin/instructors/${instructorId}/modules`)
+  return items.map((m) => ({
+    name: m.moduleName,
+    cohort: '',
+    specialization: m.specializationName,
+    submitted: 0,
+  }))
+}
+
 export async function getInstructorDashboard(): Promise<InstructorDashboardData> {
   // TODO: replace with → return http.get<InstructorDashboardData>('/instructor/dashboard')
   await delay(300)
@@ -101,7 +120,74 @@ export async function getUploadReport(uploadId: string): Promise<ValidationRepor
 }
 
 export async function uploadCsv(file: File): Promise<{ uploadId: string }> {
-  // TODO: replace with → return http.post<{ uploadId: string }>('/instructor/uploads', { file })
-  await delay(1800)
-  return { uploadId: `UP-${file.name.slice(0, 4).toUpperCase()}${Date.now().toString(36).slice(-4).toUpperCase()}` }
+  const token = localStorage.getItem('auth_token')
+  const headers: HeadersInit = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const res = await fetch(`${BASE_URL}/lab-results/bulk`, {
+    method: 'POST',
+    headers,
+    credentials: 'include',
+    body: formData,
+  })
+
+  const text = await res.text().catch(() => '')
+  if (!text) throw new Error(`HTTP ${res.status}`)
+
+  const json = JSON.parse(text) as Record<string, unknown>
+  if ('data' in json && 'success' in json) {
+    const envelope = json as { success: boolean; message: string; data: { uploadId: string } }
+    if (!envelope.success) throw new Error(envelope.message || 'Upload failed')
+    return envelope.data
+  }
+
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return json as { uploadId: string }
+}
+
+export async function fetchLabResultsTemplateHeaders(): Promise<string[]> {
+  const token = localStorage.getItem('auth_token')
+  const headers: HeadersInit = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(`${BASE_URL}/lab-results/template`, {
+    method: 'GET',
+    headers,
+    credentials: 'include',
+  })
+
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+  const text = await res.text()
+  const firstLine = text.split(/\r?\n/)[0] ?? ''
+  return firstLine.split(',').map((col) => col.replace(/^"|"$/g, '').trim()).filter(Boolean)
+}
+
+export async function downloadLabResultsTemplate(): Promise<void> {
+  const token = localStorage.getItem('auth_token')
+  const headers: HeadersInit = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(`${BASE_URL}/lab-results/template`, {
+    method: 'GET',
+    headers,
+    credentials: 'include',
+  })
+
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+  const blob = await res.blob()
+  const disposition = res.headers.get('Content-Disposition') ?? ''
+  const match = disposition.match(/filename[^;=\n]*=(['"]?)([^'";\n]+)\1/)
+  const filename = match?.[2]?.trim() ?? 'lab-results-template.csv'
+
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
 }
