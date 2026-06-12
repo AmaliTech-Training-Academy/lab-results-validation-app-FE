@@ -30,6 +30,9 @@ const INSTRUCTOR_RESPONSE: LoginResponse = {
   role: 'INSTRUCTOR',
   mustChangePassword: true,
 }
+
+// Token the backend issues after a successful password change — distinct from the original token
+const POST_CHANGE_TOKEN = makeMockJwt({ userId: '2', role: 'INSTRUCTOR', sub: 's.jenkins@test.com', iat: 9999 })
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
@@ -186,24 +189,31 @@ describe('useAuthStore', () => {
     it('clears mustChangePassword ref', () => {
       const store = useAuthStore()
       store.login(INSTRUCTOR_RESPONSE)
-      store.completedPasswordSetup()
+      store.completedPasswordSetup(POST_CHANGE_TOKEN)
       expect(store.mustChangePassword).toBe(false)
     })
 
-    it('persists token to localStorage after password setup', () => {
+    it('replaces the old token with the new token in localStorage', () => {
       const store = useAuthStore()
       store.login(INSTRUCTOR_RESPONSE)
       expect(localStorage.getItem('auth_token')).toBeNull()
-      store.completedPasswordSetup()
-      expect(localStorage.getItem('auth_token')).toBe(INSTRUCTOR_RESPONSE.token)
+      store.completedPasswordSetup(POST_CHANGE_TOKEN)
+      expect(localStorage.getItem('auth_token')).toBe(POST_CHANGE_TOKEN)
     })
 
-    it('leaves user and token intact', () => {
+    it('does not persist the original restricted token', () => {
       const store = useAuthStore()
       store.login(INSTRUCTOR_RESPONSE)
-      store.completedPasswordSetup()
+      store.completedPasswordSetup(POST_CHANGE_TOKEN)
+      expect(localStorage.getItem('auth_token')).not.toBe(INSTRUCTOR_RESPONSE.token)
+    })
+
+    it('updates the reactive token ref to the new token', () => {
+      const store = useAuthStore()
+      store.login(INSTRUCTOR_RESPONSE)
+      store.completedPasswordSetup(POST_CHANGE_TOKEN)
+      expect(store.token).toBe(POST_CHANGE_TOKEN)
       expect(store.user).not.toBeNull()
-      expect(store.token).not.toBeNull()
     })
   })
 
