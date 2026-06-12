@@ -30,7 +30,7 @@ export async function assignInstructorModules(instructorId: string, moduleIds: s
 }
 
 export async function updateInstructor(instructorId: string, payload: InstructorPayload): Promise<InstructorUser> {
-  return http.put<InstructorUser>(`/admin/users/instructors/${instructorId}`, payload)
+  return http.patch<InstructorUser>(`/admin/users/instructors/${instructorId}`, payload)
 }
 
 export async function removeInstructorModules(instructorId: string, moduleIds: string[]): Promise<RemoveModulesResponse> {
