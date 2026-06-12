@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { getInstructorDashboard } from '@/services/instructor.service'
+import { getInstructorDashboard, getInstructorModules } from '@/services/instructor.service'
 import type { InstructorDashboardData } from '@/types/dashboard.types'
 import VButton from '@/components/base/VButton.vue'
 import VPill from '@/components/base/VPill.vue'
@@ -23,7 +23,12 @@ async function loadData() {
   loadSlow.value = false
   const slowTimer = setTimeout(() => { loadSlow.value = true }, LOAD_TIMEOUT_MS)
   try {
-    data.value = await getInstructorDashboard()
+    const instructorId = auth.user?.userId ?? ''
+    const [dashboard, modules] = await Promise.all([
+      getInstructorDashboard(),
+      getInstructorModules(instructorId),
+    ])
+    data.value = { ...dashboard, modules }
   } catch {
     loadError.value = 'Failed to load dashboard. Check your connection and try again.'
   } finally {
@@ -87,12 +92,21 @@ onMounted(loadData)
 
     <!-- Assigned modules -->
     <h2 class="sec-title" style="margin-bottom: 16px">Assigned modules</h2>
-    <div class="mod-grid">
+
+    <div v-if="data.modules.length === 0" class="mod-empty">
+      <div class="mod-empty-icon">
+        <VIcon name="inbox" :size="32" />
+      </div>
+      <p class="mod-empty-title">No modules assigned yet</p>
+      <p class="mod-empty-sub">Your administrator hasn't assigned any modules to you. Contact them to get set up.</p>
+    </div>
+
+    <div v-else class="mod-grid">
       <div v-for="m in data.modules" :key="m.name" class="card card-pad mod-card">
         <div class="mod-top">
           <div>
             <h3 class="mod-name">{{ m.name }}</h3>
-            <div class="mod-meta">{{ m.cohort }} · {{ m.specialization }}</div>
+            <div class="mod-meta">{{ [m.cohort, m.specialization].filter(Boolean).join(' · ') }}</div>
           </div>
           <span class="lab-badge">
             <VIcon name="flask-conical" :size="14" />
@@ -163,3 +177,45 @@ onMounted(loadData)
     </div>
   </div>
 </template>
+
+<style scoped>
+.mod-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 48px 24px;
+  background: var(--surface);
+  border: 1.5px dashed var(--border);
+  border-radius: var(--r-md);
+  text-align: center;
+}
+
+.mod-empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.mod-empty-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.mod-empty-sub {
+  font-size: 13px;
+  color: var(--text-secondary);
+  max-width: 340px;
+  margin: 0;
+  line-height: 1.5;
+}
+</style>

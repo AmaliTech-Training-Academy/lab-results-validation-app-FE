@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { getTemplateData } from '@/services/instructor.service'
+import { ref, computed, onMounted } from 'vue'
+import { getTemplateData, downloadLabResultsTemplate, fetchLabResultsTemplateHeaders } from '@/services/instructor.service'
 import { useToastStore } from '@/stores/toast'
 import type { TemplateData } from '@/types/instructor.types'
 import VButton from '@/components/base/VButton.vue'
@@ -8,19 +8,44 @@ import VIcon from '@/components/base/VIcon.vue'
 
 const toast = useToastStore()
 
+const COLUMN_META: Record<string, { desc: string; req: boolean }> = {
+  learner_email:  { desc: "Must match a learner's email exactly (case-insensitive).", req: true  },
+  lab_title:      { desc: 'Exact title from the legend above.',                       req: true  },
+  score:          { desc: 'Numeric score achieved. Must not exceed max score.',       req: true  },
+  submitted_on:   { desc: 'Date in YYYY-MM-DD format.',                               req: true  },
+  attempt_number: { desc: 'Integer — 1 (first) or 2 (retake).',                      req: true  },
+  graded_by:      { desc: 'Optional qualitative feedback / instructor name.',         req: true  },
+}
+
 const data = ref<TemplateData | null>(null)
 const isLoading = ref(true)
 const loadError = ref<string | null>(null)
 const legendOpen = ref(true)
 const columnsOpen = ref(true)
+const isDownloading = ref(false)
+const templateCols = ref<string[]>([])
+
+const resolvedColumns = computed(() => {
+  if (templateCols.value.length) {
+    return templateCols.value.map((name) => ({
+      name,
+      ...(COLUMN_META[name] ?? { desc: '', req: true }),
+    }))
+  }
+  return data.value?.columns ?? []
+})
 
 async function loadData() {
   isLoading.value = true
   loadError.value = null
   try {
-    data.value = await getTemplateData()
-  } catch {
-    loadError.value = 'Failed to load template data. Check your connection and try again.'
+    const [templateData, headers] = await Promise.allSettled([
+      getTemplateData(),
+      fetchLabResultsTemplateHeaders(),
+    ])
+    if (templateData.status === 'fulfilled') data.value = templateData.value
+    else loadError.value = 'Failed to load template data. Check your connection and try again.'
+    if (headers.status === 'fulfilled') templateCols.value = headers.value
   } finally {
     isLoading.value = false
   }
@@ -28,8 +53,16 @@ async function loadData() {
 
 onMounted(loadData)
 
-function downloadTemplate() {
-  toast.show({ tone: 'info', title: 'Download started', body: data.value?.filename })
+async function downloadTemplate() {
+  isDownloading.value = true
+  try {
+    await downloadLabResultsTemplate()
+    toast.show({ tone: 'success', title: 'Download started', body: data.value?.filename })
+  } catch {
+    toast.show({ tone: 'danger', title: 'Download failed', body: 'Could not download the template. Please try again.' })
+  } finally {
+    isDownloading.value = false
+  }
 }
 </script>
 
@@ -60,8 +93,8 @@ function downloadTemplate() {
     <template v-if="isLoading">
       <span class="skel" style="width: 100%; height: 38px; display: block; border-radius: var(--r-sm)" />
     </template>
-    <VButton v-else variant="primary" icon="download" style="width: 100%" @click="downloadTemplate">
-      Download {{ data?.filename }}
+    <VButton v-else variant="primary" icon="download" style="width: 100%" :disabled="isDownloading" @click="downloadTemplate">
+      {{ isDownloading ? 'Downloading…' : `Download ${data?.filename}` }}
     </VButton>
 
     <!-- Template legend -->
@@ -127,7 +160,7 @@ function downloadTemplate() {
             </tr>
           </tbody>
           <tbody v-else>
-            <tr v-for="col in data?.columns" :key="col.name">
+            <tr v-for="col in resolvedColumns" :key="col.name">
               <td class="mono">{{ col.name }}</td>
               <td style="color: var(--text-secondary)">{{ col.desc }}</td>
               <td style="text-align: right">

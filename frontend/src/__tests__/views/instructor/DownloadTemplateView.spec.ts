@@ -8,6 +8,8 @@ import type { TemplateData } from '@/types/instructor.types'
 
 vi.mock('@/services/instructor.service', () => ({
   getTemplateData: vi.fn<() => Promise<TemplateData>>(),
+  fetchLabResultsTemplateHeaders: vi.fn<() => Promise<string[]>>().mockResolvedValue([]),
+  downloadLabResultsTemplate: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
 }))
 
 const MOCK_TEMPLATE: TemplateData = {
@@ -18,7 +20,7 @@ const MOCK_TEMPLATE: TemplateData = {
   ],
   columns: [
     { name: 'learner_email', desc: 'Must match a learner email.', req: true  },
-    { name: 'graded_by',     desc: 'Optional instructor name.',   req: false },
+    { name: 'graded_by',     desc: 'Optional instructor name.',   req: true  },
   ],
 }
 
@@ -71,11 +73,13 @@ describe('DownloadTemplateView', () => {
       expect(cells.length).toBeGreaterThan(0)
     })
 
-    it('marks optional columns as No', async () => {
+    it('marks all columns as required (Yes)', async () => {
       const wrapper = mountView()
       await flushPromises()
-      const cells = wrapper.findAll('.req-no')
-      expect(cells.length).toBeGreaterThan(0)
+      const yesCells = wrapper.findAll('.req-yes')
+      const noCells = wrapper.findAll('.req-no')
+      expect(yesCells.length).toBeGreaterThan(0)
+      expect(noCells.length).toBe(0)
     })
   })
 
