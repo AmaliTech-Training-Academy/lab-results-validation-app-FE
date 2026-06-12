@@ -11,6 +11,19 @@ interface InstructorModuleItem {
   specializationName: string
 }
 
+export interface LabResultItem {
+  id: string
+  learnerEmail: string
+  learnerName: string
+  labId: string
+  labTitle: string
+  score: number
+  maxScoreSnapshot: number
+  attemptNumber: number
+  submittedOn: string
+  gradedBy: string
+}
+
 // ---------------------------------------------------------------------------
 // Mock data — DELETE and replace service bodies when wiring the real API
 // ---------------------------------------------------------------------------
@@ -85,13 +98,22 @@ function delay(ms: number) {
 }
 // ---------------------------------------------------------------------------
 
+export async function getModuleLabResults(moduleId: string): Promise<LabResultItem[]> {
+  return http.get<LabResultItem[]>(`/lab-results/modules/${moduleId}`)
+}
+
 export async function getInstructorModules(instructorId: string): Promise<AssignedModule[]> {
   const items = await http.get<InstructorModuleItem[]>(`/admin/instructors/${instructorId}/modules`)
-  return items.map((m) => ({
+
+  const counts = await Promise.allSettled(
+    items.map((m) => getModuleLabResults(m.moduleId)),
+  )
+
+  return items.map((m, i) => ({
     name: m.moduleName,
     cohort: '',
     specialization: m.specializationName,
-    submitted: 0,
+    submitted: counts[i]?.status === 'fulfilled' ? counts[i].value.length : 0,
   }))
 }
 

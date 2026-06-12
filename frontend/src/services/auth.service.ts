@@ -13,8 +13,8 @@ export async function logoutApi(): Promise<void> {
   return http.post<void>('/auth/logout')
 }
 
-export async function changePasswordApi(currentPassword: string, newPassword: string): Promise<void> {
-  return http.post<void>('/auth/change-password', { currentPassword, newPassword })
+export async function changePasswordApi(currentPassword: string, newPassword: string): Promise<LoginResponse> {
+  return http.post<LoginResponse>('/auth/change-password', { currentPassword, newPassword })
 }
 
 export async function forgotPasswordApi(email: string): Promise<void> {

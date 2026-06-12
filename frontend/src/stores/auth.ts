@@ -65,13 +65,12 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  function completedPasswordSetup() {
+  function completedPasswordSetup(newToken: string) {
+    token.value = newToken
+    user.value = buildUser(decodeJwtPayload(newToken))
     mustChangePassword.value = false
     tempPassword.value = null
-    // Now it's safe to persist — the account is fully active
-    if (token.value) {
-      localStorage.setItem('auth_token', token.value)
-    }
+    localStorage.setItem('auth_token', newToken)
   }
 
   function clearSession() {
