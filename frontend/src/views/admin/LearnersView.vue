@@ -56,6 +56,8 @@ const form = ref({
 
 // ── Kebab ─────────────────────────────────────────────────────────────────────
 const activeKebabId = ref<string | null>(null)
+const kebabPos = ref<{ top: number; left: number } | null>(null)
+const activeKebabLearner = computed(() => learners.value.find((l) => l.id === activeKebabId.value) ?? null)
 
 // ── Computed ──────────────────────────────────────────────────────────────────
 const drawerTitle = computed(() => editTarget.value ? 'Edit learner' : 'Add learner')
@@ -147,11 +149,18 @@ onUnmounted(() => {
 // ── Actions ───────────────────────────────────────────────────────────────────
 function closeKebab() {
   activeKebabId.value = null
+  kebabPos.value = null
 }
 
 function toggleKebab(event: MouseEvent, id: string) {
   event.stopPropagation()
-  activeKebabId.value = activeKebabId.value === id ? null : id
+  if (activeKebabId.value === id) {
+    closeKebab()
+    return
+  }
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  kebabPos.value = { top: rect.bottom + 4, left: rect.right - 160 }
+  activeKebabId.value = id
 }
 
 function resetForm() {
@@ -377,34 +386,10 @@ function goToPage(page: number) {
               {{ l.status === 'ACTIVE' ? 'Active' : 'Archived' }}
             </VPill>
           </td>
-          <td style="text-align: right; position: relative">
+          <td style="text-align: right">
             <button class="kebab" aria-label="Actions" @click="toggleKebab($event, l.id)">
               <VIcon name="more-vertical" :size="18" />
             </button>
-            <div
-              v-if="activeKebabId === l.id"
-              style="position: absolute; right: 0; top: 36px; z-index: 20; background: #fff; border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-pop); min-width: 160px; overflow: hidden"
-              @click.stop
-            >
-              <button
-                style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 16px; border: none; background: none; font-family: inherit; font-size: 14px; color: var(--text); cursor: pointer; text-align: left"
-                @mouseenter="($event.target as HTMLElement).style.background = 'var(--bg)'"
-                @mouseleave="($event.target as HTMLElement).style.background = 'none'"
-                @click="openEdit(l)"
-              >
-                <VIcon name="pencil" :size="15" style="color: var(--text-secondary)" />
-                Edit
-              </button>
-              <button
-                style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 16px; border: none; background: none; font-family: inherit; font-size: 14px; color: var(--text); cursor: pointer; text-align: left"
-                @mouseenter="($event.target as HTMLElement).style.background = 'var(--bg)'"
-                @mouseleave="($event.target as HTMLElement).style.background = 'none'"
-                @click="toggleStatus(l)"
-              >
-                <VIcon :name="l.status === 'ACTIVE' ? 'archive' : 'rotate-ccw'" :size="15" style="color: var(--text-secondary)" />
-                {{ l.status === 'ACTIVE' ? 'Archive' : 'Restore' }}
-              </button>
-            </div>
           </td>
         </tr>
       </tbody>
@@ -487,20 +472,6 @@ function goToPage(page: number) {
         </div>
       </label>
     </div>
-    <label class="ff">
-      <span class="ff-label">Status</span>
-      <div style="position: relative; display: flex; align-items: center">
-        <select
-          v-model="form.status"
-          class="ff-input"
-          style="appearance: none; -webkit-appearance: none; width: 100%; padding-right: 36px; cursor: pointer"
-        >
-          <option value="ACTIVE">Active</option>
-          <option value="ARCHIVED">Archived</option>
-        </select>
-        <VIcon name="chevron-down" :size="16" style="position: absolute; right: 12px; pointer-events: none; color: var(--text-secondary)" />
-      </div>
-    </label>
     <p v-if="form.error" class="field-error">
       <VIcon name="alert-circle" :size="14" />{{ form.error }}
     </p>
@@ -511,4 +482,42 @@ function goToPage(page: number) {
       </VButton>
     </template>
   </VDrawer>
+
+  <Teleport to="body">
+    <div
+      v-if="activeKebabLearner && kebabPos"
+      :style="{
+        position: 'fixed',
+        top: `${kebabPos.top}px`,
+        left: `${kebabPos.left}px`,
+        zIndex: 1000,
+        background: '#fff',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--r-md)',
+        boxShadow: 'var(--shadow-pop)',
+        minWidth: '160px',
+        overflow: 'hidden',
+      }"
+      @click.stop
+    >
+      <button
+        style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 16px; border: none; background: none; font-family: inherit; font-size: 14px; color: var(--text); cursor: pointer; text-align: left"
+        @mouseenter="($event.target as HTMLElement).style.background = 'var(--bg)'"
+        @mouseleave="($event.target as HTMLElement).style.background = 'none'"
+        @click="openEdit(activeKebabLearner)"
+      >
+        <VIcon name="pencil" :size="15" style="color: var(--text-secondary)" />
+        Edit
+      </button>
+      <button
+        style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 16px; border: none; background: none; font-family: inherit; font-size: 14px; color: var(--text); cursor: pointer; text-align: left"
+        @mouseenter="($event.target as HTMLElement).style.background = 'var(--bg)'"
+        @mouseleave="($event.target as HTMLElement).style.background = 'none'"
+        @click="toggleStatus(activeKebabLearner)"
+      >
+        <VIcon :name="activeKebabLearner.status === 'ACTIVE' ? 'archive' : 'rotate-ccw'" :size="15" style="color: var(--text-secondary)" />
+        {{ activeKebabLearner.status === 'ACTIVE' ? 'Archive' : 'Restore' }}
+      </button>
+    </div>
+  </Teleport>
 </template>
