@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import VPill from '@/components/base/VPill.vue'
@@ -17,6 +17,11 @@ const isLoading = ref(true)
 const loadError = ref<string | null>(null)
 const loadSlow = ref(false)
 const LOAD_TIMEOUT_MS = 8000
+
+// ── Kebab ─────────────────────────────────────────────────────────────────────
+const activeKebabId = ref<string | null>(null)
+const kebabPos = ref<{ top: number; left: number } | null>(null)
+const activeKebabInstructor = computed(() => instructors.value.find((u) => u.id === activeKebabId.value) ?? null)
 
 // ── Drawer ────────────────────────────────────────────────────────────────────
 const showDrawer = ref(false)
@@ -58,9 +63,44 @@ async function loadData() {
   }
 }
 
-onMounted(loadData)
+onMounted(() => {
+  loadData()
+  window.addEventListener('click', closeKebab)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('click', closeKebab)
+})
 
 // ── Actions ───────────────────────────────────────────────────────────────────
+function closeKebab() {
+  activeKebabId.value = null
+  kebabPos.value = null
+}
+
+function toggleKebab(event: MouseEvent, id: string) {
+  event.stopPropagation()
+  if (activeKebabId.value === id) {
+    closeKebab()
+    return
+  }
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  kebabPos.value = { top: rect.bottom + 4, left: rect.right - 160 }
+  activeKebabId.value = id
+}
+
+async function toggleStatus(instructor: InstructorUser) {
+  activeKebabId.value = null
+  try {
+    const updated = await updateInstructor(instructor.id, { email: instructor.email, isActive: !instructor.active })
+    const idx = instructors.value.findIndex((u) => u.id === instructor.id)
+    if (idx !== -1) instructors.value[idx] = { ...instructors.value[idx]!, active: updated.active }
+    toast.show({ tone: 'success', title: updated.active ? 'Instructor activated' : 'Instructor deactivated' })
+  } catch {
+    toast.show({ tone: 'warning', title: 'Failed to update status' })
+  }
+}
+
 function resetForm() {
   form.value = { email: '', isActive: true, error: '' }
   assignedIds.value = []
@@ -73,6 +113,7 @@ function openAdd() {
 }
 
 function openEdit(instructor: InstructorUser) {
+  activeKebabId.value = null
   editTarget.value = instructor
   form.value = { email: instructor.email, isActive: instructor.active, error: '' }
   const currentIds = instructor.assignedModules.map((m) => m.moduleId)
@@ -311,7 +352,9 @@ async function submitForm() {
             </VPill>
           </td>
           <td style="text-align: right">
-            <button class="link" @click="openEdit(u)">Edit</button>
+            <button class="kebab" aria-label="Actions" @click="toggleKebab($event, u.id)">
+              <VIcon name="more-vertical" :size="18" />
+            </button>
           </td>
         </tr>
       </tbody>
@@ -334,16 +377,6 @@ async function submitForm() {
         />
       </span>
       <span class="ff-hint">Email cannot be changed after creation.</span>
-    </div>
-
-    <div class="ff">
-      <span class="ff-label">Account status</span>
-      <label class="toggle-row" style="cursor: pointer">
-        <span class="toggle" :class="{ on: form.isActive }" @click="form.isActive = !form.isActive">
-          <span class="toggle-knob" />
-        </span>
-        <span>{{ form.isActive ? 'Active' : 'Inactive' }}</span>
-      </label>
     </div>
 
     <div>
@@ -383,6 +416,44 @@ async function submitForm() {
       </VButton>
     </template>
   </VDrawer>
+
+  <Teleport to="body">
+    <div
+      v-if="activeKebabInstructor && kebabPos"
+      :style="{
+        position: 'fixed',
+        top: `${kebabPos.top}px`,
+        left: `${kebabPos.left}px`,
+        zIndex: 1000,
+        background: '#fff',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--r-md)',
+        boxShadow: 'var(--shadow-pop)',
+        minWidth: '160px',
+        overflow: 'hidden',
+      }"
+      @click.stop
+    >
+      <button
+        style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 16px; border: none; background: none; font-family: inherit; font-size: 14px; color: var(--text); cursor: pointer; text-align: left"
+        @mouseenter="($event.target as HTMLElement).style.background = 'var(--bg)'"
+        @mouseleave="($event.target as HTMLElement).style.background = 'none'"
+        @click="openEdit(activeKebabInstructor)"
+      >
+        <VIcon name="pencil" :size="15" style="color: var(--text-secondary)" />
+        Edit
+      </button>
+      <button
+        style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 16px; border: none; background: none; font-family: inherit; font-size: 14px; color: var(--text); cursor: pointer; text-align: left"
+        @mouseenter="($event.target as HTMLElement).style.background = 'var(--bg)'"
+        @mouseleave="($event.target as HTMLElement).style.background = 'none'"
+        @click="toggleStatus(activeKebabInstructor)"
+      >
+        <VIcon :name="activeKebabInstructor.active ? 'user-x' : 'user-check'" :size="15" style="color: var(--text-secondary)" />
+        {{ activeKebabInstructor.active ? 'Deactivate' : 'Activate' }}
+      </button>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
