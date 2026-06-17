@@ -37,7 +37,8 @@ const isEmailValid = computed(() => {
 })
 
 const passwordError = computed(() => {
-  if (!passwordTouched.value || !password.value) return ''
+  if (!passwordTouched.value) return ''
+  if (!password.value) return 'Password is required.'
   if (password.value.length < 8) return 'Password must be at least 8 characters'
   return ''
 })
