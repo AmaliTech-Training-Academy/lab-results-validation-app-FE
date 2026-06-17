@@ -5,25 +5,45 @@ export interface AssignedModule {
 }
 
 export interface InstructorUser {
+  id: string
   email: string
   active: boolean
   assignedModules: AssignedModule[]
 }
 
 export interface ModuleOption {
-  id: number
-  code: string
+  id: string
   name: string
 }
 
 export interface ModuleGroup {
-  specId: number
+  specId: string
   specName: string
   modules: ModuleOption[]
+}
+
+export interface CreateInstructorPayload {
+  email: string
+  isActive: boolean
+}
+
+export interface CreatedInstructor {
+  id: string
+  email: string
+}
+
+export interface AssignModulesResponse {
+  instructorId: string
+  instructorEmail: string
+  assignedModules: AssignedModule[]
 }
 
 export interface InstructorPayload {
   email: string
   isActive: boolean
-  assignedModuleIds: number[]
+}
+
+export interface RemoveModulesResponse {
+  instructorId: string
+  removedModuleIds: string[]
 }

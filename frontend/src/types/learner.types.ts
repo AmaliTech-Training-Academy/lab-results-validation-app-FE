@@ -1,20 +1,41 @@
-export type LearnerStatus = 'active' | 'archived'
+export type LearnerStatus = 'ACTIVE' | 'ARCHIVED'
 
 export interface Learner {
-  id: number
+  id: string
   fullName: string
   email: string
-  cohortId: number
+  cohortId: string
   cohortName: string
-  specializationId: number
-  specName: string
+  specializationId: string
+  specializationName: string
   status: LearnerStatus
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PagedLearners {
+  content: Learner[]
+  page: number
+  size: number
+  totalElements: number
+  totalPages: number
+  last: boolean
 }
 
 export interface AddLearnerPayload {
   fullName: string
   email: string
-  cohortId: number
-  specializationId: number
+  cohortId: string
+  specializationId: string
   status: LearnerStatus
 }
+
+export interface LearnerFilters {
+  cohortId?: string
+  specializationId?: string
+  status?: LearnerStatus
+  search?: string
+  page?: number
+  size?: number
+}
+

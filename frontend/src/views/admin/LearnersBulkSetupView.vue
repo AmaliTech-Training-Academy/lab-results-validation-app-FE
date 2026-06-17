@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import { useToastStore } from '@/stores/toast'
-import { uploadProgramStructureBulk, downloadProgramStructureTemplate, fetchProgramStructureTemplateHeaders, BulkImportError } from '@/services/cohort.service'
+import { downloadLearnerTemplate, uploadLearnersBulk, fetchLearnerTemplateHeaders, BulkImportError } from '@/services/learner.service'
 import type { BulkRowError } from '@/types/bulk.types'
 
 const router = useRouter()
@@ -15,7 +15,7 @@ const colsLoading = ref(true)
 
 onMounted(async () => {
   try {
-    templateCols.value = await fetchProgramStructureTemplateHeaders()
+    templateCols.value = await fetchLearnerTemplateHeaders()
   } catch {
     // silently fall back to empty — the toggle simply won't show columns
   } finally {
@@ -75,8 +75,8 @@ async function handleImport() {
   bulkErrors.value = []
   bulkErrorSummary.value = ''
   try {
-    await uploadProgramStructureBulk(selectedFile.value)
-    toast.show({ tone: 'success', title: 'Structure imported', body: 'Cohort hierarchy created successfully.' })
+    await uploadLearnersBulk(selectedFile.value)
+    toast.show({ tone: 'success', title: 'Learners imported', body: 'Bulk learner records created successfully.' })
     selectedFile.value = null
   } catch (err) {
     if (err instanceof BulkImportError && err.errors.length > 0) {
@@ -99,7 +99,7 @@ async function handleImport() {
 async function handleDownloadTemplate() {
   downloadingTemplate.value = true
   try {
-    await downloadProgramStructureTemplate()
+    await downloadLearnerTemplate()
     toast.show({ tone: 'success', title: 'Template downloaded' })
   } catch {
     toast.show({ tone: 'warning', title: 'Download failed', body: 'Could not download the CSV template. Please try again.' })
@@ -113,7 +113,7 @@ async function handleDownloadTemplate() {
   <div class="page-head">
     <div>
       <div class="crumbs" style="margin-bottom: 6px">
-        <span style="cursor: pointer" @click="router.push({ name: 'admin-cohorts' })">Cohorts</span>
+        <span style="cursor: pointer" @click="router.push({ name: 'admin-learners' })">Learner roster</span>
         <VIcon name="chevron-right" :size="14" />
         <span class="cur">Bulk setup</span>
       </div>
@@ -126,7 +126,7 @@ async function handleDownloadTemplate() {
     <div class="card card-pad bulk-upload">
       <div class="bulk-cardhead">
         <VIcon name="file-up" :size="20" style="color: var(--orange-deep)" />
-        <h2 class="sec-title">Upload structure CSV</h2>
+        <h2 class="sec-title">Upload learners CSV</h2>
       </div>
       <div
         :class="['dropzone', { over: dragOver }]"
@@ -138,7 +138,7 @@ async function handleDownloadTemplate() {
         <div class="dz-icon"><VIcon name="upload-cloud" :size="32" /></div>
         <template v-if="selectedFile">
           <p class="dz-title">{{ selectedFile.name }}</p>
-          <p class="dz-sub">Ready to validate the cohort hierarchy</p>
+          <p class="dz-sub">Ready to import learner records</p>
         </template>
         <template v-else>
           <p class="dz-title">Drag your CSV here or click to browse</p>
@@ -205,11 +205,11 @@ async function handleDownloadTemplate() {
       <div class="card card-pad">
         <div class="bulk-cardhead">
           <VIcon name="file-text" :size="20" style="color: var(--text-secondary)" />
-          <h2 class="sec-title">Download the structure template</h2>
+          <h2 class="sec-title">Download the learners template</h2>
         </div>
         <p class="page-sub" style="margin: 10px 0 16px">
-          Ensure your import goes smoothly by starting with our formatted CSV template.
-          It includes all required headers and sample data formatting.
+          Start from the formatted CSV template to ensure all required fields and
+          column headers are in the correct format before importing.
         </p>
         <VButton
           variant="ghost"
@@ -234,8 +234,9 @@ async function handleDownloadTemplate() {
         <div>
           <h3 class="callout-title" style="font-size: 15px">Data validation rules</h3>
           <p class="callout-body">
-            Empty fields in required columns will trigger a validation error.
-            Ensure date formats exactly match the YYYY-MM-DD standard before importing.
+            All four columns are required. Emails are matched case-insensitively —
+            duplicates in the file will be skipped. Cohort and specialization names
+            must exactly match existing records.
           </p>
         </div>
       </div>

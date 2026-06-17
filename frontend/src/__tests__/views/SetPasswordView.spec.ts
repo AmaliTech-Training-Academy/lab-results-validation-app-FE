@@ -8,7 +8,7 @@ import { changePasswordApi } from '@/services/auth.service'
 import type { LoginResponse } from '@/types/auth.types'
 
 vi.mock('@/services/auth.service', () => ({
-  changePasswordApi: vi.fn<() => Promise<void>>(),
+  changePasswordApi: vi.fn<() => Promise<LoginResponse>>(),
 }))
 
 // ---------------------------------------------------------------------------
@@ -35,6 +35,19 @@ const INSTRUCTOR_RESPONSE: LoginResponse = {
   role: 'INSTRUCTOR',
   mustChangePassword: true,
 }
+// Tokens the backend issues after a successful password change (role-matched, no mustChangePassword)
+const ADMIN_POST_CHANGE_RESPONSE: LoginResponse = {
+  token: makeMockJwt({ userId: '1', role: 'ADMIN', sub: 'admin@test.com', iat: 9999 }),
+  email: 'admin@test.com',
+  role: 'ADMIN',
+  mustChangePassword: false,
+}
+const INSTRUCTOR_POST_CHANGE_RESPONSE: LoginResponse = {
+  token: makeMockJwt({ userId: '2', role: 'INSTRUCTOR', sub: 's.jenkins@test.com', iat: 9999 }),
+  email: 's.jenkins@test.com',
+  role: 'INSTRUCTOR',
+  mustChangePassword: false,
+}
 
 const testRouter = createRouter({
   history: createMemoryHistory(),
@@ -53,7 +66,7 @@ describe('SetPasswordView', () => {
 
   beforeEach(() => {
     localStorage.clear()
-    vi.mocked(changePasswordApi).mockResolvedValue(undefined)
+    vi.mocked(changePasswordApi).mockResolvedValue(INSTRUCTOR_POST_CHANGE_RESPONSE)
     pushSpy = vi.spyOn(testRouter, 'push').mockResolvedValue(undefined as never)
   })
 
@@ -121,6 +134,7 @@ describe('SetPasswordView', () => {
     })
 
     it('routes admin to admin-dashboard after success', async () => {
+      vi.mocked(changePasswordApi).mockResolvedValueOnce(ADMIN_POST_CHANGE_RESPONSE)
       const { wrapper } = mountView(ADMIN_RESPONSE)
       await fillAndSubmit(wrapper, 'securepass123!', 'securepass123!')
       expect(pushSpy).toHaveBeenCalledWith({ name: 'admin-dashboard' })

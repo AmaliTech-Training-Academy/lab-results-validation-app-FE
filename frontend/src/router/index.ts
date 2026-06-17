@@ -26,6 +26,11 @@ const router = createRouter({
       component: () => import('@/views/auth/SetPasswordView.vue'),
       meta: { requiresAuth: true },
     },
+    {
+      path: '/forgot-password',
+      name: 'forgot-password',
+      component: () => import('@/views/auth/ForgotPasswordView.vue'),
+    },
 
     // 403
     {
@@ -45,7 +50,8 @@ const router = createRouter({
         { path: 'cohorts',        name: 'admin-cohorts',      component: () => import('@/views/admin/CohortsView.vue') },
         { path: 'cohorts/bulk-setup', name: 'admin-cohorts-bulk', component: () => import('@/views/admin/BulkSetupView.vue') },
         { path: 'reference', name: 'admin-reference', component: () => import('@/views/admin/ReferenceDataView.vue') },
-        { path: 'learners',  name: 'admin-learners',  component: () => import('@/views/admin/LearnersView.vue') },
+        { path: 'learners',            name: 'admin-learners',       component: () => import('@/views/admin/LearnersView.vue') },
+        { path: 'learners/bulk-setup', name: 'admin-learners-bulk',  component: () => import('@/views/admin/LearnersBulkSetupView.vue') },
         { path: 'users',     name: 'admin-users',     component: () => import('@/views/admin/UserManagementView.vue') },
         { path: 'reports',   name: 'admin-reports',   component: () => import('@/views/admin/ReportsView.vue') },
         { path: 'power-bi',  name: 'admin-power-bi',  component: () => import('@/views/admin/PowerBiView.vue') },

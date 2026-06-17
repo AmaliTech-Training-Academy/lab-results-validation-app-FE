@@ -1,61 +1,38 @@
-import type { InstructorUser, ModuleGroup, InstructorPayload } from '@/types/user.types'
+import type { InstructorUser, ModuleGroup, InstructorPayload, CreateInstructorPayload, CreatedInstructor, AssignModulesResponse, RemoveModulesResponse } from '@/types/user.types'
+import { getAllSpecializations, getModules } from './reference.service'
 import { http } from './http'
 
 export async function getInstructors(): Promise<InstructorUser[]> {
   return http.get<InstructorUser[]>('/admin/users/instructors')
 }
 
-// ── Module groups & mutations — still mock until those endpoints are defined ──
-
-const MOCK_MODULE_GROUPS: ModuleGroup[] = [
-  {
-    specId: 1,
-    specName: 'Data Analytics',
-    modules: [
-      { id: 1, code: 'DA-01', name: 'Python Fundamentals' },
-      { id: 2, code: 'DA-02', name: 'Data Wrangling' },
-      { id: 3, code: 'DA-03', name: 'SQL & Databases' },
-      { id: 4, code: 'DA-04', name: 'Visualisation' },
-    ],
-  },
-  {
-    specId: 2,
-    specName: 'Software Engineering',
-    modules: [
-      { id: 5, code: 'SE-01', name: 'JavaScript Fundamentals' },
-      { id: 6, code: 'SE-02', name: 'React & State Management' },
-      { id: 7, code: 'SE-03', name: 'Node.js & REST APIs' },
-    ],
-  },
-  {
-    specId: 3,
-    specName: 'Cloud & DevOps',
-    modules: [
-      { id: 8, code: 'CD-01', name: 'Linux & Shell Scripting' },
-      { id: 9, code: 'CD-02', name: 'Docker & Containers' },
-    ],
-  },
-]
-
 export async function getModuleGroups(): Promise<ModuleGroup[]> {
-  // TODO: replace with → return http.get<ModuleGroup[]>('/admin/modules/groups')
-  return MOCK_MODULE_GROUPS
+  const specs = await getAllSpecializations()
+  const groups = await Promise.all(
+    specs.map(async (spec) => {
+      const modules = await getModules(spec.id)
+      return {
+        specId: spec.id,
+        specName: spec.name,
+        modules: modules.map((m) => ({ id: m.id, name: m.name })),
+      }
+    }),
+  )
+  return groups.filter((g) => g.modules.length > 0)
 }
 
-export async function addInstructor(payload: InstructorPayload): Promise<InstructorUser> {
-  // TODO: replace with → return http.post<InstructorUser>('/admin/users', payload)
-  return {
-    email: payload.email,
-    active: payload.isActive,
-    assignedModules: [],
-  }
+export async function addInstructor(payload: CreateInstructorPayload): Promise<CreatedInstructor> {
+  return http.post<CreatedInstructor>('/admin/users/instructors', payload)
 }
 
-export async function updateInstructor(email: string, payload: InstructorPayload): Promise<InstructorUser> {
-  // TODO: replace with → return http.put<InstructorUser>(`/admin/users/${encodeURIComponent(email)}`, payload)
-  return {
-    email,
-    active: payload.isActive,
-    assignedModules: [],
-  }
+export async function assignInstructorModules(instructorId: string, moduleIds: string[]): Promise<AssignModulesResponse> {
+  return http.post<AssignModulesResponse>(`/admin/instructors/${instructorId}/modules`, { moduleIds })
+}
+
+export async function updateInstructor(instructorId: string, payload: InstructorPayload): Promise<InstructorUser> {
+  return http.patch<InstructorUser>(`/admin/users/instructors/${instructorId}`, payload)
+}
+
+export async function removeInstructorModules(instructorId: string, moduleIds: string[]): Promise<RemoveModulesResponse> {
+  return http.delete<RemoveModulesResponse>(`/admin/instructors/${instructorId}/modules`, { moduleIds })
 }

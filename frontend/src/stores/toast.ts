@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-export type ToastTone = 'success' | 'warning' | 'info'
+export type ToastTone = 'success' | 'warning' | 'info' | 'danger'
 
 export interface ToastPayload {
   tone: ToastTone

@@ -49,6 +49,7 @@ export interface MyUpload {
   tone: Tone
   status: string
   hasReport: boolean
+  uploadId?: string
 }
 
 export interface InstructorDashboardData {

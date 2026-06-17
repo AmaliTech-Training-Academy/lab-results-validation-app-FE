@@ -66,8 +66,11 @@ async function submit() {
     }
 
     router.push(auth.isAdmin ? '/admin/dashboard' : '/instructor/dashboard')
-  } catch {
-    error.value = 'Invalid email or password.'
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    error.value = msg === 'Account is disabled'
+      ? 'Your account has been disabled. Please contact your administrator.'
+      : 'Invalid email or password.'
   } finally {
     isLoading.value = false
   }
@@ -136,7 +139,7 @@ async function submit() {
       </div>
 
       <div class="forgot-row">
-        <a class="link" href="#" @click.prevent>Forgot Password?</a>
+        <RouterLink to="/forgot-password" class="link">Forgot Password?</RouterLink>
       </div>
 
       <!-- API-level error -->

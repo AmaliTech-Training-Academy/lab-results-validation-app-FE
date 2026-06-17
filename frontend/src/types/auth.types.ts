@@ -5,6 +5,7 @@ export interface AuthUser {
   name: string     // derived from email local-part on the frontend
   role: UserRole
   initials: string // derived from email local-part on the frontend
+  userId: string
 }
 
 /** Shape returned by POST /auth/login */

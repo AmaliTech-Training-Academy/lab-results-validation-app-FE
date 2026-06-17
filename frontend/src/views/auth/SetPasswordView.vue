@@ -55,8 +55,8 @@ async function submit() {
   error.value = null
   isLoading.value = true
   try {
-    await changePasswordApi(auth.tempPassword ?? '', password.value)
-    auth.completedPasswordSetup()
+    const response = await changePasswordApi(auth.tempPassword ?? '', password.value)
+    auth.completedPasswordSetup(response.token)
     router.push({ name: auth.isAdmin ? 'admin-dashboard' : 'instructor-dashboard' })
   } catch {
     error.value = 'Failed to set password. Please try again.'
