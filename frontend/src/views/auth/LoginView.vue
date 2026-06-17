@@ -5,7 +5,8 @@ import { useAuthStore } from '@/stores/auth'
 import { loginApi } from '@/services/auth.service'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
-import logoUrl from '@/assets/amalitech-logo.svg'
+import logoUrl from '@/assets/validata-logo.png'
+import amaliLogoUrl from '@/assets/amalitech-logo.svg'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -81,8 +82,12 @@ async function submit() {
 <template>
   <div class="auth-page">
     <form class="auth-card" novalidate @submit.prevent="submit">
-      <!-- Brand logo -->
-      <img :src="logoUrl" alt="AmaliTech" class="brand-logo" />
+      <!-- Brand lockup: AmaliTech (parent) above Validata (product) -->
+      <div class="brand-stack">
+        <img :src="amaliLogoUrl" alt="AmaliTech" class="brand-amali" />
+        <span class="brand-divider" aria-hidden="true" />
+        <img :src="logoUrl" alt="Validata" class="brand-logo" />
+      </div>
 
       <h1 class="auth-title">Sign In</h1>
       <p class="auth-sub">Enter your email and password to access your account</p>
@@ -183,12 +188,32 @@ async function submit() {
   padding: 44px 40px;
 }
 
-/* Brand logo */
+/* Brand lockup */
+.brand-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  margin: 0 0 26px;
+}
+/* AmaliTech — secondary parent brand, smaller and slightly muted */
+.brand-amali {
+  display: block;
+  width: 118px;
+  height: auto;
+  opacity: 0.85;
+}
+/* Hairline divider between the two brands */
+.brand-divider {
+  width: 44px;
+  height: 1px;
+  background: var(--border);
+}
+/* Validata — primary product brand, the hero */
 .brand-logo {
   display: block;
-  width: 170px;
+  width: 172px;
   height: auto;
-  margin: 0 auto 22px;
 }
 
 .auth-title {
