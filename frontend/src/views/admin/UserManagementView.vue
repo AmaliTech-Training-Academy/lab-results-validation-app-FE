@@ -167,10 +167,10 @@ async function submitForm() {
     form.value.error = 'Email address is required.'
     return
   }
-  if (!isAllowedDomain(form.value.email)) {
-    form.value.error = 'Email must belong to @amalitech.com, @amalitechtraining.com, or @amalitechtraining.org.'
-    return
-  }
+  // if (!isAllowedDomain(form.value.email)) {
+  //   form.value.error = 'Email must belong to @amalitech.com, @amalitechtraining.com, or @amalitechtraining.org.'
+  //   return
+  // }
 
   submitting.value = true
   try {
