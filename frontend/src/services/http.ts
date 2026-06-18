@@ -29,7 +29,16 @@ interface ApiEnvelope<T> {
 async function handleResponse<T>(res: Response): Promise<T> {
   const text = await res.text().catch(() => '')
   if (!res.ok) {
-    throw new Error(text || `HTTP ${res.status}`)
+    let message = text || `HTTP ${res.status}`
+    if (text) {
+      try {
+        const errJson = JSON.parse(text) as Record<string, unknown>
+        if (typeof errJson.message === 'string') message = errJson.message
+      } catch {
+        // not JSON — use raw text
+      }
+    }
+    throw new Error(message)
   }
   if (!text) return undefined as T
   const json = JSON.parse(text) as Record<string, unknown>
