@@ -29,6 +29,10 @@ function clearFile() {
   file.value = null
 }
 
+function isCohortLockedError(err: unknown): boolean {
+  return err instanceof Error && err.message.toLowerCase().includes('locked')
+}
+
 async function validate() {
   if (!file.value) return
   phase.value = 'processing'
@@ -36,8 +40,12 @@ async function validate() {
     const result = await uploadCsv(file.value)
     toast.show({ tone: 'success', title: 'Upload complete', body: 'Your file has been validated.' })
     router.push({ name: 'instructor-uploads', query: { uploadId: result.uploadId } })
-  } catch {
-    toast.show({ tone: 'danger', title: 'Upload failed', body: 'Could not process your file. Please try again.' })
+  } catch (err) {
+    if (isCohortLockedError(err)) {
+      toast.show({ tone: 'warning', title: 'Cohort is locked', body: 'Results cannot be uploaded until the cohort is locked for grading.' })
+    } else {
+      toast.show({ tone: 'danger', title: 'Upload failed', body: 'Could not process your file. Please try again.' })
+    }
     phase.value = 'idle'
   }
 }

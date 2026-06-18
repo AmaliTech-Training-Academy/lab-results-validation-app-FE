@@ -10,7 +10,7 @@ export async function getModuleGroups(): Promise<ModuleGroup[]> {
   const specs = await getAllSpecializations()
   const groups = await Promise.all(
     specs.map(async (spec) => {
-      const modules = await getModules(spec.id)
+      const { content: modules } = await getModules(spec.id, 0, 1000)
       return {
         specId: spec.id,
         specName: spec.name,

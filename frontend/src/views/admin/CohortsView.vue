@@ -7,7 +7,7 @@ import VPill from '@/components/base/VPill.vue'
 import VDrawer from '@/components/base/VDrawer.vue'
 import VDatePicker from '@/components/base/VDatePicker.vue'
 import { useToastStore } from '@/stores/toast'
-import { getCohorts, createCohort, updateCohort, toggleCohortActive } from '@/services/cohort.service'
+import { getCohorts, createCohort, updateCohort, toggleCohortActive, lockCohort, unlockCohort } from '@/services/cohort.service'
 import type { CohortRow } from '@/types/cohort.types'
 
 const router = useRouter()
@@ -28,6 +28,8 @@ const form = ref({ name: '', startDate: '', endDate: '', error: '' })
 
 // ── Kebab ─────────────────────────────────────────────────────────────────────
 const activeKebabId = ref<string | null>(null)
+const kebabPos = ref<{ top: number; left: number } | null>(null)
+const activeKebabCohort = computed(() => cohorts.value.find((c) => c.id === activeKebabId.value) ?? null)
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const drawerTitle = computed(() => editTarget.value ? 'Edit cohort' : 'Create new cohort')
@@ -77,11 +79,18 @@ onUnmounted(() => {
 // ── Actions ───────────────────────────────────────────────────────────────────
 function closeKebab() {
   activeKebabId.value = null
+  kebabPos.value = null
 }
 
 function toggleKebab(event: MouseEvent, id: string) {
   event.stopPropagation()
-  activeKebabId.value = activeKebabId.value === id ? null : id
+  if (activeKebabId.value === id) {
+    closeKebab()
+    return
+  }
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  kebabPos.value = { top: rect.bottom + 4, left: rect.right - 160 }
+  activeKebabId.value = id
 }
 
 function openCreate() {
@@ -156,6 +165,22 @@ async function toggleActive(cohort: CohortRow) {
     toast.show({ tone: 'warning', title: 'Action failed. Please try again.' })
   }
 }
+
+async function toggleLock(cohort: CohortRow) {
+  activeKebabId.value = null
+  try {
+    if (cohort.locked) {
+      await unlockCohort(cohort.id)
+    } else {
+      await lockCohort(cohort.id)
+    }
+    const idx = cohorts.value.findIndex((c) => c.id === cohort.id)
+    if (idx !== -1) cohorts.value[idx]!.locked = !cohort.locked
+    toast.show({ tone: 'success', title: cohort.locked ? 'Cohort locked' : 'Cohort Unlocked' })
+  } catch {
+    toast.show({ tone: 'warning', title: 'Action failed. Please try again.' })
+  }
+}
 </script>
 
 <template>
@@ -213,8 +238,16 @@ async function toggleActive(cohort: CohortRow) {
         </tr>
       </tbody>
       <tbody v-else>
-        <tr v-for="c in cohorts" :key="c.id">
-          <td style="font-weight: 600">{{ c.name }}</td>
+        <tr
+          v-for="c in cohorts"
+          :key="c.id"
+          style="cursor: pointer"
+          @click="router.push({ name: 'admin-reference', query: { cohortId: c.id } })"
+        >
+          <td style="font-weight: 600; display: flex; align-items: center; gap: 8px">
+            {{ c.name }}
+            <VIcon v-if="c.locked" name="lock" :size="14" style="color: var(--text-secondary); flex-shrink: 0" aria-label="Locked" />
+          </td>
           <td class="mono" style="color: var(--text-secondary)">{{ c.startDate }}</td>
           <td class="mono" style="color: var(--text-secondary)">{{ c.endDate }}</td>
           <td style="text-align: center">
@@ -222,34 +255,10 @@ async function toggleActive(cohort: CohortRow) {
               {{ cohortStatus(c) === 'active' ? 'Active' : cohortStatus(c) === 'completed' ? 'Completed' : 'Archived' }}
             </VPill>
           </td>
-          <td style="text-align: right; width: 48px; position: relative">
+          <td style="text-align: right; width: 48px">
             <button class="kebab" aria-label="Actions" @click="toggleKebab($event, c.id)">
               <VIcon name="more-vertical" :size="18" />
             </button>
-            <div
-              v-if="activeKebabId === c.id"
-              style="position: absolute; right: 0; top: 36px; z-index: 20; background: #fff; border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-pop); min-width: 160px; overflow: hidden"
-              @click.stop
-            >
-              <button
-                style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 16px; border: none; background: none; font-family: inherit; font-size: 14px; color: var(--text); cursor: pointer; text-align: left"
-                @mouseenter="($event.target as HTMLElement).style.background = 'var(--bg)'"
-                @mouseleave="($event.target as HTMLElement).style.background = 'none'"
-                @click="openEdit(c)"
-              >
-                <VIcon name="pencil" :size="15" style="color: var(--text-secondary)" />
-                Edit
-              </button>
-              <button
-                style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 16px; border: none; background: none; font-family: inherit; font-size: 14px; color: var(--text); cursor: pointer; text-align: left"
-                @mouseenter="($event.target as HTMLElement).style.background = 'var(--bg)'"
-                @mouseleave="($event.target as HTMLElement).style.background = 'none'"
-                @click="toggleActive(c)"
-              >
-                <VIcon :name="c.active ? 'archive' : 'rotate-ccw'" :size="15" style="color: var(--text-secondary)" />
-                {{ c.active ? 'Archive' : 'Restore' }}
-              </button>
-            </div>
           </td>
         </tr>
       </tbody>
@@ -276,6 +285,53 @@ async function toggleActive(cohort: CohortRow) {
       </div>
     </div>
   </div>
+
+  <Teleport to="body">
+    <div
+      v-if="activeKebabCohort && kebabPos"
+      :style="{
+        position: 'fixed',
+        top: `${kebabPos.top}px`,
+        left: `${kebabPos.left}px`,
+        zIndex: 1000,
+        background: '#fff',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--r-md)',
+        boxShadow: 'var(--shadow-pop)',
+        minWidth: '160px',
+        overflow: 'hidden',
+      }"
+      @click.stop
+    >
+      <button
+        style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 16px; border: none; background: none; font-family: inherit; font-size: 14px; color: var(--text); cursor: pointer; text-align: left"
+        @mouseenter="($event.target as HTMLElement).style.background = 'var(--bg)'"
+        @mouseleave="($event.target as HTMLElement).style.background = 'none'"
+        @click="openEdit(activeKebabCohort)"
+      >
+        <VIcon name="pencil" :size="15" style="color: var(--text-secondary)" />
+        Edit
+      </button>
+      <button
+        style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 16px; border: none; background: none; font-family: inherit; font-size: 14px; color: var(--text); cursor: pointer; text-align: left"
+        @mouseenter="($event.target as HTMLElement).style.background = 'var(--bg)'"
+        @mouseleave="($event.target as HTMLElement).style.background = 'none'"
+        @click="toggleLock(activeKebabCohort)"
+      >
+        <VIcon :name="activeKebabCohort.locked ? 'lock-open' : 'lock'" :size="15" style="color: var(--text-secondary)" />
+        {{ activeKebabCohort.locked ? 'Unlock' : 'Lock' }}
+      </button>
+      <button
+        style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 16px; border: none; background: none; font-family: inherit; font-size: 14px; color: var(--text); cursor: pointer; text-align: left"
+        @mouseenter="($event.target as HTMLElement).style.background = 'var(--bg)'"
+        @mouseleave="($event.target as HTMLElement).style.background = 'none'"
+        @click="toggleActive(activeKebabCohort)"
+      >
+        <VIcon :name="activeKebabCohort.active ? 'archive' : 'rotate-ccw'" :size="15" style="color: var(--text-secondary)" />
+        {{ activeKebabCohort.active ? 'Archive' : 'Restore' }}
+      </button>
+    </div>
+  </Teleport>
 
   <!-- Create / Edit Drawer -->
   <VDrawer

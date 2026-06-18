@@ -1,4 +1,4 @@
-import type { CohortRow, CreateCohortPayload, PagedCohorts } from '@/types/cohort.types'
+import type { CohortRow, CreateCohortPayload, UpdateCohortPayload, PagedCohorts } from '@/types/cohort.types'
 import { BulkImportError } from '@/types/bulk.types'
 import type { BulkRowError } from '@/types/bulk.types'
 import { http } from './http'
@@ -15,12 +15,20 @@ export async function createCohort(payload: CreateCohortPayload): Promise<Cohort
   return http.post<CohortRow>('/admin/cohorts', payload)
 }
 
-export async function updateCohort(id: string, payload: CreateCohortPayload): Promise<CohortRow> {
-  return http.put<CohortRow>(`/admin/cohorts/${id}`, payload)
+export async function updateCohort(id: string, payload: UpdateCohortPayload): Promise<CohortRow> {
+  return http.patch<CohortRow>(`/admin/cohorts/${id}`, payload)
 }
 
 export async function toggleCohortActive(id: string, active: boolean): Promise<void> {
-  return http.patch(`/admin/cohorts/${id}/status`, { active })
+  return http.patch(`/admin/cohorts/${id}`, { active })
+}
+
+export async function lockCohort(id: string): Promise<void> {
+  return http.patch<void>(`/admin/cohorts/${id}/lock`)
+}
+
+export async function unlockCohort(id: string): Promise<void> {
+  return http.patch<void>(`/admin/cohorts/${id}/unlock`)
 }
 
 export async function uploadProgramStructureBulk(file: File): Promise<void> {

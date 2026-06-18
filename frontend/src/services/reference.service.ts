@@ -1,38 +1,23 @@
-import type { Specialization, Module, Lab, AddLabPayload, UpdateLabPayload, ForceEditLabPayload } from '@/types/reference.types'
+import type { Specialization, Module, Lab, AddLabPayload, UpdateLabPayload, ForceEditLabPayload, PagedReference } from '@/types/reference.types'
 import { http } from './http'
 
-interface PagedResponse<T> {
-  content: T[]
-  totalElements: number
-  totalPages: number
-  size: number
-  number: number
-  first: boolean
-  last: boolean
-  empty: boolean
-}
-
-export async function getSpecializations(cohortId: string): Promise<Specialization[]> {
-  const page = await http.get<PagedResponse<Specialization>>(
-    `/admin/specializations?cohortId=${cohortId}`,
+export async function getSpecializations(cohortId: string, page = 0, size = 10): Promise<PagedReference<Specialization>> {
+  return http.get<PagedReference<Specialization>>(
+    `/admin/specializations?cohortId=${cohortId}&page=${page}&size=${size}`,
   )
-  return page.content
 }
 
 export async function getAllSpecializations(): Promise<Specialization[]> {
-  const page = await http.get<PagedResponse<Specialization>>('/admin/specializations?size=100')
-  return page.content
+  const result = await http.get<PagedReference<Specialization>>('/admin/specializations?size=100')
+  return result.content
 }
 
-export async function getModules(specializationId: string): Promise<Module[]> {
-  return http.get<Module[]>(`/modules?specializationId=${specializationId}`)
+export async function getModules(specializationId: string, page = 0, size = 10): Promise<PagedReference<Module>> {
+  return http.get<PagedReference<Module>>(`/modules?specializationId=${specializationId}&page=${page}&size=${size}`)
 }
 
-export async function getLabs(moduleId: string): Promise<Lab[]> {
-  const page = await http.get<PagedResponse<Lab>>(
-    `/admin/labs?moduleId=${moduleId}`,
-  )
-  return page.content
+export async function getLabs(moduleId: string, page = 0, size = 10): Promise<PagedReference<Lab>> {
+  return http.get<PagedReference<Lab>>(`/admin/labs?moduleId=${moduleId}&page=${page}&size=${size}`)
 }
 
 // ── Mutations — wired once the endpoints are defined ─────────────────────────
@@ -41,8 +26,16 @@ export async function addSpecialization(cohortId: string, name: string, code: st
   return http.post<Specialization>(`/admin/specializations`, { cohortId, name, code })
 }
 
-export async function addModule(specializationId: string, name: string, code: string): Promise<Module> {
-  return http.post<Module>(`/admin/specializations/${specializationId}/modules`, { name, code })
+export async function updateSpecialization(id: string, name: string, code: string): Promise<Specialization> {
+  return http.put<Specialization>(`/admin/specializations/${id}`, { name, code })
+}
+
+export async function addModule(cohortId: string, specializationId: string, name: string): Promise<Module> {
+  return http.post<Module>(`/modules`, { name, cohortId, specializationId })
+}
+
+export async function updateModule(id: string, name: string, status: string): Promise<Module> {
+  return http.patch<Module>(`/modules/${id}`, { name, status })
 }
 
 export async function addLab(payload: AddLabPayload): Promise<Lab> {

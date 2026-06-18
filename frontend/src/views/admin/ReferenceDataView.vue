@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, computed } from 'vue'
+import { useRoute } from 'vue-router'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import VDrawer from '@/components/base/VDrawer.vue'
@@ -10,7 +11,9 @@ import {
   getModules,
   getLabs,
   addSpecialization,
+  updateSpecialization,
   addModule,
+  updateModule,
   addLab,
   updateLab,
   forceEditLab,
@@ -20,6 +23,7 @@ import type { Specialization, Module, Lab } from '@/types/reference.types'
 import type { CohortRow } from '@/types/cohort.types'
 
 const toast = useToastStore()
+const route = useRoute()
 
 // ── Data ────────────────────────────────────────────────────────────────────
 const cohorts = ref<CohortRow[]>([])
@@ -37,19 +41,41 @@ const loading = ref({ specs: false, mods: false, labs: false })
 const loadErrors = ref({ specs: null as string | null, mods: null as string | null, labs: null as string | null })
 const submitting = ref(false)
 
+// ── Pagination ────────────────────────────────────────────────────────────────
+const PAGE_SIZE = 10
+
+const specPage = ref(0)
+const specTotalPages = ref(0)
+const specTotalElements = ref(0)
+const specIsLastPage = ref(true)
+
+const modPage = ref(0)
+const modTotalPages = ref(0)
+const modTotalElements = ref(0)
+const modIsLastPage = ref(true)
+
+const labPage = ref(0)
+const labTotalPages = ref(0)
+const labTotalElements = ref(0)
+const labIsLastPage = ref(true)
+
 // ── Drawer / Modal visibility ────────────────────────────────────────────────
 const showAddSpecDrawer = ref(false)
 const showAddModDrawer = ref(false)
 const showAddLabDrawer = ref(false)
 const editTarget = ref<Lab | null>(null)
 const forceEditTarget = ref<Lab | null>(null)
+const editSpecTarget = ref<Specialization | null>(null)
+const editModTarget = ref<Module | null>(null)
 
 // ── Forms ────────────────────────────────────────────────────────────────────
 const addSpecForm = ref({ name: '', code: '', error: '' })
-const addModForm = ref({ name: '', code: '', error: '' })
+const addModForm = ref({ name: '', error: '' })
 const addLabForm = ref({ title: '', maxScore: '', error: '' })
 const editLabForm = ref({ title: '', maxScore: '', error: '' })
 const forceEditForm = ref({ maxScore: '', reason: '', error: '' })
+const editSpecForm = ref({ name: '', code: '', error: '' })
+const editModForm = ref({ name: '', status: 'ACTIVE', error: '' })
 
 // ── Computed ─────────────────────────────────────────────────────────────────
 const selectedSpec = computed(() =>
@@ -60,11 +86,16 @@ const selectedCohort = computed(() =>
 )
 
 // ── Fetch helpers (also used by retry buttons) ────────────────────────────────
-async function fetchSpecs(id: string) {
+async function fetchSpecs(id: string, page = 0) {
   loading.value.specs = true
   loadErrors.value.specs = null
   try {
-    specializations.value = await getSpecializations(id)
+    const result = await getSpecializations(id, page, PAGE_SIZE)
+    specializations.value = result.content
+    specPage.value = result.page
+    specTotalPages.value = result.totalPages
+    specTotalElements.value = result.totalElements
+    specIsLastPage.value = result.last
   } catch {
     loadErrors.value.specs = 'Failed to load specializations.'
   } finally {
@@ -72,11 +103,16 @@ async function fetchSpecs(id: string) {
   }
 }
 
-async function fetchMods(specId: string) {
+async function fetchMods(specId: string, page = 0) {
   loading.value.mods = true
   loadErrors.value.mods = null
   try {
-    modules.value = await getModules(specId)
+    const result = await getModules(specId, page, PAGE_SIZE)
+    modules.value = result.content
+    modPage.value = result.page
+    modTotalPages.value = result.totalPages
+    modTotalElements.value = result.totalElements
+    modIsLastPage.value = result.last
   } catch {
     loadErrors.value.mods = 'Failed to load modules.'
   } finally {
@@ -84,11 +120,16 @@ async function fetchMods(specId: string) {
   }
 }
 
-async function fetchLabs(id: string) {
+async function fetchLabs(id: string, page = 0) {
   loading.value.labs = true
   loadErrors.value.labs = null
   try {
-    labs.value = await getLabs(id)
+    const result = await getLabs(id, page, PAGE_SIZE)
+    labs.value = result.content
+    labPage.value = result.page
+    labTotalPages.value = result.totalPages
+    labTotalElements.value = result.totalElements
+    labIsLastPage.value = result.last
   } catch {
     loadErrors.value.labs = 'Failed to load labs.'
   } finally {
@@ -104,8 +145,11 @@ watch(selectedCohortId, async (id) => {
   selectedSpecId.value = null
   selectedModId.value = null
   loadErrors.value = { specs: null, mods: null, labs: null }
+  specPage.value = 0
+  modPage.value = 0
+  labPage.value = 0
   if (id === null) return
-  await fetchSpecs(id)
+  await fetchSpecs(id, 0)
 })
 
 watch(selectedSpecId, async (specId) => {
@@ -114,25 +158,36 @@ watch(selectedSpecId, async (specId) => {
   selectedModId.value = null
   loadErrors.value.mods = null
   loadErrors.value.labs = null
+  modPage.value = 0
+  labPage.value = 0
   if (specId === null) return
-  await fetchMods(specId)
+  await fetchMods(specId, 0)
 })
 
 watch(selectedModId, async (id) => {
   labs.value = []
   loadErrors.value.labs = null
+  labPage.value = 0
   if (id === null) return
-  await fetchLabs(id)
+  await fetchLabs(id, 0)
 })
 
 // ── Mount ────────────────────────────────────────────────────────────────────
 onMounted(async () => {
   const result = await getCohorts(0, 100)
   cohorts.value = result.content
-  if (cohorts.value.length > 0) {
+  const queryCohortId = route.query.cohortId as string | undefined
+  if (queryCohortId && cohorts.value.some((c) => c.id === queryCohortId)) {
+    selectedCohortId.value = queryCohortId
+  } else if (cohorts.value.length > 0) {
     selectedCohortId.value = cohorts.value[0]!.id
   }
 })
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function isCohortLockedError(err: unknown): boolean {
+  return err instanceof Error && err.message.toLowerCase().includes('locked')
+}
 
 // ── Actions ──────────────────────────────────────────────────────────────────
 function selectSpec(id: string) {
@@ -150,12 +205,32 @@ function closeAddSpecDrawer() {
 
 function closeAddModDrawer() {
   showAddModDrawer.value = false
-  addModForm.value = { name: '', code: '', error: '' }
+  addModForm.value = { name: '', error: '' }
 }
 
 function closeAddLabDrawer() {
   showAddLabDrawer.value = false
   addLabForm.value = { title: '', maxScore: '', error: '' }
+}
+
+function openEditSpec(spec: Specialization) {
+  editSpecTarget.value = spec
+  editSpecForm.value = { name: spec.name, code: spec.code, error: '' }
+}
+
+function closeEditSpec() {
+  editSpecTarget.value = null
+  editSpecForm.value = { name: '', code: '', error: '' }
+}
+
+function openEditMod(mod: Module) {
+  editModTarget.value = mod
+  editModForm.value = { name: mod.name, status: mod.status, error: '' }
+}
+
+function closeEditMod() {
+  editModTarget.value = null
+  editModForm.value = { name: '', status: 'ACTIVE', error: '' }
 }
 
 function openEditLab(lab: Lab) {
@@ -194,8 +269,13 @@ async function submitAddSpec() {
     specializations.value.push(spec)
     closeAddSpecDrawer()
     toast.show({ tone: 'success', title: 'Specialization added' })
-  } catch {
-    addSpecForm.value.error = 'Failed to add specialization. Please try again.'
+  } catch (err) {
+    if (isCohortLockedError(err)) {
+      closeAddSpecDrawer()
+      toast.show({ tone: 'warning', title: 'Cohort is locked', body: 'Unlock the cohort before making changes.' })
+    } else {
+      addSpecForm.value.error = 'Failed to add specialization. Please try again.'
+    }
   } finally {
     submitting.value = false
   }
@@ -203,22 +283,27 @@ async function submitAddSpec() {
 
 async function submitAddMod() {
   addModForm.value.error = ''
-  if (!addModForm.value.code.trim() || !addModForm.value.name.trim()) {
-    addModForm.value.error = 'Code and name are required.'
+  if (!addModForm.value.name.trim()) {
+    addModForm.value.error = 'Module name is required.'
     return
   }
   submitting.value = true
   try {
     const mod = await addModule(
+      selectedCohortId.value!,
       selectedSpecId.value!,
       addModForm.value.name.trim(),
-      addModForm.value.code.trim(),
     )
     modules.value.push(mod)
     closeAddModDrawer()
     toast.show({ tone: 'success', title: 'Module added' })
-  } catch {
-    addModForm.value.error = 'Failed to add module. Please try again.'
+  } catch (err) {
+    if (isCohortLockedError(err)) {
+      closeAddModDrawer()
+      toast.show({ tone: 'warning', title: 'Cohort is locked', body: 'Unlock the cohort before making changes.' })
+    } else {
+      addModForm.value.error = 'Failed to add module. Please try again.'
+    }
   } finally {
     submitting.value = false
   }
@@ -245,8 +330,71 @@ async function submitAddLab() {
     labs.value.push(lab)
     closeAddLabDrawer()
     toast.show({ tone: 'success', title: 'Lab added' })
-  } catch {
-    addLabForm.value.error = 'Failed to add lab. Please try again.'
+  } catch (err) {
+    if (isCohortLockedError(err)) {
+      closeAddLabDrawer()
+      toast.show({ tone: 'warning', title: 'Cohort is locked', body: 'Unlock the cohort before making changes.' })
+    } else {
+      addLabForm.value.error = 'Failed to add lab. Please try again.'
+    }
+  } finally {
+    submitting.value = false
+  }
+}
+
+async function submitEditSpec() {
+  editSpecForm.value.error = ''
+  if (!editSpecForm.value.name.trim() || !editSpecForm.value.code.trim()) {
+    editSpecForm.value.error = 'Name and code are required.'
+    return
+  }
+  submitting.value = true
+  try {
+    const updated = await updateSpecialization(
+      editSpecTarget.value!.id,
+      editSpecForm.value.name.trim(),
+      editSpecForm.value.code.trim(),
+    )
+    const idx = specializations.value.findIndex((s) => s.id === editSpecTarget.value!.id)
+    if (idx !== -1) specializations.value[idx] = updated
+    closeEditSpec()
+    toast.show({ tone: 'success', title: 'Specialization updated' })
+  } catch (err) {
+    if (isCohortLockedError(err)) {
+      closeEditSpec()
+      toast.show({ tone: 'warning', title: 'Cohort is locked', body: 'Unlock the cohort before making changes.' })
+    } else {
+      editSpecForm.value.error = 'Failed to update specialization. Please try again.'
+    }
+  } finally {
+    submitting.value = false
+  }
+}
+
+async function submitEditMod() {
+  editModForm.value.error = ''
+  if (!editModForm.value.name.trim()) {
+    editModForm.value.error = 'Module name is required.'
+    return
+  }
+  submitting.value = true
+  try {
+    const updated = await updateModule(
+      editModTarget.value!.id,
+      editModForm.value.name.trim(),
+      editModForm.value.status,
+    )
+    const idx = modules.value.findIndex((m) => m.id === editModTarget.value!.id)
+    if (idx !== -1) modules.value[idx] = updated
+    closeEditMod()
+    toast.show({ tone: 'success', title: 'Module updated' })
+  } catch (err) {
+    if (isCohortLockedError(err)) {
+      closeEditMod()
+      toast.show({ tone: 'warning', title: 'Cohort is locked', body: 'Unlock the cohort before making changes.' })
+    } else {
+      editModForm.value.error = 'Failed to update module. Please try again.'
+    }
   } finally {
     submitting.value = false
   }
@@ -273,11 +421,28 @@ async function submitEditLab() {
     }
     closeEditLab()
     toast.show({ tone: 'success', title: 'Lab updated' })
-  } catch {
-    editLabForm.value.error = 'Failed to update lab. Please try again.'
+  } catch (err) {
+    if (isCohortLockedError(err)) {
+      closeEditLab()
+      toast.show({ tone: 'warning', title: 'Cohort is locked', body: 'Unlock the cohort before making changes.' })
+    } else {
+      editLabForm.value.error = 'Failed to update lab. Please try again.'
+    }
   } finally {
     submitting.value = false
   }
+}
+
+function goToSpecPage(page: number) {
+  if (selectedCohortId.value) fetchSpecs(selectedCohortId.value, page)
+}
+
+function goToModPage(page: number) {
+  if (selectedSpecId.value) fetchMods(selectedSpecId.value, page)
+}
+
+function goToLabPage(page: number) {
+  if (selectedModId.value) fetchLabs(selectedModId.value, page)
 }
 
 async function submitForceEdit() {
@@ -302,8 +467,13 @@ async function submitForceEdit() {
     if (idx !== -1) labs.value[idx]!.maxScore = max
     closeForceEdit()
     toast.show({ tone: 'success', title: 'Lab updated', body: 'Change recorded in audit trail.' })
-  } catch {
-    forceEditForm.value.error = 'Failed to apply force-edit. Please try again.'
+  } catch (err) {
+    if (isCohortLockedError(err)) {
+      closeForceEdit()
+      toast.show({ tone: 'warning', title: 'Cohort is locked', body: 'Unlock the cohort before making changes.' })
+    } else {
+      forceEditForm.value.error = 'Failed to apply force-edit. Please try again.'
+    }
   } finally {
     submitting.value = false
   }
@@ -363,23 +533,50 @@ async function submitForceEdit() {
         <button class="link" style="font-size: 13px" @click="selectedCohortId && fetchSpecs(selectedCohortId)">Try again</button>
       </div>
       <div v-else-if="specializations.length" class="rd-list">
-        <button
+        <div
           v-for="s in specializations"
           :key="s.id"
           :class="['rd-item', { on: s.id === selectedSpecId }]"
+          role="button"
+          tabindex="0"
           @click="selectSpec(s.id)"
+          @keydown.enter="selectSpec(s.id)"
         >
           <span>
             <span class="mono" style="font-size: 11px; color: var(--text-secondary); margin-right: 6px">{{ s.code }}</span>
             {{ s.name }}
           </span>
-          <VIcon v-if="s.id === selectedSpecId" name="chevron-right" :size="16" />
-        </button>
+          <span style="display: flex; align-items: center; gap: 4px; flex-shrink: 0">
+            <button class="rd-iconbtn" title="Edit" aria-label="Edit specialization" @click.stop="openEditSpec(s)">
+              <VIcon name="pencil" :size="15" />
+            </button>
+            <VIcon v-if="s.id === selectedSpecId" name="chevron-right" :size="16" />
+          </span>
+        </div>
       </div>
       <div v-else class="empty">
         <div class="empty-ic"><VIcon name="layers" :size="30" /></div>
         <p class="empty-title">No specializations</p>
         <p class="empty-body">Add the first specialization to this cohort.</p>
+      </div>
+      <div v-if="!loading.specs && specTotalPages > 1" class="pager">
+        <span class="pager-count">
+          Showing {{ specPage * PAGE_SIZE + 1 }}–{{ Math.min((specPage + 1) * PAGE_SIZE, specTotalElements) }} of {{ specTotalElements }}
+        </span>
+        <div class="pager-ctrls">
+          <button class="pg-arrow" aria-label="Previous" :disabled="specPage === 0" @click="goToSpecPage(specPage - 1)">
+            <VIcon name="chevron-left" :size="16" />
+          </button>
+          <button
+            v-for="p in specTotalPages"
+            :key="p"
+            :class="['pg-num', { on: p - 1 === specPage }]"
+            @click="goToSpecPage(p - 1)"
+          >{{ p }}</button>
+          <button class="pg-arrow" aria-label="Next" :disabled="specPage >= specTotalPages - 1" @click="goToSpecPage(specPage + 1)">
+            <VIcon name="chevron-right" :size="16" />
+          </button>
+        </div>
       </div>
     </div>
 
@@ -400,15 +597,23 @@ async function submitForceEdit() {
         <button class="link" style="font-size: 13px" @click="selectedSpecId && fetchMods(selectedSpecId)">Try again</button>
       </div>
       <div v-else-if="modules.length" class="rd-list">
-        <button
+        <div
           v-for="m in modules"
           :key="m.id"
           :class="['rd-item rd-item-mono', { on: m.id === selectedModId }]"
+          role="button"
+          tabindex="0"
           @click="selectMod(m.id)"
+          @keydown.enter="selectMod(m.id)"
         >
           <span><b style="color: var(--text-secondary); font-weight: 500">{{ m.sequence }}.</b> {{ m.name }}</span>
-          <VIcon v-if="m.id === selectedModId" name="chevron-right" :size="16" />
-        </button>
+          <span style="display: flex; align-items: center; gap: 4px; flex-shrink: 0">
+            <button class="rd-iconbtn" title="Edit" aria-label="Edit module" @click.stop="openEditMod(m)">
+              <VIcon name="pencil" :size="15" />
+            </button>
+            <VIcon v-if="m.id === selectedModId" name="chevron-right" :size="16" />
+          </span>
+        </div>
       </div>
       <div v-else-if="selectedSpecId" class="empty">
         <div class="empty-ic"><VIcon name="inbox" :size="30" /></div>
@@ -417,6 +622,25 @@ async function submitForceEdit() {
       </div>
       <div v-else class="empty">
         <p class="empty-body">Select a specialization to see its modules.</p>
+      </div>
+      <div v-if="!loading.mods && modTotalPages > 1" class="pager">
+        <span class="pager-count">
+          Showing {{ modPage * PAGE_SIZE + 1 }}–{{ Math.min((modPage + 1) * PAGE_SIZE, modTotalElements) }} of {{ modTotalElements }}
+        </span>
+        <div class="pager-ctrls">
+          <button class="pg-arrow" aria-label="Previous" :disabled="modPage === 0" @click="goToModPage(modPage - 1)">
+            <VIcon name="chevron-left" :size="16" />
+          </button>
+          <button
+            v-for="p in modTotalPages"
+            :key="p"
+            :class="['pg-num', { on: p - 1 === modPage }]"
+            @click="goToModPage(p - 1)"
+          >{{ p }}</button>
+          <button class="pg-arrow" aria-label="Next" :disabled="modPage >= modTotalPages - 1" @click="goToModPage(modPage + 1)">
+            <VIcon name="chevron-right" :size="16" />
+          </button>
+        </div>
       </div>
     </div>
 
@@ -487,6 +711,25 @@ async function submitForceEdit() {
             Labs with results attached cannot be edited. Use force-edit to update with audit trail.
           </span>
         </div>
+        <div v-if="labTotalPages > 1" class="pager">
+          <span class="pager-count">
+            Showing {{ labPage * PAGE_SIZE + 1 }}–{{ Math.min((labPage + 1) * PAGE_SIZE, labTotalElements) }} of {{ labTotalElements }}
+          </span>
+          <div class="pager-ctrls">
+            <button class="pg-arrow" aria-label="Previous" :disabled="labPage === 0" @click="goToLabPage(labPage - 1)">
+              <VIcon name="chevron-left" :size="16" />
+            </button>
+            <button
+              v-for="p in labTotalPages"
+              :key="p"
+              :class="['pg-num', { on: p - 1 === labPage }]"
+              @click="goToLabPage(p - 1)"
+            >{{ p }}</button>
+            <button class="pg-arrow" aria-label="Next" :disabled="labPage >= labTotalPages - 1" @click="goToLabPage(labPage + 1)">
+              <VIcon name="chevron-right" :size="16" />
+            </button>
+          </div>
+        </div>
       </template>
       <div v-else-if="selectedModId" class="empty">
         <div class="empty-ic"><VIcon name="inbox" :size="30" /></div>
@@ -498,6 +741,71 @@ async function submitForceEdit() {
       </div>
     </div>
   </div>
+
+  <!-- Edit Specialization Drawer -->
+  <VDrawer
+    :open="!!editSpecTarget"
+    title="Edit specialization"
+    :subtitle="editSpecTarget?.name ?? ''"
+    @close="closeEditSpec"
+  >
+    <label class="ff">
+      <span class="ff-label">Code <span style="color: var(--danger)">*</span></span>
+      <span class="ff-input">
+        <input v-model="editSpecForm.code" class="mono" placeholder="e.g. DA" />
+      </span>
+      <span class="ff-hint">Short uppercase identifier used in validation.</span>
+    </label>
+    <label class="ff">
+      <span class="ff-label">Name <span style="color: var(--danger)">*</span></span>
+      <span class="ff-input">
+        <input v-model="editSpecForm.name" placeholder="e.g. Data Analytics" />
+      </span>
+    </label>
+    <p v-if="editSpecForm.error" class="field-error">
+      <VIcon name="alert-circle" :size="14" />{{ editSpecForm.error }}
+    </p>
+    <template #footer>
+      <VButton variant="ghost" @click="closeEditSpec">Cancel</VButton>
+      <VButton variant="primary" :disabled="submitting" @click="submitEditSpec">Save changes</VButton>
+    </template>
+  </VDrawer>
+
+  <!-- Edit Module Drawer -->
+  <VDrawer
+    :open="!!editModTarget"
+    title="Edit module"
+    :subtitle="editModTarget?.name ?? ''"
+    @close="closeEditMod"
+  >
+    <label class="ff">
+      <span class="ff-label">Module name <span style="color: var(--danger)">*</span></span>
+      <span class="ff-input">
+        <input v-model="editModForm.name" placeholder="e.g. Machine Learning Basics" />
+      </span>
+    </label>
+    <div class="ff">
+      <span class="ff-label">Status</span>
+      <div style="position: relative; display: flex; align-items: center">
+        <select
+          v-model="editModForm.status"
+          class="ff-input"
+          style="appearance: none; -webkit-appearance: none; width: 100%; padding-right: 36px; cursor: pointer"
+        >
+          <option value="ACTIVE">Active</option>
+          <option value="INACTIVE">Inactive</option>
+        </select>
+        <VIcon name="chevron-down" :size="16" style="position: absolute; right: 12px; pointer-events: none; color: var(--text-secondary)" />
+      </div>
+    </div>
+    <p v-if="editModForm.error" class="field-error">
+      <VIcon name="alert-circle" :size="14" />{{ editModForm.error }}
+    </p>
+    <template #footer>
+      <VButton variant="ghost" @click="closeEditMod">Cancel</VButton>
+      <VButton variant="primary" :disabled="submitting" @click="submitEditMod">Save changes</VButton>
+    </template>
+  </VDrawer>
 
   <!-- Add Specialization Drawer -->
   <VDrawer
@@ -537,13 +845,6 @@ async function submitForceEdit() {
     :subtitle="`Add a module to ${selectedSpec?.name ?? 'this specialization'}.`"
     @close="closeAddModDrawer"
   >
-    <label class="ff">
-      <span class="ff-label">Module code <span style="color: var(--danger)">*</span></span>
-      <span class="ff-input">
-        <input v-model="addModForm.code" class="mono" placeholder="e.g. DA-05" />
-      </span>
-      <span class="ff-hint">Used as a short identifier in CSV validation.</span>
-    </label>
     <label class="ff">
       <span class="ff-label">Module name <span style="color: var(--danger)">*</span></span>
       <span class="ff-input">
