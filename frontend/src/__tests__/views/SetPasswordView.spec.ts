@@ -152,7 +152,7 @@ describe('SetPasswordView', () => {
       vi.mocked(changePasswordApi).mockRejectedValue(new Error('Server error'))
       const { wrapper } = mountView(ADMIN_RESPONSE)
       await fillAndSubmit(wrapper, 'securepass123!', 'securepass123!')
-      expect(wrapper.text()).toContain('Failed to set password')
+      expect(wrapper.text()).toContain('Server error')
     })
 
     it('does not navigate when the API throws', async () => {
