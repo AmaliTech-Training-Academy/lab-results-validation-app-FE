@@ -1,7 +1,11 @@
 import type { InstructorDashboardData, MyUpload, AssignedModule } from '@/types/dashboard.types'
 import type { TemplateData } from '@/types/instructor.types'
 import type { ValidationReport } from '@/types/report.types'
+import { BulkImportError } from '@/types/bulk.types'
+import type { BulkRowError } from '@/types/bulk.types'
 import { http } from './http'
+
+export { BulkImportError }
 
 const BASE_URL = '/api/v1'
 
@@ -167,9 +171,30 @@ export async function uploadCsv(file: File): Promise<{ uploadId: string }> {
 
   const json = JSON.parse(text) as Record<string, unknown>
   if ('data' in json && 'success' in json) {
-    const envelope = json as { success: boolean; message: string; data: { uploadId: string } }
-    if (!envelope.success) throw new Error(envelope.message || 'Upload failed')
-    return envelope.data
+    interface BulkData {
+      errors?: Array<{ rowNumber?: number; field?: string; message?: string }>
+      insertedCount?: number
+      updatedCount?: number
+      rejectedCount?: number
+      uploadId?: string
+    }
+    const envelope = json as { success: boolean; message: string; data: BulkData }
+    if (!envelope.success) {
+      const data = envelope.data ?? {}
+      const rowErrors: BulkRowError[] = (data.errors ?? []).map((e) => ({
+        row: typeof e.rowNumber === 'number' ? e.rowNumber : undefined,
+        field: typeof e.field === 'string' ? e.field : undefined,
+        message: typeof e.message === 'string' ? e.message : '',
+      }))
+      const inserted = (data.insertedCount ?? 0) + (data.updatedCount ?? 0)
+      throw new BulkImportError(
+        envelope.message || 'Upload failed',
+        rowErrors,
+        inserted > 0 ? inserted : undefined,
+        data.rejectedCount,
+      )
+    }
+    return envelope.data as { uploadId: string }
   }
 
   if (!res.ok) {

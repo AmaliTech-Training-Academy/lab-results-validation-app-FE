@@ -47,7 +47,7 @@ export async function addLab(payload: AddLabPayload): Promise<Lab> {
 }
 
 export async function updateLab(payload: UpdateLabPayload): Promise<void> {
-  return http.put(`/admin/labs/${payload.labId}`, { title: payload.title, maxScore: payload.maxScore })
+  return http.patch(`/admin/labs/${payload.labId}`, { title: payload.title, maxScore: payload.maxScore })
 }
 
 export async function forceEditLab(payload: ForceEditLabPayload): Promise<void> {
