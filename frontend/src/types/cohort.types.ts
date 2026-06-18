@@ -15,6 +15,13 @@ export interface CreateCohortPayload {
   endDate: string
 }
 
+export type UpdateCohortPayload = Partial<{
+  name: string
+  startDate: string
+  endDate: string
+  active: boolean
+}>
+
 export interface PagedCohorts {
   content: CohortRow[]
   page: number
