@@ -124,7 +124,7 @@ watch(filterCohortId, async (id) => {
   filterSpecId.value = null
   filterSpecOptions.value = []
   if (id) {
-    filterSpecOptions.value = await getSpecializations(id)
+    filterSpecOptions.value = (await getSpecializations(id)).content
   }
   currentPage.value = 0
   loadLearners(0)
@@ -185,7 +185,7 @@ async function openEdit(learner: Learner) {
     status: learner.status,
     error: '',
   }
-  formSpecOptions.value = await getSpecializations(learner.cohortId)
+  formSpecOptions.value = (await getSpecializations(learner.cohortId)).content
   form.value.specId = learner.specializationId
   showDrawer.value = true
 }
@@ -202,7 +202,7 @@ async function onFormCohortChange(event: Event) {
   form.value.specId = null
   formSpecOptions.value = []
   if (form.value.cohortId) {
-    formSpecOptions.value = await getSpecializations(form.value.cohortId)
+    formSpecOptions.value = (await getSpecializations(form.value.cohortId)).content
   }
 }
 
