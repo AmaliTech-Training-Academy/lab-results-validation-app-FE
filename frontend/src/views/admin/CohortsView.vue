@@ -58,8 +58,9 @@ async function loadCohorts(page = currentPage.value) {
     currentPage.value = result.page
     totalElements.value = result.totalElements
     totalPages.value = result.totalPages
-  } catch {
-    loadError.value = 'Failed to load cohorts. Check your connection and try again.'
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    loadError.value = msg || 'Failed to load cohorts. Check your connection and try again.'
   } finally {
     clearTimeout(slowTimer)
     isLoading.value = false
@@ -140,8 +141,9 @@ async function submitForm() {
       toast.show({ tone: 'success', title: 'Cohort created' })
     }
     closeDrawer()
-  } catch {
-    form.value.error = editTarget.value ? 'Failed to update cohort. Please try again.' : 'Failed to create cohort. Please try again.'
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    form.value.error = msg || (editTarget.value ? 'Failed to update cohort. Please try again.' : 'Failed to create cohort. Please try again.')
   } finally {
     submitting.value = false
   }
@@ -161,8 +163,9 @@ async function toggleActive(cohort: CohortRow) {
     const idx = cohorts.value.findIndex((c) => c.id === cohort.id)
     if (idx !== -1) cohorts.value[idx]!.active = newActive
     toast.show({ tone: 'success', title: newActive ? 'Cohort restored' : 'Cohort archived' })
-  } catch {
-    toast.show({ tone: 'warning', title: 'Action failed. Please try again.' })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    toast.show({ tone: 'warning', title: 'Action failed', body: msg || 'Please try again.' })
   }
 }
 
@@ -177,8 +180,9 @@ async function toggleLock(cohort: CohortRow) {
     const idx = cohorts.value.findIndex((c) => c.id === cohort.id)
     if (idx !== -1) cohorts.value[idx]!.locked = !cohort.locked
     toast.show({ tone: 'success', title: cohort.locked ? 'Cohort locked' : 'Cohort Unlocked' })
-  } catch {
-    toast.show({ tone: 'warning', title: 'Action failed. Please try again.' })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    toast.show({ tone: 'warning', title: 'Action failed', body: msg || 'Please try again.' })
   }
 }
 </script>
@@ -338,6 +342,7 @@ async function toggleLock(cohort: CohortRow) {
     :open="showDrawer"
     :title="drawerTitle"
     subtitle="A cohort is a time-bound group of learners progressing together."
+    :error="form.error || undefined"
     @close="closeDrawer"
   >
     <label class="ff">
@@ -361,9 +366,6 @@ async function toggleLock(cohort: CohortRow) {
         :error="dateRangeError"
       />
     </div>
-    <p v-if="form.error" class="field-error">
-      <VIcon name="alert-circle" :size="14" />{{ form.error }}
-    </p>
     <template #footer>
       <VButton variant="ghost" @click="closeDrawer">Cancel</VButton>
       <VButton variant="primary" :disabled="submitting" @click="submitForm">

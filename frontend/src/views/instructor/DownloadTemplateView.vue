@@ -44,7 +44,11 @@ async function loadData() {
       fetchLabResultsTemplateHeaders(),
     ])
     if (templateData.status === 'fulfilled') data.value = templateData.value
-    else loadError.value = 'Failed to load template data. Check your connection and try again.'
+    else {
+      const reason = (templateData as PromiseRejectedResult).reason
+      const msg = reason instanceof Error ? reason.message : ''
+      loadError.value = msg || 'Failed to load template data. Check your connection and try again.'
+    }
     if (headers.status === 'fulfilled') templateCols.value = headers.value
   } finally {
     isLoading.value = false
@@ -58,8 +62,9 @@ async function downloadTemplate() {
   try {
     await downloadLabResultsTemplate()
     toast.show({ tone: 'success', title: 'Download started', body: data.value?.filename })
-  } catch {
-    toast.show({ tone: 'danger', title: 'Download failed', body: 'Could not download the template. Please try again.' })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    toast.show({ tone: 'danger', title: 'Download failed', body: msg || 'Could not download the template. Please try again.' })
   } finally {
     isDownloading.value = false
   }

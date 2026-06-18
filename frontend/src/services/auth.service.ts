@@ -20,3 +20,7 @@ export async function changePasswordApi(currentPassword: string, newPassword: st
 export async function forgotPasswordApi(email: string): Promise<void> {
   return http.post<void>('/auth/forgot-password', { email })
 }
+
+export async function resetPasswordApi(token: string, newPassword: string): Promise<void> {
+  return http.post<void>('/auth/reset-password', { token, newPassword })
+}

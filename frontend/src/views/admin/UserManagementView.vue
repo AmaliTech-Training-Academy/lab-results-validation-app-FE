@@ -94,8 +94,9 @@ async function loadInstructors(page = 0) {
     totalElements.value = result.totalElements
     totalPages.value = result.totalPages
     isLastPage.value = result.last
-  } catch {
-    loadError.value = 'Failed to load instructors. Check your connection and try again.'
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    loadError.value = msg || 'Failed to load instructors. Check your connection and try again.'
   } finally {
     clearTimeout(slowTimer)
     isLoading.value = false
@@ -148,8 +149,9 @@ async function toggleStatus(instructor: InstructorUser) {
     const idx = instructors.value.findIndex((u) => u.id === instructor.id)
     if (idx !== -1) instructors.value[idx] = { ...instructors.value[idx]!, active: updated.active }
     toast.show({ tone: 'success', title: updated.active ? 'Instructor activated' : 'Instructor deactivated' })
-  } catch {
-    toast.show({ tone: 'warning', title: 'Failed to update status' })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    toast.show({ tone: 'warning', title: 'Failed to update status', body: msg || undefined })
   }
 }
 
@@ -332,9 +334,10 @@ async function submitForm() {
     } else {
       console.error('[instructor:create] account stage failed', err)
     }
-    form.value.error = editTarget.value
+    const msg = err instanceof Error ? err.message : ''
+    form.value.error = msg || (editTarget.value
       ? 'Failed to update instructor. Please try again.'
-      : 'Failed to create instructor. Please try again.'
+      : 'Failed to create instructor. Please try again.')
   } finally {
     submitting.value = false
   }
@@ -472,7 +475,7 @@ async function submitForm() {
   </VDrawer>
 
   <!-- Add / Edit Drawer -->
-  <VDrawer :open="showDrawer" :title="drawerTitle" :subtitle="drawerSubtitle" @close="closeDrawer">
+  <VDrawer :open="showDrawer" :title="drawerTitle" :subtitle="drawerSubtitle" :error="form.error || undefined" @close="closeDrawer">
     <div class="ff-group-title">Account details</div>
 
     <div class="ff">
@@ -514,10 +517,6 @@ async function submitForm() {
         </label>
       </div>
     </div>
-
-    <p v-if="form.error" class="field-error">
-      <VIcon name="alert-circle" :size="14" />{{ form.error }}
-    </p>
 
     <template #footer>
       <VButton variant="ghost" @click="closeDrawer">Cancel</VButton>

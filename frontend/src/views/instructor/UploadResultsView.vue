@@ -44,7 +44,8 @@ async function validate() {
     if (isCohortLockedError(err)) {
       toast.show({ tone: 'warning', title: 'Cohort is locked', body: 'Results cannot be uploaded until the cohort is locked for grading.' })
     } else {
-      toast.show({ tone: 'danger', title: 'Upload failed', body: 'Could not process your file. Please try again.' })
+      const msg = err instanceof Error ? err.message : ''
+      toast.show({ tone: 'danger', title: 'Upload failed', body: msg || 'Could not process your file. Please try again.' })
     }
     phase.value = 'idle'
   }
