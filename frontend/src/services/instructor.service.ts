@@ -11,6 +11,10 @@ interface InstructorModuleItem {
   specializationName: string
 }
 
+interface PagedModuleItems {
+  content: InstructorModuleItem[]
+}
+
 export interface LabResultItem {
   id: string
   learnerEmail: string
@@ -99,11 +103,13 @@ function delay(ms: number) {
 // ---------------------------------------------------------------------------
 
 export async function getModuleLabResults(moduleId: string): Promise<LabResultItem[]> {
-  return http.get<LabResultItem[]>(`/lab-results/modules/${moduleId}`)
+  const result = await http.get<LabResultItem[] | { content: LabResultItem[] }>(`/lab-results/modules/${moduleId}`)
+  return Array.isArray(result) ? result : (result.content ?? [])
 }
 
 export async function getInstructorModules(instructorId: string): Promise<AssignedModule[]> {
-  const items = await http.get<InstructorModuleItem[]>(`/admin/instructors/${instructorId}/modules`)
+  const response = await http.get<PagedModuleItems>(`/admin/instructors/${instructorId}/modules`)
+  const items = response.content ?? []
 
   const counts = await Promise.allSettled(
     items.map((m) => getModuleLabResults(m.moduleId)),
@@ -166,7 +172,10 @@ export async function uploadCsv(file: File): Promise<{ uploadId: string }> {
     return envelope.data
   }
 
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  if (!res.ok) {
+    const message = typeof json.message === 'string' ? json.message : text
+    throw new Error(message || `HTTP ${res.status}`)
+  }
   return json as { uploadId: string }
 }
 
@@ -181,9 +190,18 @@ export async function fetchLabResultsTemplateHeaders(): Promise<string[]> {
     credentials: 'include',
   })
 
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const text = await res.text().catch(() => '')
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`
+    if (text) {
+      try {
+        const errJson = JSON.parse(text) as Record<string, unknown>
+        if (typeof errJson.message === 'string') message = errJson.message
+      } catch { message = text || message }
+    }
+    throw new Error(message)
+  }
 
-  const text = await res.text()
   const firstLine = text.split(/\r?\n/)[0] ?? ''
   return firstLine.split(',').map((col) => col.replace(/^"|"$/g, '').trim()).filter(Boolean)
 }
@@ -199,7 +217,17 @@ export async function downloadLabResultsTemplate(): Promise<void> {
     credentials: 'include',
   })
 
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '')
+    let message = `HTTP ${res.status}`
+    if (errText) {
+      try {
+        const errJson = JSON.parse(errText) as Record<string, unknown>
+        if (typeof errJson.message === 'string') message = errJson.message
+      } catch { message = errText || message }
+    }
+    throw new Error(message)
+  }
 
   const blob = await res.blob()
   const disposition = res.headers.get('Content-Disposition') ?? ''

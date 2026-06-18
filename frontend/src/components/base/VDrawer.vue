@@ -6,6 +6,7 @@ const props = defineProps<{
   open: boolean
   title: string
   subtitle?: string
+  error?: string
 }>()
 
 const emit = defineEmits<{
@@ -99,6 +100,10 @@ function onKeydown(e: KeyboardEvent) {
         </div>
         <div class="drawer-body">
           <slot />
+        </div>
+        <div v-if="error" class="drawer-error" role="alert">
+          <VIcon name="alert-circle" :size="15" style="flex-shrink: 0" />
+          {{ error }}
         </div>
         <div v-if="$slots.footer" class="drawer-foot">
           <slot name="footer" />

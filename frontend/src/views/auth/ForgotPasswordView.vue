@@ -37,8 +37,9 @@ async function submit() {
   try {
     await forgotPasswordApi(email.value.trim())
     submitted.value = true
-  } catch {
-    error.value = 'Something went wrong. Please try again.'
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    error.value = msg || 'Something went wrong. Please try again.'
   } finally {
     isLoading.value = false
   }

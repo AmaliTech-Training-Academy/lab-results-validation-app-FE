@@ -91,6 +91,9 @@ export function navigationGuard(to: RouteLocationNormalized): RouteLocationRaw |
   // Public routes — let through
   if (!to.meta.requiresAuth) return true
 
+  // Password reset via email link — token in query param means unauthenticated access is valid
+  if (to.name === 'set-password' && to.query.token) return true
+
   // Must be authenticated to proceed past this point
   if (!auth.isAuthenticated) {
     return { name: 'login', query: { redirect: to.fullPath } }
@@ -101,8 +104,8 @@ export function navigationGuard(to: RouteLocationNormalized): RouteLocationRaw |
     return { name: 'set-password' }
   }
 
-  // Password already changed — no need to revisit /set-password
-  if (!auth.mustChangePassword && to.name === 'set-password') {
+  // Password already changed — no need to revisit /set-password (unless it's a reset link)
+  if (!auth.mustChangePassword && to.name === 'set-password' && !to.query.token) {
     return { name: auth.isAdmin ? 'admin-dashboard' : 'instructor-dashboard' }
   }
 

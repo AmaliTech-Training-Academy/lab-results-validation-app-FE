@@ -27,8 +27,9 @@ async function loadUploads() {
   listError.value = null
   try {
     uploads.value = await getMyUploads()
-  } catch {
-    listError.value = 'Failed to load uploads. Check your connection and try again.'
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    listError.value = msg || 'Failed to load uploads. Check your connection and try again.'
   } finally {
     listLoading.value = false
   }
@@ -39,8 +40,9 @@ async function loadReport(uploadId: string) {
   report.value = null
   try {
     report.value = await getUploadReport(uploadId)
-  } catch {
-    toast.show({ tone: 'danger', title: 'Could not load report', body: 'Please try again.' })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    toast.show({ tone: 'danger', title: 'Could not load report', body: msg || 'Please try again.' })
     router.push({ name: 'instructor-uploads' })
   } finally {
     reportLoading.value = false

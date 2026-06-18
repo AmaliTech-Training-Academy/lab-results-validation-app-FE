@@ -85,8 +85,9 @@ async function loadLearners(page = currentPage.value) {
     totalElements.value = result.totalElements
     totalPages.value = result.totalPages
     isLastPage.value = result.last
-  } catch {
-    loadError.value = 'Failed to load learners. Check your connection and try again.'
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    loadError.value = msg || 'Failed to load learners. Check your connection and try again.'
   } finally {
     clearTimeout(slowTimer)
     isLoading.value = false
@@ -243,7 +244,8 @@ async function submitForm() {
       closeDrawer()
       toast.show({ tone: 'warning', title: 'Cohort is locked', body: 'Unlock the cohort before making changes.' })
     } else {
-      form.value.error = 'Something went wrong. Please try again.'
+      const msg = err instanceof Error ? err.message : ''
+      form.value.error = msg || 'Something went wrong. Please try again.'
     }
   } finally {
     submitting.value = false
@@ -261,7 +263,8 @@ async function toggleStatus(learner: Learner) {
     if (err instanceof Error && err.message.toLowerCase().includes('locked')) {
       toast.show({ tone: 'warning', title: 'Cohort is locked', body: 'Unlock the cohort before making changes.' })
     } else {
-      toast.show({ tone: 'warning', title: 'Failed to update status' })
+      const msg = err instanceof Error ? err.message : ''
+      toast.show({ tone: 'warning', title: 'Failed to update status', body: msg || undefined })
     }
   }
 }
@@ -433,6 +436,7 @@ function goToPage(page: number) {
     :open="showDrawer"
     :title="drawerTitle"
     subtitle="Learners are reference records used for validation lookups."
+    :error="form.error || undefined"
     @close="closeDrawer"
   >
     <label class="ff">
@@ -481,9 +485,6 @@ function goToPage(page: number) {
         </div>
       </label>
     </div>
-    <p v-if="form.error" class="field-error">
-      <VIcon name="alert-circle" :size="14" />{{ form.error }}
-    </p>
     <template #footer>
       <VButton variant="ghost" @click="closeDrawer">Cancel</VButton>
       <VButton variant="primary" :disabled="submitting" @click="submitForm">
