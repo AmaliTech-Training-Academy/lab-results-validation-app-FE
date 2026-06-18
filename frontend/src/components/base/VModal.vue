@@ -7,6 +7,7 @@ const props = defineProps<{
   title: string
   subtitle?: string
   tone?: 'warning'
+  error?: string
 }>()
 
 const emit = defineEmits<{
@@ -100,6 +101,10 @@ function onKeydown(e: KeyboardEvent) {
         </div>
         <div class="modal-body">
           <slot />
+        </div>
+        <div v-if="error" class="modal-error" role="alert">
+          <VIcon name="alert-circle" :size="15" style="flex-shrink: 0" />
+          {{ error }}
         </div>
         <div v-if="$slots.footer" class="modal-foot">
           <slot name="footer" />

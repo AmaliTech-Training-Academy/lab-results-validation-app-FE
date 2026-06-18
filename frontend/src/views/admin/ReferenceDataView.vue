@@ -96,8 +96,9 @@ async function fetchSpecs(id: string, page = 0) {
     specTotalPages.value = result.totalPages
     specTotalElements.value = result.totalElements
     specIsLastPage.value = result.last
-  } catch {
-    loadErrors.value.specs = 'Failed to load specializations.'
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    loadErrors.value.specs = msg || 'Failed to load specializations.'
   } finally {
     loading.value.specs = false
   }
@@ -113,8 +114,9 @@ async function fetchMods(specId: string, page = 0) {
     modTotalPages.value = result.totalPages
     modTotalElements.value = result.totalElements
     modIsLastPage.value = result.last
-  } catch {
-    loadErrors.value.mods = 'Failed to load modules.'
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    loadErrors.value.mods = msg || 'Failed to load modules.'
   } finally {
     loading.value.mods = false
   }
@@ -130,8 +132,9 @@ async function fetchLabs(id: string, page = 0) {
     labTotalPages.value = result.totalPages
     labTotalElements.value = result.totalElements
     labIsLastPage.value = result.last
-  } catch {
-    loadErrors.value.labs = 'Failed to load labs.'
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    loadErrors.value.labs = msg || 'Failed to load labs.'
   } finally {
     loading.value.labs = false
   }
@@ -274,7 +277,8 @@ async function submitAddSpec() {
       closeAddSpecDrawer()
       toast.show({ tone: 'warning', title: 'Cohort is locked', body: 'Unlock the cohort before making changes.' })
     } else {
-      addSpecForm.value.error = 'Failed to add specialization. Please try again.'
+      const msg = err instanceof Error ? err.message : ''
+      addSpecForm.value.error = msg || 'Failed to add specialization. Please try again.'
     }
   } finally {
     submitting.value = false
@@ -302,7 +306,8 @@ async function submitAddMod() {
       closeAddModDrawer()
       toast.show({ tone: 'warning', title: 'Cohort is locked', body: 'Unlock the cohort before making changes.' })
     } else {
-      addModForm.value.error = 'Failed to add module. Please try again.'
+      const msg = err instanceof Error ? err.message : ''
+      addModForm.value.error = msg || 'Failed to add module. Please try again.'
     }
   } finally {
     submitting.value = false
@@ -335,7 +340,8 @@ async function submitAddLab() {
       closeAddLabDrawer()
       toast.show({ tone: 'warning', title: 'Cohort is locked', body: 'Unlock the cohort before making changes.' })
     } else {
-      addLabForm.value.error = 'Failed to add lab. Please try again.'
+      const msg = err instanceof Error ? err.message : ''
+      addLabForm.value.error = msg || 'Failed to add lab. Please try again.'
     }
   } finally {
     submitting.value = false
@@ -364,7 +370,8 @@ async function submitEditSpec() {
       closeEditSpec()
       toast.show({ tone: 'warning', title: 'Cohort is locked', body: 'Unlock the cohort before making changes.' })
     } else {
-      editSpecForm.value.error = 'Failed to update specialization. Please try again.'
+      const msg = err instanceof Error ? err.message : ''
+      editSpecForm.value.error = msg || 'Failed to update specialization. Please try again.'
     }
   } finally {
     submitting.value = false
@@ -393,7 +400,8 @@ async function submitEditMod() {
       closeEditMod()
       toast.show({ tone: 'warning', title: 'Cohort is locked', body: 'Unlock the cohort before making changes.' })
     } else {
-      editModForm.value.error = 'Failed to update module. Please try again.'
+      const msg = err instanceof Error ? err.message : ''
+      editModForm.value.error = msg || 'Failed to update module. Please try again.'
     }
   } finally {
     submitting.value = false
@@ -426,7 +434,8 @@ async function submitEditLab() {
       closeEditLab()
       toast.show({ tone: 'warning', title: 'Cohort is locked', body: 'Unlock the cohort before making changes.' })
     } else {
-      editLabForm.value.error = 'Failed to update lab. Please try again.'
+      const msg = err instanceof Error ? err.message : ''
+      editLabForm.value.error = msg || 'Failed to update lab. Please try again.'
     }
   } finally {
     submitting.value = false
@@ -472,7 +481,8 @@ async function submitForceEdit() {
       closeForceEdit()
       toast.show({ tone: 'warning', title: 'Cohort is locked', body: 'Unlock the cohort before making changes.' })
     } else {
-      forceEditForm.value.error = 'Failed to apply force-edit. Please try again.'
+      const msg = err instanceof Error ? err.message : ''
+      forceEditForm.value.error = msg || 'Failed to apply force-edit. Please try again.'
     }
   } finally {
     submitting.value = false
@@ -747,6 +757,7 @@ async function submitForceEdit() {
     :open="!!editSpecTarget"
     title="Edit specialization"
     :subtitle="editSpecTarget?.name ?? ''"
+    :error="editSpecForm.error || undefined"
     @close="closeEditSpec"
   >
     <label class="ff">
@@ -762,9 +773,6 @@ async function submitForceEdit() {
         <input v-model="editSpecForm.name" placeholder="e.g. Data Analytics" />
       </span>
     </label>
-    <p v-if="editSpecForm.error" class="field-error">
-      <VIcon name="alert-circle" :size="14" />{{ editSpecForm.error }}
-    </p>
     <template #footer>
       <VButton variant="ghost" @click="closeEditSpec">Cancel</VButton>
       <VButton variant="primary" :disabled="submitting" @click="submitEditSpec">Save changes</VButton>
@@ -776,6 +784,7 @@ async function submitForceEdit() {
     :open="!!editModTarget"
     title="Edit module"
     :subtitle="editModTarget?.name ?? ''"
+    :error="editModForm.error || undefined"
     @close="closeEditMod"
   >
     <label class="ff">
@@ -798,9 +807,6 @@ async function submitForceEdit() {
         <VIcon name="chevron-down" :size="16" style="position: absolute; right: 12px; pointer-events: none; color: var(--text-secondary)" />
       </div>
     </div>
-    <p v-if="editModForm.error" class="field-error">
-      <VIcon name="alert-circle" :size="14" />{{ editModForm.error }}
-    </p>
     <template #footer>
       <VButton variant="ghost" @click="closeEditMod">Cancel</VButton>
       <VButton variant="primary" :disabled="submitting" @click="submitEditMod">Save changes</VButton>
@@ -812,6 +818,7 @@ async function submitForceEdit() {
     :open="showAddSpecDrawer"
     :title="`Add specialization — ${selectedCohort?.name ?? ''}`"
     subtitle="Add a new specialization to the selected cohort."
+    :error="addSpecForm.error || undefined"
     @close="closeAddSpecDrawer"
   >
     <label class="ff">
@@ -827,9 +834,6 @@ async function submitForceEdit() {
         <input v-model="addSpecForm.name" placeholder="e.g. Data Analytics" />
       </span>
     </label>
-    <p v-if="addSpecForm.error" class="field-error">
-      <VIcon name="alert-circle" :size="14" />{{ addSpecForm.error }}
-    </p>
     <template #footer>
       <VButton variant="ghost" @click="closeAddSpecDrawer">Cancel</VButton>
       <VButton variant="primary" :disabled="submitting" @click="submitAddSpec">
@@ -843,6 +847,7 @@ async function submitForceEdit() {
     :open="showAddModDrawer"
     title="Add module"
     :subtitle="`Add a module to ${selectedSpec?.name ?? 'this specialization'}.`"
+    :error="addModForm.error || undefined"
     @close="closeAddModDrawer"
   >
     <label class="ff">
@@ -851,9 +856,6 @@ async function submitForceEdit() {
         <input v-model="addModForm.name" placeholder="e.g. Machine Learning Basics" />
       </span>
     </label>
-    <p v-if="addModForm.error" class="field-error">
-      <VIcon name="alert-circle" :size="14" />{{ addModForm.error }}
-    </p>
     <template #footer>
       <VButton variant="ghost" @click="closeAddModDrawer">Cancel</VButton>
       <VButton variant="primary" :disabled="submitting" @click="submitAddMod">Add module</VButton>
@@ -865,6 +867,7 @@ async function submitForceEdit() {
     :open="showAddLabDrawer"
     title="Add lab"
     subtitle="Define a lab title and its maximum score."
+    :error="addLabForm.error || undefined"
     @close="closeAddLabDrawer"
   >
     <label class="ff">
@@ -881,9 +884,6 @@ async function submitForceEdit() {
       </span>
       <span class="ff-hint">Score in uploaded rows must be 0 ≤ score ≤ max score.</span>
     </label>
-    <p v-if="addLabForm.error" class="field-error">
-      <VIcon name="alert-circle" :size="14" />{{ addLabForm.error }}
-    </p>
     <template #footer>
       <VButton variant="ghost" @click="closeAddLabDrawer">Cancel</VButton>
       <VButton variant="primary" :disabled="submitting" @click="submitAddLab">Add lab</VButton>
@@ -895,6 +895,7 @@ async function submitForceEdit() {
     :open="!!editTarget"
     title="Edit lab"
     :subtitle="editTarget?.title ?? ''"
+    :error="editLabForm.error || undefined"
     @close="closeEditLab"
   >
     <label class="ff">
@@ -910,9 +911,6 @@ async function submitForceEdit() {
         <input v-model="editLabForm.maxScore" class="mono" type="number" min="1" />
       </span>
     </label>
-    <p v-if="editLabForm.error" class="field-error">
-      <VIcon name="alert-circle" :size="14" />{{ editLabForm.error }}
-    </p>
     <template #footer>
       <VButton variant="ghost" @click="closeEditLab">Cancel</VButton>
       <VButton variant="primary" :disabled="submitting" @click="submitEditLab">Save changes</VButton>
@@ -925,6 +923,7 @@ async function submitForceEdit() {
     tone="warning"
     title="Force-edit lab"
     :subtitle="forceEditTarget?.title ?? ''"
+    :error="forceEditForm.error || undefined"
     @close="closeForceEdit"
   >
     <div class="callout" style="margin-bottom: 4px">
@@ -951,9 +950,6 @@ async function submitForceEdit() {
         />
       </span>
     </label>
-    <p v-if="forceEditForm.error" class="field-error">
-      <VIcon name="alert-circle" :size="14" />{{ forceEditForm.error }}
-    </p>
     <template #footer>
       <VButton variant="ghost" @click="closeForceEdit">Cancel</VButton>
       <VButton variant="danger" :disabled="submitting" @click="submitForceEdit">
