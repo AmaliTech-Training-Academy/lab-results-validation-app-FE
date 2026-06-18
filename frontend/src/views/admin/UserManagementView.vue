@@ -31,6 +31,31 @@ const activeKebabId = ref<string | null>(null)
 const kebabPos = ref<{ top: number; left: number } | null>(null)
 const activeKebabInstructor = computed(() => instructors.value.find((u) => u.id === activeKebabId.value) ?? null)
 
+// ── Modules Viewer ────────────────────────────────────────────────────────────
+const showModulesDrawer = ref(false)
+const modulesTarget = ref<InstructorUser | null>(null)
+
+const groupedModules = computed(() => {
+  if (!modulesTarget.value) return []
+  const map = new Map<string, string[]>()
+  for (const m of modulesTarget.value.assignedModules) {
+    const list = map.get(m.specializationName) ?? []
+    list.push(m.moduleName)
+    map.set(m.specializationName, list)
+  }
+  return Array.from(map.entries()).map(([spec, modules]) => ({ spec, modules }))
+})
+
+function openModules(instructor: InstructorUser) {
+  modulesTarget.value = instructor
+  showModulesDrawer.value = true
+}
+
+function closeModulesDrawer() {
+  showModulesDrawer.value = false
+  modulesTarget.value = null
+}
+
 // ── Drawer ────────────────────────────────────────────────────────────────────
 const showDrawer = ref(false)
 const editTarget = ref<InstructorUser | null>(null)
@@ -370,7 +395,15 @@ async function submitForm() {
         <tr v-for="u in instructors" :key="u.id">
           <td style="font-weight: 600">{{ emailToName(u.email) }}</td>
           <td class="mono" style="color: var(--text-secondary)">{{ u.email }}</td>
-          <td style="text-align: center">{{ u.assignedModules.length }}</td>
+          <td style="text-align: center">
+            <button
+              v-if="u.assignedModules.length > 0"
+              class="link"
+              style="font-size: 13px; font-weight: 600"
+              @click="openModules(u)"
+            >{{ u.assignedModules.length }}</button>
+            <span v-else style="color: var(--text-secondary)">0</span>
+          </td>
           <td style="text-align: center">
             <VPill :tone="u.active ? 'success' : 'info'">
               {{ u.active ? 'Active' : 'Inactive' }}
@@ -408,6 +441,35 @@ async function submitForm() {
       </div>
     </div>
   </div>
+
+  <!-- View Modules Drawer -->
+  <VDrawer
+    :open="showModulesDrawer"
+    title="Assigned modules"
+    :subtitle="modulesTarget ? emailToName(modulesTarget.email) : ''"
+    @close="closeModulesDrawer"
+  >
+    <div v-if="!groupedModules.length" style="color: var(--text-secondary); font-size: 14px; padding: 8px 0">
+      No modules assigned.
+    </div>
+    <div v-for="group in groupedModules" :key="group.spec" class="mg">
+      <div class="mg-head">
+        <span class="mg-spec">{{ group.spec }}</span>
+      </div>
+      <div
+        v-for="mod in group.modules"
+        :key="mod"
+        class="mg-row"
+        style="cursor: default; pointer-events: none"
+      >
+        <VIcon name="book-open" :size="14" style="color: var(--text-secondary); flex-shrink: 0" />
+        <span>{{ mod }}</span>
+      </div>
+    </div>
+    <template #footer>
+      <VButton variant="ghost" @click="closeModulesDrawer">Close</VButton>
+    </template>
+  </VDrawer>
 
   <!-- Add / Edit Drawer -->
   <VDrawer :open="showDrawer" :title="drawerTitle" :subtitle="drawerSubtitle" @close="closeDrawer">

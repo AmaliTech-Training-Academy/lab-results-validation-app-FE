@@ -238,8 +238,13 @@ async function submitForm() {
       loadLearners(0)
     }
     closeDrawer()
-  } catch {
-    form.value.error = 'Something went wrong. Please try again.'
+  } catch (err) {
+    if (err instanceof Error && err.message.toLowerCase().includes('locked')) {
+      closeDrawer()
+      toast.show({ tone: 'warning', title: 'Cohort is locked', body: 'Unlock the cohort before making changes.' })
+    } else {
+      form.value.error = 'Something went wrong. Please try again.'
+    }
   } finally {
     submitting.value = false
   }
@@ -252,8 +257,12 @@ async function toggleStatus(learner: Learner) {
     await setLearnerStatus(learner.id, newStatus)
     loadLearners(currentPage.value)
     toast.show({ tone: 'success', title: newStatus === 'ARCHIVED' ? 'Learner archived' : 'Learner restored' })
-  } catch {
-    toast.show({ tone: 'warning', title: 'Failed to update status' })
+  } catch (err) {
+    if (err instanceof Error && err.message.toLowerCase().includes('locked')) {
+      toast.show({ tone: 'warning', title: 'Cohort is locked', body: 'Unlock the cohort before making changes.' })
+    } else {
+      toast.show({ tone: 'warning', title: 'Failed to update status' })
+    }
   }
 }
 
