@@ -10,6 +10,8 @@ import type { InstructorUser, ModuleGroup, AssignModulesResponse } from '@/types
 
 const toast = useToastStore()
 
+const PAGE_SIZE = 10
+
 // ── Data ─────────────────────────────────────────────────────────────────────
 const instructors = ref<InstructorUser[]>([])
 const moduleGroups = ref<ModuleGroup[]>([])
@@ -17,6 +19,12 @@ const isLoading = ref(true)
 const loadError = ref<string | null>(null)
 const loadSlow = ref(false)
 const LOAD_TIMEOUT_MS = 8000
+
+// ── Pagination ────────────────────────────────────────────────────────────────
+const currentPage = ref(0)
+const totalElements = ref(0)
+const totalPages = ref(0)
+const isLastPage = ref(true)
 
 // ── Kebab ─────────────────────────────────────────────────────────────────────
 const activeKebabId = ref<string | null>(null)
@@ -37,6 +45,9 @@ const drawerSubtitle = computed(() =>
   editTarget.value ? emailToName(editTarget.value.email) : 'Provision a new instructor account.',
 )
 
+const showingFrom = computed(() => totalElements.value === 0 ? 0 : currentPage.value * PAGE_SIZE + 1)
+const showingTo = computed(() => Math.min((currentPage.value + 1) * PAGE_SIZE, totalElements.value))
+
 function emailToName(email: string): string {
   const local = email.split('@')[0] ?? email
   return local
@@ -46,14 +57,18 @@ function emailToName(email: string): string {
 }
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
-async function loadData() {
+async function loadInstructors(page = 0) {
   isLoading.value = true
   loadError.value = null
   loadSlow.value = false
-
   const slowTimer = setTimeout(() => { loadSlow.value = true }, LOAD_TIMEOUT_MS)
   try {
-    ;[instructors.value, moduleGroups.value] = await Promise.all([getInstructors(), getModuleGroups()])
+    const result = await getInstructors(page, PAGE_SIZE)
+    instructors.value = result.content
+    currentPage.value = result.page
+    totalElements.value = result.totalElements
+    totalPages.value = result.totalPages
+    isLastPage.value = result.last
   } catch {
     loadError.value = 'Failed to load instructors. Check your connection and try again.'
   } finally {
@@ -61,6 +76,18 @@ async function loadData() {
     isLoading.value = false
     loadSlow.value = false
   }
+}
+
+async function loadData() {
+  const groupsPromise = getModuleGroups()
+    .then((g) => { moduleGroups.value = g })
+    .catch(() => {})
+  await Promise.all([loadInstructors(0), groupsPromise])
+}
+
+function goToPage(page: number) {
+  if (page < 0 || page >= totalPages.value) return
+  loadInstructors(page)
 }
 
 onMounted(() => {
@@ -260,18 +287,16 @@ async function submitForm() {
       // Stage 2 — assign modules (best-effort; instructor already exists if this fails)
       if (assignedIds.value.length > 0) {
         try {
-          const result = await assignInstructorModules(created.id, [...assignedIds.value])
-          instructors.value.push({ id: created.id, email: created.email, active: form.value.isActive, assignedModules: result.assignedModules })
+          await assignInstructorModules(created.id, [...assignedIds.value])
         } catch (err) {
           console.error('[instructor:create] module-assign stage failed', err)
-          instructors.value.push({ id: created.id, email: created.email, active: form.value.isActive, assignedModules: [] })
           toast.show({ tone: 'warning', title: 'Instructor created', body: 'Module assignment failed — edit the instructor to retry.' })
+          await loadInstructors(0)
           closeDrawer()
           return
         }
-      } else {
-        instructors.value.push({ id: created.id, email: created.email, active: form.value.isActive, assignedModules: [] })
       }
+      await loadInstructors(0)
 
       toast.show({ tone: 'success', title: 'Instructor added' })
       closeDrawer()
@@ -315,7 +340,7 @@ async function submitForm() {
     <VButton variant="ghost" icon="rotate-ccw" @click="loadData">Try again</VButton>
   </div>
 
-  <!-- Table -->
+  <!-- Table + Pagination -->
   <div v-else class="tbl-wrap">
     <table class="tbl">
       <thead>
@@ -359,6 +384,29 @@ async function submitForm() {
         </tr>
       </tbody>
     </table>
+
+    <!-- Pagination -->
+    <div v-if="!isLoading && totalElements > 0" class="pager">
+      <span class="pager-count">
+        Showing {{ showingFrom }} to {{ showingTo }} of {{ totalElements }} entries
+      </span>
+      <div class="pager-ctrls">
+        <button class="pg-arrow" aria-label="Previous" :disabled="currentPage === 0" @click="goToPage(currentPage - 1)">
+          <VIcon name="chevron-left" :size="16" />
+        </button>
+        <button
+          v-for="p in totalPages"
+          :key="p"
+          :class="['pg-num', { on: currentPage === p - 1 }]"
+          @click="goToPage(p - 1)"
+        >
+          {{ p }}
+        </button>
+        <button class="pg-arrow" aria-label="Next" :disabled="isLastPage" @click="goToPage(currentPage + 1)">
+          <VIcon name="chevron-right" :size="16" />
+        </button>
+      </div>
+    </div>
   </div>
 
   <!-- Add / Edit Drawer -->
