@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { forgotPasswordApi } from '@/services/auth.service'
-import AuthBrandPanel from '@/components/auth/AuthBrandPanel.vue'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
+import logoUrl from '@/assets/validata-logo.png'
+import mailboxUrl from '@/assets/mailbox.jpeg'
 
 const email = ref('')
 const emailTouched = ref(false)
@@ -45,41 +46,32 @@ async function submit() {
 </script>
 
 <template>
-  <div class="login">
-    <AuthBrandPanel tagline="The single source of truth for lab results validation and internal data auditing." />
+  <div class="auth-page">
+    <div class="auth-card">
+      <!-- Logo, top middle -->
+      <img :src="logoUrl" alt="Validata" class="brand-logo" />
 
-    <div class="login-form-pane">
       <!-- Success state -->
-      <div v-if="submitted" class="login-card">
-        <div class="lc-head">
-          <div class="fp-success-icon" aria-hidden="true">
-            <VIcon name="mail-check" :size="32" />
-          </div>
-          <h1 class="lc-title">Check your inbox</h1>
-          <p class="lc-sub">
-            If an account with that email exists, a password reset link has been sent.
-            Please check your inbox and spam folder.
-          </p>
-        </div>
-
-        <RouterLink to="/login" class="link" style="text-align: center; display: block">
-          Back to sign in
-        </RouterLink>
-      </div>
+      <template v-if="submitted">
+        <img :src="mailboxUrl" alt="" class="auth-illustration" aria-hidden="true" />
+        <h1 class="auth-title">Check your inbox</h1>
+        <p class="auth-sub">
+          If an account with that email exists, a password reset link has been sent.
+          Please check your inbox and spam folder.
+        </p>
+        <RouterLink to="/login" class="back-link">Back to sign in</RouterLink>
+      </template>
 
       <!-- Form state -->
-      <form v-else class="login-card" novalidate @submit.prevent="submit">
-        <div class="lc-head">
-          <h1 class="lc-title">Forgot password?</h1>
-          <p class="lc-sub">Enter your email and we'll send you a reset link.</p>
-        </div>
+      <form v-else novalidate @submit.prevent="submit">
+        <img :src="mailboxUrl" alt="" class="auth-illustration" aria-hidden="true" />
+
+        <h1 class="auth-title">Reset password</h1>
+        <p class="auth-sub">Enter your email and we'll send you a reset link.</p>
 
         <div class="field">
           <label for="fp-email">Email address</label>
-          <div
-            :class="['input', { 'input--error': emailError }]"
-            :aria-invalid="!!emailError"
-          >
+          <div :class="['input', { 'input--error': emailError }]">
             <span class="lead" aria-hidden="true"><VIcon name="mail" :size="17" /></span>
             <input
               id="fp-email"
@@ -92,12 +84,7 @@ async function submit() {
               @blur="emailTouched = true"
             />
           </div>
-          <span
-            v-if="emailError"
-            id="fp-email-error"
-            class="field-error"
-            role="alert"
-          >
+          <span v-if="emailError" id="fp-email-error" class="field-error" role="alert">
             <VIcon name="alert-circle" :size="13" />
             {{ emailError }}
           </span>
@@ -112,27 +99,121 @@ async function submit() {
           :disabled="isLoading"
           :aria-busy="isLoading"
         >
-          {{ isLoading ? 'Sending…' : 'Send reset link' }}
+          {{ isLoading ? 'Sending…' : 'Send Email' }}
         </VButton>
 
-        <RouterLink to="/login" class="link" style="text-align: center; display: block">
-          Back to sign in
-        </RouterLink>
+        <RouterLink to="/login" class="back-link">Back to sign in</RouterLink>
       </form>
-
-      <div class="lc-secure" aria-hidden="true">
-        <VIcon name="shield" :size="12" />
-        SECURE 256-BIT ENCRYPTED SESSION
-      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.fp-success-icon {
+.auth-page {
+  min-height: 100vh;
   display: flex;
+  align-items: center;
   justify-content: center;
-  margin-bottom: 12px;
-  color: var(--success);
+  background: #f3f4f6;
+  padding: 24px;
 }
+
+.auth-card {
+  width: 100%;
+  max-width: 560px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(8, 40, 59, 0.08);
+  padding: 32px 40px 44px;
+}
+
+/* Logo — top middle */
+.brand-logo {
+  display: block;
+  width: 124px;
+  height: auto;
+  margin: 0 auto 18px;
+}
+
+/* Mailbox line-art illustration, centered */
+.auth-illustration {
+  display: block;
+  width: 132px;
+  height: auto;
+  margin: 0 auto 8px;
+}
+
+/* Keep the content column narrow and centered within the wide card */
+.auth-card form,
+.auth-card > .brand-logo ~ * {
+  max-width: 380px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.auth-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 26px;
+  line-height: 32px;
+  text-align: center;
+  color: var(--text);
+  margin: 0 0 8px;
+}
+.auth-sub {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 20px;
+  margin: 0 auto 28px;
+  max-width: 320px;
+}
+
+/* Labels — darker + medium weight (matches sign-up) */
+.field { margin-bottom: 22px; }
+.field label {
+  color: var(--text);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+/* Filled, rounded inputs (matches sign-up) */
+.input {
+  height: 50px;
+  background: #efeff1;
+  border: 1px solid #e4e5e9;
+  border-radius: 10px;
+}
+.input:focus-within {
+  border-color: var(--navy);
+  box-shadow: 0 0 0 3px rgba(8, 40, 59, 0.12);
+}
+.input input:focus-visible {
+  outline: none;
+}
+
+/* Dark-navy primary action button — identical to the sign-up page */
+.auth-card :deep(.btn) {
+  width: 100%;
+  height: 52px;
+  border-radius: 10px;
+  font-size: 16px;
+  background: var(--navy);
+  color: #fff;
+}
+.auth-card :deep(.btn:hover) { background: var(--navy-2); }
+.auth-card :deep(.btn:disabled) { background: var(--navy); opacity: 0.5; }
+
+/* Back link */
+.back-link {
+  display: block;
+  text-align: center;
+  margin-top: 20px;
+  color: var(--text-secondary);
+  text-decoration: underline;
+  font-size: 13px;
+  font-weight: 500;
+}
+.back-link:hover { color: var(--navy); }
 </style>
