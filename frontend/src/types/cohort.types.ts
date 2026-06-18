@@ -4,6 +4,7 @@ export interface CohortRow {
   startDate: string
   endDate: string
   active: boolean
+  locked: boolean
   createdAt: string
   updatedAt: string
 }

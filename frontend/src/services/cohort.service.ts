@@ -23,6 +23,14 @@ export async function toggleCohortActive(id: string, active: boolean): Promise<v
   return http.patch(`/admin/cohorts/${id}/status`, { active })
 }
 
+export async function lockCohort(id: string): Promise<void> {
+  return http.patch<void>(`/admin/cohorts/${id}/lock`)
+}
+
+export async function unlockCohort(id: string): Promise<void> {
+  return http.patch<void>(`/admin/cohorts/${id}/unlock`)
+}
+
 export async function uploadProgramStructureBulk(file: File): Promise<void> {
   const token = localStorage.getItem('auth_token')
   const headers: HeadersInit = {}
