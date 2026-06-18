@@ -101,8 +101,9 @@ async function handleDownloadTemplate() {
   try {
     await downloadProgramStructureTemplate()
     toast.show({ tone: 'success', title: 'Template downloaded' })
-  } catch {
-    toast.show({ tone: 'warning', title: 'Download failed', body: 'Could not download the CSV template. Please try again.' })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    toast.show({ tone: 'warning', title: 'Download failed', body: msg || 'Could not download the CSV template. Please try again.' })
   } finally {
     downloadingTemplate.value = false
   }
