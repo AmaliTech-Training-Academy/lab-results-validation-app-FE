@@ -42,4 +42,19 @@ describe('AppTopbar', () => {
     await wrapper.setProps({ crumb: 'Cohorts' })
     expect(wrapper.find('.crumbs .cur').text()).toBe('Cohorts')
   })
+
+  it('toggles the profile menu and emits logout when Logout is clicked', async () => {
+    const wrapper = mount(AppTopbar, { props: defaultProps })
+    // Menu is closed initially
+    expect(wrapper.find('.profile-menu').exists()).toBe(false)
+
+    await wrapper.find('.profile-btn').trigger('click')
+    expect(wrapper.find('.profile-menu').exists()).toBe(true)
+
+    const logoutItem = wrapper
+      .findAll('.profile-item')
+      .find((el) => el.text().includes('Logout'))
+    await logoutItem?.trigger('click')
+    expect(wrapper.emitted('logout')).toHaveLength(1)
+  })
 })

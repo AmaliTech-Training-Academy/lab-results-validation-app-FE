@@ -7,6 +7,7 @@ import type { InstructorDashboardData } from '@/types/dashboard.types'
 import VButton from '@/components/base/VButton.vue'
 import VPill from '@/components/base/VPill.vue'
 import VIcon from '@/components/base/VIcon.vue'
+import '@/assets/styles/dashboard.css'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -43,6 +44,7 @@ onMounted(loadData)
 </script>
 
 <template>
+  <div class="dash">
   <div v-if="loadSlow && isLoading" class="load-slow-banner">
     <VIcon name="clock" :size="15" />
     This is taking longer than expected…
@@ -176,6 +178,7 @@ onMounted(loadData)
         </table>
       </div>
     </div>
+  </div>
   </div>
 </template>
 

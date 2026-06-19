@@ -7,14 +7,11 @@ const instructorProps = { role: 'instructor' as const, activeId: 'i-dashboard' }
 
 describe('AppSidebar', () => {
   describe('brand', () => {
-    it('renders the Validata brand name', () => {
+    it('renders the Validata brand logo', () => {
       const wrapper = mount(AppSidebar, { props: adminProps })
-      expect(wrapper.find('.brand .name').text()).toBe('Validata')
-    })
-
-    it('renders the Internal Tool subtitle', () => {
-      const wrapper = mount(AppSidebar, { props: adminProps })
-      expect(wrapper.find('.brand .sub').text()).toBe('Internal Tool')
+      const logo = wrapper.find('.brand .brand-logo')
+      expect(logo.exists()).toBe(true)
+      expect(logo.attributes('alt')).toBe('Validata')
     })
   })
 
@@ -28,8 +25,8 @@ describe('AppSidebar', () => {
     it('renders the Settings footer item', () => {
       const wrapper = mount(AppSidebar, { props: adminProps })
       const footItems = wrapper.findAll('.nav-foot .nav-item')
-      // Settings + Logout
-      expect(footItems).toHaveLength(2)
+      // Settings only — Logout now lives in the topbar profile menu
+      expect(footItems).toHaveLength(1)
       expect(footItems[0]!.text()).toContain('Settings')
     })
 
@@ -53,11 +50,10 @@ describe('AppSidebar', () => {
       expect(navItems).toHaveLength(4)
     })
 
-    it('renders no footer nav items (only Logout)', () => {
+    it('renders no footer nav items', () => {
       const wrapper = mount(AppSidebar, { props: instructorProps })
       const footItems = wrapper.findAll('.nav-foot .nav-item')
-      expect(footItems).toHaveLength(1)
-      expect(footItems[0]!.text()).toContain('Logout')
+      expect(footItems).toHaveLength(0)
     })
 
     it('renders all expected instructor nav labels', () => {
@@ -92,15 +88,6 @@ describe('AppSidebar', () => {
         .find((el) => el.text().includes('Cohorts'))
       await cohortsBtn?.trigger('click')
       expect(wrapper.emitted('navigate')?.[0]).toEqual(['a-cohorts'])
-    })
-
-    it('emits logout when the Logout button is clicked', async () => {
-      const wrapper = mount(AppSidebar, { props: adminProps })
-      const logoutBtn = wrapper
-        .findAll('.nav-item')
-        .find((el) => el.text().includes('Logout'))
-      await logoutBtn?.trigger('click')
-      expect(wrapper.emitted('logout')).toHaveLength(1)
     })
 
     it('emits navigate with the footer item id when a footer nav item is clicked', async () => {
