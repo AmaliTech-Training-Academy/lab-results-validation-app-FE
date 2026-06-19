@@ -136,36 +136,37 @@ onMounted(loadData)
       <div class="sec-head sec-head-navy">
         <h2 class="sec-title" style="color: #fff">My recent uploads</h2>
       </div>
-      <div class="tbl-wrap" style="border: none; border-radius: 0; box-shadow: none">
+      <div class="uploads-scroll">
         <table class="tbl tbl-light">
           <thead>
             <tr>
-              <th>File</th>
-              <th>Date</th>
-              <th>Accepted</th>
-              <th>Rejected</th>
-              <th>Status</th>
-              <th>Actions</th>
+              <th class="col-file">File</th>
+              <th class="col-date">Date</th>
+              <th class="col-accepted">Accepted</th>
+              <th class="col-rejected">Rejected</th>
+              <th class="col-status">Status</th>
+              <th class="col-actions">Actions</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="(row, i) in data.recentUploads" :key="i">
-              <td>
-                <span style="display: inline-flex; align-items: center; gap: 9px">
-                  <VIcon name="file-text" :size="16" color="var(--text-secondary)" />
-                  <span class="mono">{{ row.file }}</span>
+              <td class="col-file">
+                <span style="display: inline-flex; align-items: center; gap: 9px; min-width: 0">
+                  <VIcon name="file-text" :size="16" color="var(--text-secondary)" style="flex-shrink: 0" />
+                  <span class="mono" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ row.file }}</span>
                 </span>
               </td>
-              <td style="color: var(--text-secondary)">{{ row.date }}</td>
-              <td>{{ row.accepted }}</td>
+              <td class="col-date" style="color: var(--text-secondary); white-space: nowrap">{{ row.date }}</td>
+              <td class="col-accepted">{{ row.accepted }}</td>
               <td
+                class="col-rejected"
                 :style="{
                   color: row.rejected > 0 ? 'var(--danger)' : 'inherit',
                   fontWeight: row.rejected > 0 ? 600 : 400,
                 }"
               >{{ row.rejected }}</td>
-              <td><VPill :tone="row.tone">{{ row.status }}</VPill></td>
-              <td>
+              <td class="col-status"><VPill :tone="row.tone">{{ row.status }}</VPill></td>
+              <td class="col-actions">
                 <button
                   v-if="row.hasReport && row.uploadId"
                   class="link"
@@ -183,6 +184,31 @@ onMounted(loadData)
 </template>
 
 <style scoped>
+/* ── Recent uploads table ─────────────────────────────────────────────────── */
+.uploads-scroll { overflow-x: auto; }
+
+/* File column: truncate long names */
+.col-file {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Fixed-width columns */
+.col-date     { width: 104px; }
+.col-accepted,
+.col-rejected { width: 88px; }
+.col-status   { width: 108px; }
+.col-actions  { width: 120px; }
+
+/* ≤1100 px viewport  →  content area ≈ 816 px.
+   Hide Date (still visible in full report) to keep the table from scrolling. */
+@media (max-width: 1100px) {
+  .col-date { display: none; }
+}
+
+/* ── Empty-state module card ──────────────────────────────────────────────── */
 .mod-empty {
   display: flex;
   flex-direction: column;
