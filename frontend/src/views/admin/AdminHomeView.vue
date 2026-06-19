@@ -40,11 +40,11 @@ async function loadData() {
       getLearners({ status: 'ACTIVE', page: 0, size: 1 }),
     ])
 
-    const activeInstructors = instructors.filter((i) => i.active).length
+    const activeInstructors = instructors.content.filter((i) => i.active).length
     const instructorStat = dashboard.stats.find((s) => s.label === 'Instructors')
     if (instructorStat) {
-      instructorStat.value = String(instructors.length)
-      instructorStat.footText = `${activeInstructors} Active · ${instructors.length - activeInstructors} Inactive`
+      instructorStat.value = String(instructors.totalElements)
+      instructorStat.footText = `${activeInstructors} Active · ${instructors.totalElements - activeInstructors} Inactive`
     }
 
     const today = new Date().toISOString().split('T')[0]!

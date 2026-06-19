@@ -47,3 +47,12 @@ export interface RemoveModulesResponse {
   instructorId: string
   removedModuleIds: string[]
 }
+
+export interface PagedInstructors {
+  content: InstructorUser[]
+  page: number
+  size: number
+  totalElements: number
+  totalPages: number
+  last: boolean
+}

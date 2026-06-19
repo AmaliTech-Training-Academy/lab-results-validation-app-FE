@@ -1,9 +1,9 @@
-import type { InstructorUser, ModuleGroup, InstructorPayload, CreateInstructorPayload, CreatedInstructor, AssignModulesResponse, RemoveModulesResponse } from '@/types/user.types'
+import type { InstructorUser, ModuleGroup, InstructorPayload, CreateInstructorPayload, CreatedInstructor, AssignModulesResponse, RemoveModulesResponse, PagedInstructors } from '@/types/user.types'
 import { getAllSpecializations, getModules } from './reference.service'
 import { http } from './http'
 
-export async function getInstructors(): Promise<InstructorUser[]> {
-  return http.get<InstructorUser[]>('/admin/users/instructors')
+export async function getInstructors(page = 0, size = 10): Promise<PagedInstructors> {
+  return http.get<PagedInstructors>(`/admin/users/instructors?page=${page}&size=${size}`)
 }
 
 export async function getModuleGroups(): Promise<ModuleGroup[]> {
