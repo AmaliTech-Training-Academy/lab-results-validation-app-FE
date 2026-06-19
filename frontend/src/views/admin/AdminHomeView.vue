@@ -10,6 +10,7 @@ import VStatCard from '@/components/base/VStatCard.vue'
 import VPill from '@/components/base/VPill.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import VButton from '@/components/base/VButton.vue'
+import '@/assets/styles/dashboard.css'
 
 const router = useRouter()
 
@@ -79,6 +80,7 @@ onMounted(loadData)
 </script>
 
 <template>
+  <div class="dash">
   <div v-if="loadSlow && isLoading" class="load-slow-banner">
     <VIcon name="clock" :size="15" />
     This is taking longer than expected…
@@ -207,5 +209,6 @@ onMounted(loadData)
         </div>
       </div>
     </div>
+  </div>
   </div>
 </template>

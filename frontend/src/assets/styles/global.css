@@ -37,7 +37,7 @@
 .page-sub { font-size: 14px; color: var(--text-secondary); margin: 4px 0 0; }
 
 /* ---------- Buttons ---------- */
-.btn { height: 44px; padding: 0 18px; border-radius: var(--r-sm); font-weight: 700; font-size: 15px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid transparent; transition: background 0.15s, box-shadow 0.15s; white-space: nowrap; cursor: pointer; font-family: inherit; }
+.btn { height: 44px; padding: 0 18px; border-radius: 8px; font-weight: 700; font-size: 15px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid transparent; transition: background 0.15s, box-shadow 0.15s; white-space: nowrap; cursor: pointer; font-family: inherit; }
 .btn-primary { background: var(--orange); color: #fff; }
 .btn-primary:hover { background: var(--orange-hover); }
 .btn-primary:active { background: var(--orange-press); }
