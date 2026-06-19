@@ -358,54 +358,56 @@ function goToPage(page: number) {
     </div>
 
     <!-- Table -->
-    <table class="tbl">
-      <thead>
-        <tr>
-          <th style="width: 44px"><input type="checkbox" /></th>
-          <th>Full name</th>
-          <th>Email</th>
-          <th>Cohort</th>
-          <th>Specialization</th>
-          <th>Status</th>
-          <th style="text-align: right">Actions</th>
-        </tr>
-      </thead>
-      <tbody v-if="isLoading">
-        <tr v-for="i in 6" :key="i" class="skel-row">
-          <td><span class="skel" style="width: 16px; display: inline-block" /></td>
-          <td><span class="skel" style="width: 55%" /></td>
-          <td><span class="skel mono" style="width: 65%" /></td>
-          <td><span class="skel" style="width: 70%" /></td>
-          <td><span class="skel" style="width: 80%" /></td>
-          <td><span class="skel" style="width: 60px; border-radius: 999px; display: inline-block" /></td>
-          <td style="text-align: right"><span class="skel" style="width: 32px; display: inline-block" /></td>
-        </tr>
-      </tbody>
-      <tbody v-else>
-        <tr v-if="!learners.length">
-          <td colspan="7" style="text-align: center; color: var(--text-secondary); padding: 32px">
-            No learners found.
-          </td>
-        </tr>
-        <tr v-for="l in learners" :key="l.id">
-          <td><input type="checkbox" /></td>
-          <td style="font-weight: 600">{{ l.fullName }}</td>
-          <td class="mono" style="color: var(--text-secondary)">{{ l.email }}</td>
-          <td>{{ l.cohortName }}</td>
-          <td>{{ l.specializationName }}</td>
-          <td>
-            <VPill :tone="l.status === 'ACTIVE' ? 'success' : 'danger'">
-              {{ l.status === 'ACTIVE' ? 'Active' : 'Archived' }}
-            </VPill>
-          </td>
-          <td style="text-align: right">
-            <button class="kebab" aria-label="Actions" @click="toggleKebab($event, l.id)">
-              <VIcon name="more-vertical" :size="18" />
-            </button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <div class="tbl-scroll">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th class="col-cb"><input type="checkbox" /></th>
+            <th class="col-name">Full name</th>
+            <th class="col-email">Email</th>
+            <th class="col-cohort">Cohort</th>
+            <th class="col-spec">Specialization</th>
+            <th class="col-status">Status</th>
+            <th class="col-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody v-if="isLoading">
+          <tr v-for="i in 6" :key="i" class="skel-row">
+            <td class="col-cb"><span class="skel" style="width: 16px; display: inline-block" /></td>
+            <td class="col-name"><span class="skel" style="width: 55%" /></td>
+            <td class="col-email"><span class="skel mono" style="width: 65%" /></td>
+            <td class="col-cohort"><span class="skel" style="width: 70%" /></td>
+            <td class="col-spec"><span class="skel" style="width: 80%" /></td>
+            <td class="col-status"><span class="skel" style="width: 60px; border-radius: 999px; display: inline-block" /></td>
+            <td class="col-actions"><span class="skel" style="width: 32px; display: inline-block" /></td>
+          </tr>
+        </tbody>
+        <tbody v-else>
+          <tr v-if="!learners.length">
+            <td colspan="7" style="text-align: center; color: var(--text-secondary); padding: 32px">
+              No learners found.
+            </td>
+          </tr>
+          <tr v-for="l in learners" :key="l.id">
+            <td class="col-cb"><input type="checkbox" /></td>
+            <td class="col-name" style="font-weight: 600; white-space: nowrap">{{ l.fullName }}</td>
+            <td class="col-email mono" style="color: var(--text-secondary)">{{ l.email }}</td>
+            <td class="col-cohort" style="white-space: nowrap">{{ l.cohortName }}</td>
+            <td class="col-spec" style="white-space: nowrap">{{ l.specializationName }}</td>
+            <td class="col-status">
+              <VPill :tone="l.status === 'ACTIVE' ? 'success' : 'danger'">
+                {{ l.status === 'ACTIVE' ? 'Active' : 'Archived' }}
+              </VPill>
+            </td>
+            <td class="col-actions" style="text-align: right">
+              <button class="kebab" aria-label="Actions" @click="toggleKebab($event, l.id)">
+                <VIcon name="more-vertical" :size="18" />
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
     <!-- Pagination -->
     <div v-if="!isLoading && totalElements > 0" class="pager">
@@ -531,3 +533,38 @@ function goToPage(page: number) {
     </div>
   </Teleport>
 </template>
+
+<style scoped>
+/* ── Table scroll wrapper ─────────────────────────────────────────────────── */
+.tbl-scroll {
+  overflow-x: auto;
+}
+
+/* ── Fixed column widths ──────────────────────────────────────────────────── */
+.col-cb      { width: 44px; }
+.col-actions { width: 72px; text-align: right; }
+.col-status  { width: 100px; }
+
+/* Email: truncate with ellipsis so it never blows out the layout */
+.col-email {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Responsive column hiding ─────────────────────────────────────────────── */
+
+/* ≤1340 px viewport  →  content area ≈ 1056 px (1340 – 220 sidebar – 64 padding)
+   Hide Specialization — still filterable via the toolbar dropdown              */
+@media (max-width: 1340px) {
+  .col-spec { display: none; }
+}
+
+/* ≤1150 px viewport  →  content area ≈ 866 px
+   Also hide Cohort — still filterable via the toolbar dropdown                 */
+@media (max-width: 1150px) {
+  .col-cohort { display: none; }
+}
+
+</style>
