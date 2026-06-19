@@ -4,9 +4,10 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { changePasswordApi, resetPasswordApi } from '@/services/auth.service'
 import { useToastStore } from '@/stores/toast'
-import AuthBrandPanel from '@/components/auth/AuthBrandPanel.vue'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
+import logoUrl from '@/assets/validata-logo.png'
+import patternUrl from '@/assets/reset-pattern.png'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -80,26 +81,21 @@ async function submit() {
 </script>
 
 <template>
-  <div class="login">
-    <AuthBrandPanel>
-      <div class="setpw-hero">
-        <h2 class="setpw-hero-title">
-          {{ isResetFlow ? 'Reset your Validata password.' : 'Secure your access to the Validata platform.' }}
-        </h2>
-        <p class="setpw-hero-sub">
-          {{ isResetFlow
-            ? 'Choose a new password to regain access to your account.'
-            : 'This is your first login. Please choose a strong password to protect the integrity of our internal validation systems.' }}
-        </p>
-      </div>
-    </AuthBrandPanel>
+  <div class="reset-page">
+    <!-- Decorative pattern side, with the brand logo -->
+    <aside
+      class="reset-aside"
+      :style="{ backgroundImage: `url(${patternUrl})` }"
+      aria-hidden="true"
+    />
 
-    <div class="login-form-pane">
-      <form class="login-card" novalidate @submit.prevent="submit">
-        <div class="lc-head">
-          <h1 class="lc-title">{{ isResetFlow ? 'Reset your password' : 'Set your password' }}</h1>
-          <p class="lc-sub">{{ isResetFlow ? 'Enter a new password for your account.' : 'This is your first login. Choose a secure password to continue.' }}</p>
-        </div>
+    <!-- Form side -->
+    <main class="reset-main">
+      <form class="reset-form" novalidate @submit.prevent="submit">
+        <img :src="logoUrl" alt="Validata" class="brand-logo" />
+
+        <h1 class="auth-title">{{ isResetFlow ? 'Reset your password' : 'Set your password' }}</h1>
+        <p class="auth-sub">{{ isResetFlow ? 'Enter a new password for your account.' : 'This is your first login. Choose a secure password to continue.' }}</p>
 
         <!-- New password -->
         <div class="field">
@@ -209,10 +205,114 @@ async function submit() {
           {{ isLoading ? 'Saving…' : isResetFlow ? 'Reset password' : 'Set password &amp; continue' }}
         </VButton>
 
-        <RouterLink to="/login" class="link" style="text-align: center; display: block">
-          Back to sign in
-        </RouterLink>
+        <RouterLink to="/login" class="back-link">Back to sign in</RouterLink>
       </form>
-    </div>
+    </main>
   </div>
 </template>
+
+<style scoped>
+.reset-page {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+/* ---------- Pattern side ---------- */
+.reset-aside {
+  position: relative;
+  background-color: #08283b;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  padding: 40px;
+}
+/* Brand logo — centered on the white form side, prominent */
+.brand-logo {
+  display: block;
+  width: 180px;
+  height: auto;
+  margin: 0 auto 24px;
+}
+
+/* ---------- Form side ---------- */
+.reset-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  padding: 40px 24px;
+  overflow-y: auto;
+}
+.reset-form {
+  width: 100%;
+  max-width: 400px;
+}
+
+.auth-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 20px;
+  line-height: 26px;
+  text-align: center;
+  color: var(--text);
+  margin: 0 0 6px;
+}
+.auth-sub {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 20px;
+  margin: 0 auto 28px;
+}
+
+/* Labels — matches the sign-up page */
+.field { margin-bottom: 22px; }
+.field label {
+  color: var(--text);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+/* Filled, rounded inputs — identical to the sign-up page */
+.input {
+  height: 50px;
+  background: #efeff1;
+  border: 1px solid #e4e5e9;
+  border-radius: 10px;
+}
+.input:focus-within {
+  border-color: var(--navy);
+  box-shadow: 0 0 0 3px rgba(8, 40, 59, 0.12);
+}
+.input input:focus-visible {
+  outline: none;
+}
+
+/* Dark-navy primary button — identical to the sign-up page */
+.reset-form :deep(.btn) {
+  width: 100%;
+  height: 52px;
+  border-radius: 10px;
+  font-size: 16px;
+  background: var(--navy);
+  color: #fff;
+}
+.reset-form :deep(.btn:hover) { background: var(--navy-2); }
+.reset-form :deep(.btn:disabled) { background: var(--navy); opacity: 0.5; }
+
+/* Strength meter spacing */
+#setpw-strength { margin-bottom: 22px; }
+
+/* Back link */
+.back-link {
+  display: block;
+  text-align: center;
+  margin-top: 20px;
+  color: var(--text-secondary);
+  text-decoration: underline;
+  font-size: 13px;
+  font-weight: 500;
+}
+.back-link:hover { color: var(--navy); }
+</style>
