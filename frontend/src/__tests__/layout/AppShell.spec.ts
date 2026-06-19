@@ -53,12 +53,14 @@ describe('AppShell', () => {
     expect(wrapper.emitted('navigate')?.[0]).toEqual(['a-reports'])
   })
 
-  it('bubbles logout event from the sidebar', async () => {
+  it('bubbles logout event from the topbar profile menu', async () => {
     const wrapper = mount(AppShell, { props: defaultProps })
-    const logoutBtn = wrapper
-      .findAll('.nav-item')
+    // Open the profile dropdown, then click Logout
+    await wrapper.find('.profile-btn').trigger('click')
+    const logoutItem = wrapper
+      .findAll('.profile-item')
       .find((el) => el.text().includes('Logout'))
-    await logoutBtn?.trigger('click')
+    await logoutItem?.trigger('click')
     expect(wrapper.emitted('logout')).toHaveLength(1)
   })
 })
