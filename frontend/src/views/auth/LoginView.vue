@@ -7,6 +7,7 @@ import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import logoUrl from '@/assets/validata-logo.png'
 import amaliLogoUrl from '@/assets/amalitech-logo.svg'
+import bgUrl from '@/assets/signup-picture.png'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -80,7 +81,10 @@ async function submit() {
 </script>
 
 <template>
-  <div class="auth-page">
+  <div
+    class="auth-page"
+    :style="{ backgroundImage: `linear-gradient(rgba(8,40,59,0.6), rgba(8,40,59,0.6)), url(${bgUrl})` }"
+  >
     <form class="auth-card" novalidate @submit.prevent="submit">
       <!-- Brand lockup: AmaliTech (parent) above Validata (product) -->
       <div class="brand-stack">
@@ -174,7 +178,10 @@ async function submit() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #ffffff;
+  background-color: #08283b;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
   padding: 24px;
 }
 
