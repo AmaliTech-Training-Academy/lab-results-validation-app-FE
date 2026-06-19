@@ -63,7 +63,7 @@ function footerItems(role: 'admin' | 'instructor') {
       :aria-pressed="collapsed"
       @click="emit('toggle')"
     >
-      <VIcon :name="collapsed ? 'chevron-right' : 'chevron-left'" :size="16" />
+      <VIcon :name="collapsed ? 'chevron-right' : 'chevron-left'" :size="20" />
     </button>
     <div>
       <div class="brand">

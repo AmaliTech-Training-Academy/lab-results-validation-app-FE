@@ -153,15 +153,15 @@ onMounted(loadData)
           <h2 class="sec-title">Recent uploads</h2>
           <button class="link" @click="router.push({ name: 'admin-reports' })">View all</button>
         </div>
-        <div class="tbl-wrap" style="border: none; border-radius: 0; box-shadow: none">
+        <div class="uploads-scroll">
           <table class="tbl">
             <thead>
               <tr>
-                <th>Instructor</th>
-                <th>File</th>
-                <th>Accepted</th>
-                <th>Rejected</th>
-                <th>Status</th>
+                <th class="col-instructor">Instructor</th>
+                <th class="col-file">File</th>
+                <th class="col-accepted">Accepted</th>
+                <th class="col-rejected">Rejected</th>
+                <th class="col-status">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -171,16 +171,17 @@ onMounted(loadData)
                 style="cursor: pointer"
                 @click="router.push({ name: 'admin-reports' })"
               >
-                <td style="font-weight: 500">{{ row.instructor }}</td>
-                <td class="mono">{{ row.file }}</td>
-                <td>{{ row.accepted }}</td>
+                <td class="col-instructor" style="font-weight: 500; white-space: nowrap">{{ row.instructor }}</td>
+                <td class="col-file mono">{{ row.file }}</td>
+                <td class="col-accepted">{{ row.accepted }}</td>
                 <td
+                  class="col-rejected"
                   :style="{
                     color: row.rejected > 0 ? 'var(--danger)' : 'inherit',
                     fontWeight: row.rejected > 0 ? 600 : 400,
                   }"
                 >{{ row.rejected }}</td>
-                <td><VPill :tone="row.tone">{{ row.status }}</VPill></td>
+                <td class="col-status"><VPill :tone="row.tone">{{ row.status }}</VPill></td>
               </tr>
             </tbody>
           </table>
@@ -213,3 +214,36 @@ onMounted(loadData)
   </div>
   </div>
 </template>
+
+<style scoped>
+/* ── Grid layout ──────────────────────────────────────────────────────────────
+   At ≤1280 px the recent-uploads card shrinks to ~590 px (60 % of ~990 px
+   content area). Stack both cards to full width instead.                       */
+@media (max-width: 1280px) {
+  .dash-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Recent uploads table ─────────────────────────────────────────────────── */
+.uploads-scroll { overflow-x: auto; }
+
+/* Fixed-width columns so they don't collapse before scroll kicks in */
+.col-accepted,
+.col-rejected { width: 88px; }
+.col-status   { width: 108px; }
+
+/* File: truncate long names with ellipsis */
+.col-file {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Column hiding at narrow stacked sizes ────────────────────────────────── */
+/* ≤1100 px  →  content area ≈ 816 px.  Hide Accepted + Rejected (counts are
+   visible in the full report); keeps the table clean on small desktops.        */
+@media (max-width: 1100px) {
+  .col-accepted,
+  .col-rejected { display: none; }
+}
+</style>
