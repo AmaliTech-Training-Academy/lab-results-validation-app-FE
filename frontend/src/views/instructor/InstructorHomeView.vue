@@ -30,8 +30,9 @@ async function loadData() {
       getInstructorModules(instructorId),
     ])
     data.value = { ...dashboard, modules }
-  } catch {
-    loadError.value = 'Failed to load dashboard. Check your connection and try again.'
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    loadError.value = msg || 'Failed to load dashboard. Check your connection and try again.'
   } finally {
     clearTimeout(slowTimer)
     isLoading.value = false

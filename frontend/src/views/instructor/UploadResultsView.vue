@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { uploadCsv } from '@/services/instructor.service'
+import { uploadCsv, BulkImportError } from '@/services/instructor.service'
 import { useToastStore } from '@/stores/toast'
+import type { BulkRowError } from '@/types/bulk.types'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
 
@@ -13,31 +14,68 @@ const file = ref<File | null>(null)
 const phase = ref<'idle' | 'processing'>('idle')
 const isDragOver = ref(false)
 
+const bulkErrors = ref<BulkRowError[]>([])
+const bulkErrorSummary = ref('')
+
 function handleDrop(e: DragEvent) {
   e.preventDefault()
   isDragOver.value = false
   const dropped = e.dataTransfer?.files[0]
-  if (dropped?.name.endsWith('.csv')) file.value = dropped
+  if (dropped?.name.endsWith('.csv')) {
+    file.value = dropped
+    bulkErrors.value = []
+    bulkErrorSummary.value = ''
+  }
 }
 
 function handleFileInput(e: Event) {
   const picked = (e.target as HTMLInputElement).files?.[0]
-  if (picked?.name.endsWith('.csv')) file.value = picked
+  if (picked?.name.endsWith('.csv')) {
+    file.value = picked
+    bulkErrors.value = []
+    bulkErrorSummary.value = ''
+  }
 }
 
 function clearFile() {
   file.value = null
+  bulkErrors.value = []
+  bulkErrorSummary.value = ''
+}
+
+function dismissErrors() {
+  bulkErrors.value = []
+  bulkErrorSummary.value = ''
+}
+
+function isCohortLockedError(err: unknown): boolean {
+  return err instanceof Error && err.message.toLowerCase().includes('locked')
 }
 
 async function validate() {
   if (!file.value) return
   phase.value = 'processing'
+  bulkErrors.value = []
+  bulkErrorSummary.value = ''
   try {
     const result = await uploadCsv(file.value)
     toast.show({ tone: 'success', title: 'Upload complete', body: 'Your file has been validated.' })
     router.push({ name: 'instructor-uploads', query: { uploadId: result.uploadId } })
-  } catch {
-    toast.show({ tone: 'danger', title: 'Upload failed', body: 'Could not process your file. Please try again.' })
+  } catch (err) {
+    if (err instanceof BulkImportError && err.errors.length > 0) {
+      bulkErrors.value = err.errors
+      const failCount = err.failed ?? err.errors.length
+      const createdCount = err.created
+      bulkErrorSummary.value = createdCount !== undefined
+        ? `${failCount} row${failCount !== 1 ? 's' : ''} failed — ${createdCount} imported successfully.`
+        : `${failCount} row${failCount !== 1 ? 's' : ''} failed validation.`
+      toast.show({ tone: 'warning', title: 'Upload completed with errors', body: bulkErrorSummary.value })
+    } else if (isCohortLockedError(err)) {
+      toast.show({ tone: 'warning', title: 'Cohort is locked', body: 'Results cannot be uploaded until the cohort is locked for grading.' })
+    } else {
+      const msg = err instanceof Error ? err.message : ''
+      toast.show({ tone: 'danger', title: 'Upload failed', body: msg || 'Could not process your file. Please try again.' })
+    }
     phase.value = 'idle'
   }
 }
@@ -106,6 +144,39 @@ async function validate() {
       <VIcon name="lightbulb" :size="16" />
       Need the template?
       <router-link :to="{ name: 'instructor-template' }" class="link">Download it here.</router-link>
+    </div>
+
+    <div v-if="bulkErrors.length" class="bulk-error-log" role="alert" aria-live="polite">
+      <div class="bulk-error-log-head">
+        <VIcon name="alert-triangle" :size="16" style="color: var(--danger); flex-shrink: 0" />
+        <p class="bulk-error-log-title">{{ bulkErrorSummary || `${bulkErrors.length} row${bulkErrors.length !== 1 ? 's' : ''} failed validation` }}</p>
+        <button class="bulk-error-log-dismiss" aria-label="Dismiss errors" @click="dismissErrors">
+          <VIcon name="x" :size="16" />
+        </button>
+      </div>
+      <div class="bulk-error-log-body tbl-wrap" style="border: none; border-radius: 0; box-shadow: none">
+        <table class="tbl tbl-light">
+          <thead>
+            <tr>
+              <th style="width: 60px">Row</th>
+              <th style="width: 140px">Field</th>
+              <th>Error</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(err, i) in bulkErrors" :key="i">
+              <td style="font-variant-numeric: tabular-nums; color: var(--text-secondary)">
+                {{ err.row ?? '—' }}
+              </td>
+              <td>
+                <span v-if="err.field" class="rule-id">{{ err.field }}</span>
+                <span v-else style="color: var(--text-secondary)">—</span>
+              </td>
+              <td style="color: var(--danger)">{{ err.message }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 </template>

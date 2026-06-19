@@ -85,8 +85,9 @@ async function loadLearners(page = currentPage.value) {
     totalElements.value = result.totalElements
     totalPages.value = result.totalPages
     isLastPage.value = result.last
-  } catch {
-    loadError.value = 'Failed to load learners. Check your connection and try again.'
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    loadError.value = msg || 'Failed to load learners. Check your connection and try again.'
   } finally {
     clearTimeout(slowTimer)
     isLoading.value = false
@@ -124,7 +125,7 @@ watch(filterCohortId, async (id) => {
   filterSpecId.value = null
   filterSpecOptions.value = []
   if (id) {
-    filterSpecOptions.value = await getSpecializations(id)
+    filterSpecOptions.value = (await getSpecializations(id)).content
   }
   currentPage.value = 0
   loadLearners(0)
@@ -185,7 +186,7 @@ async function openEdit(learner: Learner) {
     status: learner.status,
     error: '',
   }
-  formSpecOptions.value = await getSpecializations(learner.cohortId)
+  formSpecOptions.value = (await getSpecializations(learner.cohortId)).content
   form.value.specId = learner.specializationId
   showDrawer.value = true
 }
@@ -202,7 +203,7 @@ async function onFormCohortChange(event: Event) {
   form.value.specId = null
   formSpecOptions.value = []
   if (form.value.cohortId) {
-    formSpecOptions.value = await getSpecializations(form.value.cohortId)
+    formSpecOptions.value = (await getSpecializations(form.value.cohortId)).content
   }
 }
 
@@ -238,8 +239,14 @@ async function submitForm() {
       loadLearners(0)
     }
     closeDrawer()
-  } catch {
-    form.value.error = 'Something went wrong. Please try again.'
+  } catch (err) {
+    if (err instanceof Error && err.message.toLowerCase().includes('locked')) {
+      closeDrawer()
+      toast.show({ tone: 'warning', title: 'Cohort is locked', body: 'Unlock the cohort before making changes.' })
+    } else {
+      const msg = err instanceof Error ? err.message : ''
+      form.value.error = msg || 'Something went wrong. Please try again.'
+    }
   } finally {
     submitting.value = false
   }
@@ -252,8 +259,13 @@ async function toggleStatus(learner: Learner) {
     await setLearnerStatus(learner.id, newStatus)
     loadLearners(currentPage.value)
     toast.show({ tone: 'success', title: newStatus === 'ARCHIVED' ? 'Learner archived' : 'Learner restored' })
-  } catch {
-    toast.show({ tone: 'warning', title: 'Failed to update status' })
+  } catch (err) {
+    if (err instanceof Error && err.message.toLowerCase().includes('locked')) {
+      toast.show({ tone: 'warning', title: 'Cohort is locked', body: 'Unlock the cohort before making changes.' })
+    } else {
+      const msg = err instanceof Error ? err.message : ''
+      toast.show({ tone: 'warning', title: 'Failed to update status', body: msg || undefined })
+    }
   }
 }
 
@@ -424,6 +436,7 @@ function goToPage(page: number) {
     :open="showDrawer"
     :title="drawerTitle"
     subtitle="Learners are reference records used for validation lookups."
+    :error="form.error || undefined"
     @close="closeDrawer"
   >
     <label class="ff">
@@ -472,9 +485,6 @@ function goToPage(page: number) {
         </div>
       </label>
     </div>
-    <p v-if="form.error" class="field-error">
-      <VIcon name="alert-circle" :size="14" />{{ form.error }}
-    </p>
     <template #footer>
       <VButton variant="ghost" @click="closeDrawer">Cancel</VButton>
       <VButton variant="primary" :disabled="submitting" @click="submitForm">

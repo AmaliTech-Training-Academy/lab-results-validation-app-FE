@@ -31,6 +31,31 @@ const activeKebabId = ref<string | null>(null)
 const kebabPos = ref<{ top: number; left: number } | null>(null)
 const activeKebabInstructor = computed(() => instructors.value.find((u) => u.id === activeKebabId.value) ?? null)
 
+// ── Modules Viewer ────────────────────────────────────────────────────────────
+const showModulesDrawer = ref(false)
+const modulesTarget = ref<InstructorUser | null>(null)
+
+const groupedModules = computed(() => {
+  if (!modulesTarget.value) return []
+  const map = new Map<string, string[]>()
+  for (const m of modulesTarget.value.assignedModules) {
+    const list = map.get(m.specializationName) ?? []
+    list.push(m.moduleName)
+    map.set(m.specializationName, list)
+  }
+  return Array.from(map.entries()).map(([spec, modules]) => ({ spec, modules }))
+})
+
+function openModules(instructor: InstructorUser) {
+  modulesTarget.value = instructor
+  showModulesDrawer.value = true
+}
+
+function closeModulesDrawer() {
+  showModulesDrawer.value = false
+  modulesTarget.value = null
+}
+
 // ── Drawer ────────────────────────────────────────────────────────────────────
 const showDrawer = ref(false)
 const editTarget = ref<InstructorUser | null>(null)
@@ -69,8 +94,9 @@ async function loadInstructors(page = 0) {
     totalElements.value = result.totalElements
     totalPages.value = result.totalPages
     isLastPage.value = result.last
-  } catch {
-    loadError.value = 'Failed to load instructors. Check your connection and try again.'
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    loadError.value = msg || 'Failed to load instructors. Check your connection and try again.'
   } finally {
     clearTimeout(slowTimer)
     isLoading.value = false
@@ -123,8 +149,9 @@ async function toggleStatus(instructor: InstructorUser) {
     const idx = instructors.value.findIndex((u) => u.id === instructor.id)
     if (idx !== -1) instructors.value[idx] = { ...instructors.value[idx]!, active: updated.active }
     toast.show({ tone: 'success', title: updated.active ? 'Instructor activated' : 'Instructor deactivated' })
-  } catch {
-    toast.show({ tone: 'warning', title: 'Failed to update status' })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    toast.show({ tone: 'warning', title: 'Failed to update status', body: msg || undefined })
   }
 }
 
@@ -233,15 +260,6 @@ async function submitForm() {
       const addFailed     = results.add?.status === 'rejected'
       const removeFailed  = results.remove?.status === 'rejected'
 
-      if (profileFailed) console.error('[instructor:update] profile stage failed', (results.profile as PromiseRejectedResult).reason)
-      if (addFailed)     console.error('[instructor:update] module-assign stage failed', (results.add as PromiseRejectedResult).reason)
-      if (removeFailed)  console.error('[instructor:update] module-remove stage failed', (results.remove as PromiseRejectedResult).reason)
-
-      if (settled.every((r) => r.status === 'rejected')) {
-        form.value.error = 'All updates failed. Please try again.'
-        return
-      }
-
       // ── Reconstruct local state from what succeeded ───────────────────────────
       let updatedInstructor: InstructorUser = { ...target }
 
@@ -267,16 +285,38 @@ async function submitForm() {
 
       const anyFailed = settled.some((r) => r.status === 'rejected')
       if (anyFailed) {
-        const parts = [
-          profileFailed && 'profile update',
-          addFailed     && 'module assignment',
-          removeFailed  && 'module removal',
-        ].filter(Boolean).join(' and ')
-        toast.show({ tone: 'warning', title: 'Partially saved', body: `${parts} failed — edit the instructor to retry.` })
+        // Show the exact backend error messages in the drawer
+        const failedMessages: string[] = []
+        if (profileFailed) {
+          const reason = (results.profile as PromiseRejectedResult).reason
+          failedMessages.push(reason instanceof Error ? reason.message : 'Profile update failed.')
+        }
+        if (addFailed) {
+          const reason = (results.add as PromiseRejectedResult).reason
+          failedMessages.push(reason instanceof Error ? reason.message : 'Module assignment failed.')
+        }
+        if (removeFailed) {
+          const reason = (results.remove as PromiseRejectedResult).reason
+          failedMessages.push(reason instanceof Error ? reason.message : 'Module removal failed.')
+        }
+        form.value.error = failedMessages.join(' ')
+        // Sync originalIds and form so a retry only re-attempts what failed
+        if (profileChanged && !profileFailed) {
+          const p = (results.profile as PromiseFulfilledResult<InstructorUser>).value
+          form.value.email = p.email
+          form.value.isActive = p.active
+        }
+        if (toAdd.length && !addFailed) {
+          toAdd.forEach((id) => { if (!originalIds.value.includes(id)) originalIds.value.push(id) })
+        }
+        if (toRemove.length && !removeFailed) {
+          const removedSet = new Set(toRemove)
+          originalIds.value = originalIds.value.filter((id) => !removedSet.has(id))
+        }
       } else {
         toast.show({ tone: 'success', title: 'Instructor updated' })
+        closeDrawer()
       }
-      closeDrawer()
     } else {
       // Stage 1 — create the account
       const created = await addInstructor({
@@ -307,9 +347,10 @@ async function submitForm() {
     } else {
       console.error('[instructor:create] account stage failed', err)
     }
-    form.value.error = editTarget.value
+    const msg = err instanceof Error ? err.message : ''
+    form.value.error = msg || (editTarget.value
       ? 'Failed to update instructor. Please try again.'
-      : 'Failed to create instructor. Please try again.'
+      : 'Failed to create instructor. Please try again.')
   } finally {
     submitting.value = false
   }
@@ -370,7 +411,15 @@ async function submitForm() {
         <tr v-for="u in instructors" :key="u.id">
           <td style="font-weight: 600">{{ emailToName(u.email) }}</td>
           <td class="mono" style="color: var(--text-secondary)">{{ u.email }}</td>
-          <td style="text-align: center">{{ u.assignedModules.length }}</td>
+          <td style="text-align: center">
+            <button
+              v-if="u.assignedModules.length > 0"
+              class="link"
+              style="font-size: 13px; font-weight: 600"
+              @click="openModules(u)"
+            >{{ u.assignedModules.length }}</button>
+            <span v-else style="color: var(--text-secondary)">0</span>
+          </td>
           <td style="text-align: center">
             <VPill :tone="u.active ? 'success' : 'info'">
               {{ u.active ? 'Active' : 'Inactive' }}
@@ -409,8 +458,37 @@ async function submitForm() {
     </div>
   </div>
 
+  <!-- View Modules Drawer -->
+  <VDrawer
+    :open="showModulesDrawer"
+    title="Assigned modules"
+    :subtitle="modulesTarget ? emailToName(modulesTarget.email) : ''"
+    @close="closeModulesDrawer"
+  >
+    <div v-if="!groupedModules.length" style="color: var(--text-secondary); font-size: 14px; padding: 8px 0">
+      No modules assigned.
+    </div>
+    <div v-for="group in groupedModules" :key="group.spec" class="mg">
+      <div class="mg-head">
+        <span class="mg-spec">{{ group.spec }}</span>
+      </div>
+      <div
+        v-for="mod in group.modules"
+        :key="mod"
+        class="mg-row"
+        style="cursor: default; pointer-events: none"
+      >
+        <VIcon name="book-open" :size="14" style="color: var(--text-secondary); flex-shrink: 0" />
+        <span>{{ mod }}</span>
+      </div>
+    </div>
+    <template #footer>
+      <VButton variant="ghost" @click="closeModulesDrawer">Close</VButton>
+    </template>
+  </VDrawer>
+
   <!-- Add / Edit Drawer -->
-  <VDrawer :open="showDrawer" :title="drawerTitle" :subtitle="drawerSubtitle" @close="closeDrawer">
+  <VDrawer :open="showDrawer" :title="drawerTitle" :subtitle="drawerSubtitle" :error="form.error || undefined" @close="closeDrawer">
     <div class="ff-group-title">Account details</div>
 
     <div class="ff">
@@ -452,10 +530,6 @@ async function submitForm() {
         </label>
       </div>
     </div>
-
-    <p v-if="form.error" class="field-error">
-      <VIcon name="alert-circle" :size="14" />{{ form.error }}
-    </p>
 
     <template #footer>
       <VButton variant="ghost" @click="closeDrawer">Cancel</VButton>

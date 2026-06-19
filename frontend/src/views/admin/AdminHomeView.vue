@@ -67,8 +67,9 @@ async function loadData() {
     }
 
     data.value = dashboard
-  } catch {
-    loadError.value = 'Failed to load dashboard. Check your connection and try again.'
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    loadError.value = msg || 'Failed to load dashboard. Check your connection and try again.'
   } finally {
     clearTimeout(slowTimer)
     isLoading.value = false

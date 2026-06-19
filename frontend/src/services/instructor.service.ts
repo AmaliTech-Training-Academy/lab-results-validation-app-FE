@@ -1,7 +1,11 @@
 import type { InstructorDashboardData, MyUpload, AssignedModule } from '@/types/dashboard.types'
 import type { TemplateData } from '@/types/instructor.types'
 import type { ValidationReport } from '@/types/report.types'
+import { BulkImportError } from '@/types/bulk.types'
+import type { BulkRowError } from '@/types/bulk.types'
 import { http } from './http'
+
+export { BulkImportError }
 
 const BASE_URL = '/api/v1'
 
@@ -9,6 +13,10 @@ interface InstructorModuleItem {
   moduleId: string
   moduleName: string
   specializationName: string
+}
+
+interface PagedModuleItems {
+  content: InstructorModuleItem[]
 }
 
 export interface LabResultItem {
@@ -99,11 +107,13 @@ function delay(ms: number) {
 // ---------------------------------------------------------------------------
 
 export async function getModuleLabResults(moduleId: string): Promise<LabResultItem[]> {
-  return http.get<LabResultItem[]>(`/lab-results/modules/${moduleId}`)
+  const result = await http.get<LabResultItem[] | { content: LabResultItem[] }>(`/lab-results/modules/${moduleId}`)
+  return Array.isArray(result) ? result : (result.content ?? [])
 }
 
 export async function getInstructorModules(instructorId: string): Promise<AssignedModule[]> {
-  const items = await http.get<InstructorModuleItem[]>(`/admin/instructors/${instructorId}/modules`)
+  const response = await http.get<PagedModuleItems>(`/admin/instructors/${instructorId}/modules`)
+  const items = response.content ?? []
 
   const counts = await Promise.allSettled(
     items.map((m) => getModuleLabResults(m.moduleId)),
@@ -161,12 +171,36 @@ export async function uploadCsv(file: File): Promise<{ uploadId: string }> {
 
   const json = JSON.parse(text) as Record<string, unknown>
   if ('data' in json && 'success' in json) {
-    const envelope = json as { success: boolean; message: string; data: { uploadId: string } }
-    if (!envelope.success) throw new Error(envelope.message || 'Upload failed')
-    return envelope.data
+    interface BulkData {
+      errors?: Array<{ rowNumber?: number; field?: string; message?: string }>
+      insertedCount?: number
+      updatedCount?: number
+      rejectedCount?: number
+      uploadId?: string
+    }
+    const envelope = json as { success: boolean; message: string; data: BulkData }
+    if (!envelope.success) {
+      const data = envelope.data ?? {}
+      const rowErrors: BulkRowError[] = (data.errors ?? []).map((e) => ({
+        row: typeof e.rowNumber === 'number' ? e.rowNumber : undefined,
+        field: typeof e.field === 'string' ? e.field : undefined,
+        message: typeof e.message === 'string' ? e.message : '',
+      }))
+      const inserted = (data.insertedCount ?? 0) + (data.updatedCount ?? 0)
+      throw new BulkImportError(
+        envelope.message || 'Upload failed',
+        rowErrors,
+        inserted > 0 ? inserted : undefined,
+        data.rejectedCount,
+      )
+    }
+    return envelope.data as { uploadId: string }
   }
 
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  if (!res.ok) {
+    const message = typeof json.message === 'string' ? json.message : text
+    throw new Error(message || `HTTP ${res.status}`)
+  }
   return json as { uploadId: string }
 }
 
@@ -181,9 +215,18 @@ export async function fetchLabResultsTemplateHeaders(): Promise<string[]> {
     credentials: 'include',
   })
 
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const text = await res.text().catch(() => '')
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`
+    if (text) {
+      try {
+        const errJson = JSON.parse(text) as Record<string, unknown>
+        if (typeof errJson.message === 'string') message = errJson.message
+      } catch { message = text || message }
+    }
+    throw new Error(message)
+  }
 
-  const text = await res.text()
   const firstLine = text.split(/\r?\n/)[0] ?? ''
   return firstLine.split(',').map((col) => col.replace(/^"|"$/g, '').trim()).filter(Boolean)
 }
@@ -199,7 +242,17 @@ export async function downloadLabResultsTemplate(): Promise<void> {
     credentials: 'include',
   })
 
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '')
+    let message = `HTTP ${res.status}`
+    if (errText) {
+      try {
+        const errJson = JSON.parse(errText) as Record<string, unknown>
+        if (typeof errJson.message === 'string') message = errJson.message
+      } catch { message = errText || message }
+    }
+    throw new Error(message)
+  }
 
   const blob = await res.blob()
   const disposition = res.headers.get('Content-Disposition') ?? ''

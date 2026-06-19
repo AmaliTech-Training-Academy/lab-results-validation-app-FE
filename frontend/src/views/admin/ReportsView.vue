@@ -25,8 +25,9 @@ async function loadData() {
   const slowTimer = setTimeout(() => { loadSlow.value = true }, LOAD_TIMEOUT_MS)
   try {
     entries.value = await getAuditLog()
-  } catch {
-    loadError.value = 'Failed to load audit log. Check your connection and try again.'
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    loadError.value = msg || 'Failed to load audit log. Check your connection and try again.'
   } finally {
     clearTimeout(slowTimer)
     isLoading.value = false

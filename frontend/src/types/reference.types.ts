@@ -1,3 +1,12 @@
+export interface PagedReference<T> {
+  content: T[]
+  page: number
+  size: number
+  totalElements: number
+  totalPages: number
+  last: boolean
+}
+
 export interface Specialization {
   id: string
   cohortId: string

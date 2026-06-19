@@ -198,6 +198,7 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .drawer-x:hover { background: var(--bg); }
 .drawer-body { padding: 24px; overflow-y: auto; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 18px; }
 .drawer-foot { padding: 18px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 12px; }
+.drawer-error { padding: 10px 24px; border-top: 1px solid var(--danger-bg); background: var(--danger-bg); display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--danger); line-height: 1.4; }
 
 /* ---------- Modal ---------- */
 .modal-scrim { position: fixed; inset: 0; background: rgba(8, 40, 59, 0.4); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 24px; animation: scrim 0.15s ease; }
@@ -208,6 +209,7 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .modal-sub { font-size: 14px; color: var(--text-secondary); margin: 4px 0 0; }
 .modal-body { padding: 18px 24px 4px; display: flex; flex-direction: column; gap: 16px; }
 .modal-foot { padding: 18px 24px; display: flex; justify-content: flex-end; gap: 12px; }
+.modal-error { padding: 10px 24px; border-top: 1px solid var(--danger-bg); background: var(--danger-bg); display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--danger); line-height: 1.4; }
 
 /* ---------- Toast ---------- */
 .toast { position: fixed; right: 28px; bottom: 28px; z-index: 200; display: flex; align-items: flex-start; gap: 12px; min-width: 320px; max-width: 420px; background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--success); border-radius: var(--r-md); box-shadow: var(--shadow-pop); padding: 16px 18px; animation: toastin 0.2s ease; }
@@ -408,7 +410,7 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .form-error {
   color: var(--danger);
   font-size: 13px;
-  margin: 0;
+  margin: 0 0 16px;
   padding: 10px 14px;
   background: var(--danger-bg);
   border: 1px solid rgba(163, 45, 45, 0.2);
