@@ -260,15 +260,6 @@ async function submitForm() {
       const addFailed     = results.add?.status === 'rejected'
       const removeFailed  = results.remove?.status === 'rejected'
 
-      if (profileFailed) console.error('[instructor:update] profile stage failed', (results.profile as PromiseRejectedResult).reason)
-      if (addFailed)     console.error('[instructor:update] module-assign stage failed', (results.add as PromiseRejectedResult).reason)
-      if (removeFailed)  console.error('[instructor:update] module-remove stage failed', (results.remove as PromiseRejectedResult).reason)
-
-      if (settled.every((r) => r.status === 'rejected')) {
-        form.value.error = 'All updates failed. Please try again.'
-        return
-      }
-
       // ── Reconstruct local state from what succeeded ───────────────────────────
       let updatedInstructor: InstructorUser = { ...target }
 
@@ -294,16 +285,38 @@ async function submitForm() {
 
       const anyFailed = settled.some((r) => r.status === 'rejected')
       if (anyFailed) {
-        const parts = [
-          profileFailed && 'profile update',
-          addFailed     && 'module assignment',
-          removeFailed  && 'module removal',
-        ].filter(Boolean).join(' and ')
-        toast.show({ tone: 'warning', title: 'Partially saved', body: `${parts} failed — edit the instructor to retry.` })
+        // Show the exact backend error messages in the drawer
+        const failedMessages: string[] = []
+        if (profileFailed) {
+          const reason = (results.profile as PromiseRejectedResult).reason
+          failedMessages.push(reason instanceof Error ? reason.message : 'Profile update failed.')
+        }
+        if (addFailed) {
+          const reason = (results.add as PromiseRejectedResult).reason
+          failedMessages.push(reason instanceof Error ? reason.message : 'Module assignment failed.')
+        }
+        if (removeFailed) {
+          const reason = (results.remove as PromiseRejectedResult).reason
+          failedMessages.push(reason instanceof Error ? reason.message : 'Module removal failed.')
+        }
+        form.value.error = failedMessages.join(' ')
+        // Sync originalIds and form so a retry only re-attempts what failed
+        if (profileChanged && !profileFailed) {
+          const p = (results.profile as PromiseFulfilledResult<InstructorUser>).value
+          form.value.email = p.email
+          form.value.isActive = p.active
+        }
+        if (toAdd.length && !addFailed) {
+          toAdd.forEach((id) => { if (!originalIds.value.includes(id)) originalIds.value.push(id) })
+        }
+        if (toRemove.length && !removeFailed) {
+          const removedSet = new Set(toRemove)
+          originalIds.value = originalIds.value.filter((id) => !removedSet.has(id))
+        }
       } else {
         toast.show({ tone: 'success', title: 'Instructor updated' })
+        closeDrawer()
       }
-      closeDrawer()
     } else {
       // Stage 1 — create the account
       const created = await addInstructor({
