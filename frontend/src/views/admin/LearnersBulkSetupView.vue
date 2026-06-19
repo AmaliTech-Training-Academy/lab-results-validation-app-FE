@@ -31,16 +31,31 @@ const downloadingTemplate = ref(false)
 
 const bulkErrors = ref<BulkRowError[]>([])
 const bulkErrorSummary = ref('')
+const fileError = ref('')
+
+const MAX_MB = 10
+
+function validateFile(f: File): string {
+  if (!f.name.toLowerCase().endsWith('.csv') && f.type !== 'text/csv') {
+    return `"${f.name}" is not a CSV file. Only .csv files are accepted.`
+  }
+  if (f.size > MAX_MB * 1024 * 1024) {
+    return `"${f.name}" is ${(f.size / 1024 / 1024).toFixed(1)} MB — exceeds the ${MAX_MB} MB limit.`
+  }
+  return ''
+}
 
 function onDrop(event: DragEvent) {
   event.preventDefault()
   dragOver.value = false
   const file = event.dataTransfer?.files[0]
-  if (file) {
-    selectedFile.value = file
-    bulkErrors.value = []
-    bulkErrorSummary.value = ''
-  }
+  if (!file) return
+  const err = validateFile(file)
+  if (err) { fileError.value = err; selectedFile.value = null; return }
+  selectedFile.value = file
+  fileError.value = ''
+  bulkErrors.value = []
+  bulkErrorSummary.value = ''
 }
 
 function onFileClick() {
@@ -49,17 +64,20 @@ function onFileClick() {
   input.accept = '.csv'
   input.onchange = (e) => {
     const file = (e.target as HTMLInputElement).files?.[0]
-    if (file) {
-      selectedFile.value = file
-      bulkErrors.value = []
-      bulkErrorSummary.value = ''
-    }
+    if (!file) return
+    const err = validateFile(file)
+    if (err) { fileError.value = err; selectedFile.value = null; return }
+    selectedFile.value = file
+    fileError.value = ''
+    bulkErrors.value = []
+    bulkErrorSummary.value = ''
   }
   input.click()
 }
 
 function clearFile() {
   selectedFile.value = null
+  fileError.value = ''
   bulkErrors.value = []
   bulkErrorSummary.value = ''
 }
@@ -146,6 +164,16 @@ async function handleDownloadTemplate() {
           <p class="dz-sub">Maximum file size: 10 MB. Must be .csv format.</p>
         </template>
       </div>
+      <div v-if="fileError" class="bulk-error-log" role="alert" aria-live="polite">
+        <div class="bulk-error-log-head">
+          <VIcon name="alert-circle" :size="16" style="color: var(--danger); flex-shrink: 0" />
+          <p class="bulk-error-log-title">{{ fileError }}</p>
+          <button class="bulk-error-log-dismiss" aria-label="Dismiss" @click="fileError = ''">
+            <VIcon name="x" :size="16" />
+          </button>
+        </div>
+      </div>
+
       <div style="display: flex; gap: 8px">
         <VButton
           variant="primary"
