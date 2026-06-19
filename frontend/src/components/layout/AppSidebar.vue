@@ -63,7 +63,7 @@ function footerItems(role: 'admin' | 'instructor') {
       :aria-pressed="collapsed"
       @click="emit('toggle')"
     >
-      <VIcon :name="collapsed ? 'chevron-right' : 'chevron-left'" :size="20" />
+      <VIcon :name="collapsed ? 'chevron-right' : 'chevron-left'" :size="19" />
     </button>
     <div>
       <div class="brand">
@@ -109,10 +109,10 @@ function footerItems(role: 'admin' | 'instructor') {
   color: var(--text);
   border-right: 1px solid var(--border);
   transition: width 0.18s ease;
+  z-index: 20;
 }
 
-/* Navy rounded-square edge tab, sitting at the top of the sidebar's
-   right border (matches the reference placement, shape and size) */
+/* Tab at the bottom tip of the sidebar's right edge */
 .sidebar-tab {
   position: absolute;
   top: 14px;

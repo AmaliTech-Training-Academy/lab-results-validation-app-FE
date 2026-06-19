@@ -49,9 +49,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 
     <div class="topbar-right">
       <span v-if="userRole.toLowerCase() === 'instructor'" class="topbar-name">{{ userName }}</span>
-      <span class="role-badge">{{ userRole }}</span>
-
-      <div ref="wrap" class="profile">
+<div ref="wrap" class="profile">
         <button
           class="profile-btn"
           type="button"
@@ -80,6 +78,13 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 </template>
 
 <style scoped>
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+
 .profile {
   position: relative;
 }
