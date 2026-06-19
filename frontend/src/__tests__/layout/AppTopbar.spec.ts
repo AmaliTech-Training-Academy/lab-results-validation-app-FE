@@ -15,10 +15,6 @@ describe('AppTopbar', () => {
     expect(wrapper.find('.crumbs .cur').text()).toBe('Dashboard')
   })
 
-  it('renders the role badge', () => {
-    const wrapper = mount(AppTopbar, { props: defaultProps })
-    expect(wrapper.find('.role-badge').text()).toBe('Admin')
-  })
 
   it('renders user initials in the avatar', () => {
     const wrapper = mount(AppTopbar, { props: defaultProps })

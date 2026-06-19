@@ -67,8 +67,8 @@ function footerItems(role: 'admin' | 'instructor') {
     </button>
     <div>
       <div class="brand">
-        <img :src="logoUrl" alt="Validata-logo" class="brand-logo" />
-        <img :src="iconUrl" alt="Validata-logo" class="brand-icon" />
+        <img :src="logoUrl" alt="Validata" class="brand-logo" />
+        <img :src="iconUrl" alt="Validata" class="brand-icon" />
       </div>
       <nav class="nav" aria-label="Main menu">
         <button

@@ -78,6 +78,13 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 </template>
 
 <style scoped>
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+
 .profile {
   position: relative;
 }
