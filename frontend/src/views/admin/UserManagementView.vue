@@ -208,12 +208,12 @@ function toggleGroup(group: ModuleGroup) {
   }
 }
 
-// const ALLOWED_DOMAINS = ['amalitech.com', 'amalitechtraining.com', 'amalitechtraining.org']
+const ALLOWED_DOMAINS = ['amalitech.com', 'amalitechtraining.com', 'amalitechtraining.org']
 
-// function isAllowedDomain(email: string): boolean {
-//   const domain = email.trim().toLowerCase().split('@')[1]
-//   return !!domain && ALLOWED_DOMAINS.includes(domain)
-// }
+function isAllowedDomain(email: string): boolean {
+  const domain = email.trim().toLowerCase().split('@')[1]
+  return !!domain && ALLOWED_DOMAINS.includes(domain)
+}
 
 async function submitForm() {
   form.value.error = ''
@@ -221,10 +221,10 @@ async function submitForm() {
     form.value.error = 'Email address is required.'
     return
   }
-  // if (!isAllowedDomain(form.value.email)) {
-  //   form.value.error = 'Email must belong to @amalitech.com, @amalitechtraining.com, or @amalitechtraining.org.'
-  //   return
-  // }
+  if (!isAllowedDomain(form.value.email)) {
+    form.value.error = 'Email must belong to @amalitech.com, @amalitechtraining.com, or @amalitechtraining.org.'
+    return
+  }
 
   submitting.value = true
   try {
