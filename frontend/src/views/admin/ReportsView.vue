@@ -1,30 +1,69 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import { useToastStore } from '@/stores/toast'
-import { getAuditLog, getUploadReport } from '@/services/admin.service'
-import type { AuditEntry, ValidationReport } from '@/types/report.types'
+import { getCsvUploads, getUploadReport, downloadCorrectionsCsv } from '@/services/admin.service'
+import { getInstructors } from '@/services/user.service'
+import type { InstructorUser } from '@/types/user.types'
+import type { CsvUploadEntry, ValidationReport } from '@/types/report.types'
 
 const toast = useToastStore()
 
 const view = ref<'list' | 'report'>('list')
-const entries = ref<AuditEntry[]>([])
+const entries = ref<CsvUploadEntry[]>([])
 const report = ref<ValidationReport | null>(null)
 const isLoading = ref(true)
 const loadError = ref<string | null>(null)
 const loadSlow = ref(false)
 const LOAD_TIMEOUT_MS = 8000
 const reportLoading = ref(false)
-const search = ref('')
 
-async function loadData() {
+// ── Filter state ──────────────────────────────────────────────────────────────
+const startDate = ref('')
+const endDate = ref('')
+const instructorFilter = ref('')   // holds the selected instructor's email
+const statusFilter = ref('')
+const search = ref('')
+const instructors = ref<InstructorUser[]>([])
+
+const hasActiveFilters = computed(() =>
+  !!(startDate.value || endDate.value || instructorFilter.value.trim() || statusFilter.value || search.value.trim()),
+)
+
+function clearFilters() {
+  startDate.value = ''
+  endDate.value = ''
+  instructorFilter.value = ''
+  statusFilter.value = ''
+  search.value = ''
+}
+
+// ── Pagination ────────────────────────────────────────────────────────────────
+const currentPage = ref(0)
+const totalPages = ref(0)
+const totalElements = ref(0)
+const pageSize = ref(10)
+const isLastPage = ref(true)
+
+async function loadData(page = 0) {
   isLoading.value = true
   loadError.value = null
   loadSlow.value = false
   const slowTimer = setTimeout(() => { loadSlow.value = true }, LOAD_TIMEOUT_MS)
   try {
-    entries.value = await getAuditLog()
+    const result = await getCsvUploads(page, pageSize.value, {
+      startDate:       startDate.value       ? `${startDate.value}T00:00:00.000Z`  : undefined,
+      endDate:         endDate.value         ? `${endDate.value}T23:59:59.999Z`    : undefined,
+      uploadedByEmail: instructorFilter.value.trim() || undefined,
+      status:          statusFilter.value    || undefined,
+      search:          search.value.trim()   || undefined,
+    })
+    entries.value = result.content
+    currentPage.value = result.page
+    totalPages.value = result.totalPages
+    totalElements.value = result.totalElements
+    isLastPage.value = result.last
   } catch (err) {
     const msg = err instanceof Error ? err.message : ''
     loadError.value = msg || 'Failed to load audit log. Check your connection and try again.'
@@ -35,19 +74,45 @@ async function loadData() {
   }
 }
 
-onMounted(loadData)
-
-const filteredEntries = computed(() => {
-  const q = search.value.trim().toLowerCase()
-  return q
-    ? entries.value.filter((e) => e.id.toLowerCase().includes(q) || e.file.toLowerCase().includes(q))
-    : entries.value
+onMounted(() => {
+  loadData(0)
+  getInstructors(0, 200).then((res) => { instructors.value = res.content }).catch(() => {})
 })
 
-function statusDotColor(status: AuditEntry['status']): string {
-  if (status === 'success') return 'var(--success)'
-  if (status === 'warning') return 'var(--warning)'
-  return 'var(--danger)'
+// Select/date filters apply immediately; search text is debounced
+watch([startDate, endDate, statusFilter, instructorFilter], () => loadData(0))
+
+let debounceTimer: ReturnType<typeof setTimeout> | null = null
+watch(search, () => {
+  if (debounceTimer) clearTimeout(debounceTimer)
+  debounceTimer = setTimeout(() => loadData(0), 400)
+})
+
+const pagerStart = computed(() => currentPage.value * pageSize.value + 1)
+const pagerEnd = computed(() =>
+  Math.min((currentPage.value + 1) * pageSize.value, totalElements.value),
+)
+
+const pageNumbers = computed<number[]>(() => {
+  const total = totalPages.value
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i)
+  const cur = currentPage.value
+  const pages = new Set([0, total - 1, cur])
+  if (cur > 0) pages.add(cur - 1)
+  if (cur < total - 1) pages.add(cur + 1)
+  return Array.from(pages).sort((a, b) => a - b)
+})
+
+function goToPage(page: number) {
+  if (page < 0 || page >= totalPages.value || page === currentPage.value) return
+  loadData(page)
+}
+
+function deriveStatus(apiStatus: string): { dot: string; label: string } {
+  const s = apiStatus.toUpperCase()
+  if (s === 'COMPLETED' || s === 'SUCCESS') return { dot: 'var(--success)', label: 'Completed' }
+  if (s === 'PARTIAL') return { dot: 'var(--warning)', label: 'Partial' }
+  return { dot: 'var(--danger)', label: 'Failed' }
 }
 
 function chipStyle(value: number, tone: 'acc' | 'rej'): string {
@@ -57,11 +122,54 @@ function chipStyle(value: number, tone: 'acc' | 'rej'): string {
     : 'background: var(--danger-bg); color: var(--danger)'
 }
 
-async function openReport(entry: AuditEntry) {
+function formatDate(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date(iso))
+  } catch {
+    return iso
+  }
+}
+
+function emailToName(email: string): string {
+  const local = email.split('@')[0] ?? email
+  return local
+    .split('.')
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+    .join(' ')
+}
+
+function truncateFilename(name: string): string {
+  return name.length > 10 ? name.slice(0, 10) + '…' : name
+}
+
+async function openReport(entry: CsvUploadEntry) {
   view.value = 'report'
   reportLoading.value = true
   report.value = await getUploadReport(entry.id)
   reportLoading.value = false
+}
+
+const isDownloading = ref(false)
+
+async function downloadCorrections() {
+  if (!report.value || isDownloading.value) return
+  isDownloading.value = true
+  try {
+    const fallback = report.value.filename.replace(/(\.[^.]+)?$/, '-corrections.csv')
+    await downloadCorrectionsCsv(report.value.uploadId, fallback)
+    toast.show({ tone: 'success', title: 'Download started' })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    toast.show({ tone: 'danger', title: 'Download failed', body: msg || undefined })
+  } finally {
+    isDownloading.value = false
+  }
 }
 
 function backToList() {
@@ -79,32 +187,43 @@ function backToList() {
 
     <div class="card card-pad filterbar" style="margin-bottom: 20px">
       <div class="selectf">
-        <span class="selectf-label">Date Range</span>
-        <button type="button" class="selectf-btn">
-          <span>Oct 1, 2023 – Oct 31, 2023</span>
-          <VIcon name="chevron-down" :size="16" style="color: var(--text-secondary)" />
-        </button>
+        <span class="selectf-label">From</span>
+        <input v-model="startDate" type="date" class="date-input" />
+      </div>
+      <div class="selectf">
+        <span class="selectf-label">To</span>
+        <input v-model="endDate" type="date" class="date-input" />
       </div>
       <div class="selectf">
         <span class="selectf-label">Instructor</span>
-        <button type="button" class="selectf-btn">
-          <span>All Instructors</span>
-          <VIcon name="chevron-down" :size="16" style="color: var(--text-secondary)" />
-        </button>
+        <select v-model="instructorFilter" class="status-select" style="min-width: 170px">
+          <option value="">All Instructors</option>
+          <option v-for="inst in instructors" :key="inst.id" :value="inst.email">
+            {{ emailToName(inst.email) }}
+          </option>
+        </select>
       </div>
       <div class="selectf">
         <span class="selectf-label">Status</span>
-        <button type="button" class="selectf-btn">
-          <span>All</span>
-          <VIcon name="chevron-down" :size="16" style="color: var(--text-secondary)" />
-        </button>
+        <select v-model="statusFilter" class="status-select">
+          <option value="">All</option>
+          <option value="PROCESSING">Processing</option>
+          <option value="COMPLETED">Completed</option>
+          <option value="PARTIAL">Partial</option>
+          <option value="FAILED">Failed</option>
+        </select>
       </div>
       <div class="selectf" style="flex: 1">
         <span class="selectf-label">Search</span>
         <div class="search">
           <VIcon name="search" :size="17" style="color: var(--text-secondary)" />
-          <input v-model="search" placeholder="Search by ID or Filename" />
+          <input v-model="search" placeholder="Search by upload ID or filename" />
         </div>
+      </div>
+      <div v-if="hasActiveFilters" class="selectf" style="align-self: flex-end">
+        <button class="link" style="height: 40px; display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: var(--text-secondary)" @click="clearFilters">
+          <VIcon name="x" :size="13" /> Clear
+        </button>
       </div>
     </div>
 
@@ -126,7 +245,7 @@ function backToList() {
       <table class="tbl">
         <thead>
           <tr>
-            <th>Upload ID</th>
+            <th style="padding-left: 24px">Upload ID</th>
             <th>Instructor</th>
             <th>Filename</th>
             <th>Uploaded at</th>
@@ -134,12 +253,12 @@ function backToList() {
             <th style="text-align: center">Accepted</th>
             <th style="text-align: center">Rejected</th>
             <th>Status</th>
-            <th style="text-align: right">Actions</th>
+            <th style="text-align: right; padding-right: 24px">Actions</th>
           </tr>
         </thead>
         <tbody v-if="isLoading">
           <tr v-for="i in 8" :key="i" class="skel-row">
-            <td><span class="skel mono" style="width: 90px" /></td>
+            <td style="padding-left: 24px"><span class="skel mono" style="width: 90px" /></td>
             <td><span class="skel" style="width: 55%" /></td>
             <td><span class="skel mono" style="width: 70%" /></td>
             <td><span class="skel" style="width: 80px" /></td>
@@ -147,53 +266,74 @@ function backToList() {
             <td style="text-align: center"><span class="skel" style="width: 40px; border-radius: 999px; display: inline-block" /></td>
             <td style="text-align: center"><span class="skel" style="width: 40px; border-radius: 999px; display: inline-block" /></td>
             <td><span class="skel" style="width: 70px; border-radius: 999px" /></td>
-            <td style="text-align: right"><span class="skel" style="width: 48px; display: inline-block" /></td>
+            <td style="text-align: right; padding-right: 24px"><span class="skel" style="width: 48px; display: inline-block" /></td>
           </tr>
         </tbody>
         <tbody v-else>
-          <tr v-if="!filteredEntries.length">
+          <tr v-if="!entries.length">
             <td colspan="9" style="text-align: center; color: var(--text-secondary); padding: 32px">
               No uploads found.
             </td>
           </tr>
-          <tr v-for="entry in filteredEntries" :key="entry.id">
-            <td class="mono" style="color: var(--text-secondary)">{{ entry.id }}</td>
-            <td style="font-weight: 500">{{ entry.instructor }}</td>
-            <td class="mono">{{ entry.file }}</td>
-            <td style="color: var(--text-secondary)">{{ entry.uploadedAt }}</td>
+          <tr v-for="entry in entries" :key="entry.id">
+            <td class="mono" style="color: var(--text-secondary); font-size: 12px; padding-left: 24px" :title="entry.id">{{ entry.id.length > 8 ? entry.id.slice(0, 8) + '…' : entry.id }}</td>
+            <td style="font-weight: 500">{{ emailToName(entry.uploadedByEmail) }}</td>
+            <td class="mono" :title="entry.filename">{{ truncateFilename(entry.filename) }}</td>
+            <td style="color: var(--text-secondary)">{{ formatDate(entry.uploadedAt) }}</td>
             <td class="mono" style="text-align: right">{{ entry.totalRows.toLocaleString() }}</td>
             <td style="text-align: center">
-              <span class="count-chip" :style="chipStyle(entry.accepted, 'acc')">
-                {{ entry.accepted.toLocaleString() }}
+              <span class="count-chip" :style="chipStyle(entry.acceptedRows, 'acc')">
+                {{ entry.acceptedRows.toLocaleString() }}
               </span>
             </td>
             <td style="text-align: center">
-              <span class="count-chip" :style="chipStyle(entry.rejected, 'rej')">
-                {{ entry.rejected.toLocaleString() }}
+              <span class="count-chip" :style="chipStyle(entry.rejectedRows, 'rej')">
+                {{ entry.rejectedRows.toLocaleString() }}
               </span>
             </td>
             <td>
               <span class="pill-dot">
-                <span class="dot" :style="{ background: statusDotColor(entry.status) }" />
-                {{ entry.statusLabel }}
+                <span class="dot" :style="{ background: deriveStatus(entry.status).dot }" />
+                {{ deriveStatus(entry.status).label }}
               </span>
             </td>
-            <td style="text-align: right">
+            <td style="text-align: right; padding-right: 24px">
               <button class="link" @click="openReport(entry)">Details</button>
             </td>
           </tr>
         </tbody>
       </table>
       <div class="pager">
-        <span class="pager-count">Showing 1 to {{ filteredEntries.length }} of 42 entries</span>
+        <span class="pager-count">
+          Showing {{ totalElements === 0 ? 0 : pagerStart }} to {{ pagerEnd }} of {{ totalElements.toLocaleString() }} entries
+        </span>
         <div class="pager-ctrls">
-          <button class="pg-arrow" aria-label="Previous"><VIcon name="chevron-left" :size="16" /></button>
-          <button class="pg-num on">1</button>
-          <button class="pg-num">2</button>
-          <button class="pg-num">3</button>
-          <span class="pg-ellipsis">…</span>
-          <button class="pg-num">9</button>
-          <button class="pg-arrow" aria-label="Next"><VIcon name="chevron-right" :size="16" /></button>
+          <button
+            class="pg-arrow"
+            aria-label="Previous"
+            :disabled="currentPage === 0"
+            @click="goToPage(currentPage - 1)"
+          >
+            <VIcon name="chevron-left" :size="16" />
+          </button>
+          <template v-for="(pg, idx) in pageNumbers" :key="pg">
+            <span v-if="idx > 0 && pg - pageNumbers[idx - 1] > 1" class="pg-ellipsis">…</span>
+            <button
+              class="pg-num"
+              :class="{ on: pg === currentPage }"
+              @click="goToPage(pg)"
+            >
+              {{ pg + 1 }}
+            </button>
+          </template>
+          <button
+            class="pg-arrow"
+            aria-label="Next"
+            :disabled="isLastPage"
+            @click="goToPage(currentPage + 1)"
+          >
+            <VIcon name="chevron-right" :size="16" />
+          </button>
         </div>
       </div>
     </div>
@@ -220,7 +360,6 @@ function backToList() {
           <tbody>
             <tr v-for="i in 6" :key="i" class="skel-row">
               <td><span class="skel mono" style="width: 30px" /></td>
-              <td><span class="skel" style="width: 60%" /></td>
               <td><span class="skel" style="width: 50%" /></td>
               <td><span class="skel" style="width: 60px" /></td>
               <td><span class="skel" style="width: 75%" /></td>
@@ -243,16 +382,17 @@ function backToList() {
           <h1 class="page-title">Validation report</h1>
           <div class="report-meta">
             <span><VIcon name="file-text" :size="15" /><span class="mono" style="margin-left: 4px">{{ report.filename }}</span></span>
-            <span><VIcon name="clock" :size="15" /><span style="margin-left: 4px">{{ report.uploadedAt }}</span></span>
+            <span><VIcon name="clock" :size="15" /><span style="margin-left: 4px">{{ formatDate(report.uploadedAt) }}</span></span>
           </div>
         </div>
         <div class="report-actions">
           <VButton
             variant="ghost"
             icon="download"
-            @click="toast.show({ tone: 'info', title: 'Download started' })"
+            :disabled="isDownloading"
+            @click="downloadCorrections"
           >
-            Download corrections CSV
+            {{ isDownloading ? 'Downloading…' : 'Download corrections CSV' }}
           </VButton>
         </div>
       </div>
@@ -282,7 +422,6 @@ function backToList() {
           <thead>
             <tr>
               <th>Row #</th>
-              <th>Learner email</th>
               <th>Failing field</th>
               <th>Rule ID</th>
               <th>Error message</th>
@@ -291,9 +430,11 @@ function backToList() {
           <tbody>
             <tr v-for="row in report.rejectedRows" :key="row.row">
               <td class="mono">{{ row.row }}</td>
-              <td>{{ row.email }}</td>
               <td style="font-weight: 500">{{ row.field }}</td>
-              <td><span class="rule-id">{{ row.ruleId }}</span></td>
+              <td>
+                <span v-if="row.ruleId !== '—'" class="rule-id">{{ row.ruleId }}</span>
+                <span v-else style="color: var(--text-secondary)">—</span>
+              </td>
               <td style="color: var(--danger)">
                 <span style="display: inline-flex; gap: 6px; align-items: flex-start">
                   <VIcon name="alert-triangle" :size="15" style="flex-shrink: 0; margin-top: 1px" />
@@ -320,3 +461,42 @@ function backToList() {
     </template>
   </template>
 </template>
+
+<style scoped>
+.date-input {
+  height: 40px;
+  min-width: 130px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: #fff;
+  cursor: pointer;
+}
+.date-input:focus {
+  outline: none;
+  border-color: var(--orange);
+  box-shadow: var(--ring-focus);
+}
+
+.status-select {
+  appearance: none;
+  height: 40px;
+  min-width: 140px;
+  padding: 0 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: #fff;
+  cursor: pointer;
+}
+.status-select:focus {
+  outline: none;
+  border-color: var(--orange);
+  box-shadow: var(--ring-focus);
+}
+</style>

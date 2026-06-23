@@ -1,5 +1,6 @@
+import { http } from '@/services/http'
 import type { AdminDashboardData } from '@/types/dashboard.types'
-import type { AuditEntry, ValidationReport } from '@/types/report.types'
+import type { AuditEntry, CsvUploadEntry, CsvUploadErrorReport, PagedCsvUploads, ValidationReport } from '@/types/report.types'
 
 // ---------------------------------------------------------------------------
 // Mock data — DELETE and replace service bodies when wiring the real API
@@ -81,20 +82,6 @@ const MOCK_AUDIT: AuditEntry[] = [
   { id: 'UP-7E3B1…', instructor: 'Dr. Alan Grant',    file: 'excavation_logs_site_b.xlsx',    uploadedAt: 'Oct 21, 08:15 AM', totalRows: 450,  accepted: 448,  rejected: 2,    status: 'warning', statusLabel: 'Partial'   },
 ]
 
-const MOCK_REPORT: ValidationReport = {
-  uploadId: 'UP-4D7E2…',
-  filename: 'lab_results_batch_Q3_final.csv',
-  uploadedAt: 'Oct 24, 2023 at 14:32 PST',
-  totalRows: 48,
-  accepted: 43,
-  rejected: 5,
-  rejectedRows: [
-    { row: 12, email: 'j.doe@example.com',          field: 'completion_date', ruleId: 'VAL-DATE-01', message: 'Invalid date format. Expected YYYY-MM-DD.'         },
-    { row: 18, email: 'smith.a@domain.org',          field: 'score_module_1', ruleId: 'VAL-NUM-03',  message: 'Value exceeds maximum allowed score of 100.'       },
-    { row: 24, email: 'williams_r@university.edu',   field: 'instructor_id',  ruleId: 'VAL-REQ-01',  message: 'Required field is missing or empty.'               },
-    { row: 41, email: 'invalid.email@',              field: 'learner_email',  ruleId: 'VAL-FMT-02',  message: 'Malformed email address string.'                   },
-  ],
-}
 
 export async function getAuditLog(): Promise<AuditEntry[]> {
   // TODO: replace with → return http.get<AuditEntry[]>('/admin/reports/audit')
@@ -102,8 +89,79 @@ export async function getAuditLog(): Promise<AuditEntry[]> {
   return MOCK_AUDIT
 }
 
+export interface CsvUploadFilters {
+  startDate?: string
+  endDate?: string
+  uploadedByEmail?: string
+  status?: string
+  search?: string
+}
+
+export async function getCsvUploads(page = 0, size = 10, filters: CsvUploadFilters = {}): Promise<PagedCsvUploads> {
+  const params = new URLSearchParams({ page: String(page), size: String(size) })
+  if (filters.startDate)       params.set('startDate',       filters.startDate)
+  if (filters.endDate)         params.set('endDate',         filters.endDate)
+  if (filters.uploadedByEmail) params.set('uploadedByEmail', filters.uploadedByEmail)
+  if (filters.status)          params.set('status',          filters.status)
+  if (filters.search)          params.set('search',          filters.search)
+  return http.get<PagedCsvUploads>(`/admin/csv-uploads?${params.toString()}`)
+}
+
 export async function getUploadReport(uploadId: string): Promise<ValidationReport> {
-  // TODO: replace with → return http.get<ValidationReport>(`/admin/reports/${uploadId}`)
-  await delay(200)
-  return { ...MOCK_REPORT, uploadId }
+  const [details, errorReport] = await Promise.all([
+    http.get<CsvUploadEntry>(`/admin/csv-uploads/${uploadId}`),
+    http.get<CsvUploadErrorReport>(`/admin/csv-uploads/${uploadId}/error-report`),
+  ])
+
+  return {
+    uploadId,
+    filename:    details.filename,
+    uploadedAt:  details.uploadedAt,
+    totalRows:   details.totalRows,
+    accepted:    details.acceptedRows,
+    rejected:    details.rejectedRows,
+    rejectedRows: errorReport.errors.map((e) => ({
+      row:    e.rowNumber,
+      email:  '',
+      field:  e.field   ?? '—',
+      ruleId: e.rule    ?? '—',
+      message: e.message,
+    })),
+  }
+}
+
+export async function downloadCorrectionsCsv(uploadId: string, fallbackFilename = 'corrections.csv'): Promise<void> {
+  const token = localStorage.getItem('auth_token')
+  const headers: HeadersInit = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(`/api/v1/lab-results/uploads/${uploadId}/corrections`, {
+    method: 'GET',
+    headers,
+    credentials: 'include',
+  })
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '')
+    let message = `HTTP ${res.status}`
+    if (errText) {
+      try {
+        const errJson = JSON.parse(errText) as Record<string, unknown>
+        if (typeof errJson.message === 'string') message = errJson.message
+      } catch { message = errText || message }
+    }
+    throw new Error(message)
+  }
+
+  const blob = await res.blob()
+  const disposition = res.headers.get('Content-Disposition') ?? ''
+  const match = disposition.match(/filename[^;=\n]*=(['"]?)([^'";\n]+)\1/)
+  const filename = match?.[2]?.trim() ?? fallbackFilename
+
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
 }

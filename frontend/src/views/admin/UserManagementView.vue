@@ -594,4 +594,15 @@ async function submitForm() {
   padding: 16px 4px;
   margin: 0;
 }
+
+/* Give the outermost columns more breathing room from the table edges */
+:deep(.tbl thead th:first-child),
+:deep(.tbl tbody td:first-child) {
+  padding-left: 24px;
+}
+
+:deep(.tbl thead th:last-child),
+:deep(.tbl tbody td:last-child) {
+  padding-right: 24px;
+}
 </style>
