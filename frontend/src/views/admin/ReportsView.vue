@@ -238,7 +238,7 @@ function backToList() {
       <div class="load-error-icon"><VIcon name="wifi-off" :size="28" /></div>
       <p class="load-error-title">Could not load audit log</p>
       <p class="load-error-sub">{{ loadError }}</p>
-      <VButton variant="ghost" icon="rotate-ccw" @click="loadData">Try again</VButton>
+      <VButton variant="ghost" icon="rotate-ccw" @click="() => loadData(0)">Try again</VButton>
     </div>
 
     <div v-else class="tbl-wrap">
@@ -317,7 +317,7 @@ function backToList() {
             <VIcon name="chevron-left" :size="16" />
           </button>
           <template v-for="(pg, idx) in pageNumbers" :key="pg">
-            <span v-if="idx > 0 && pg - pageNumbers[idx - 1] > 1" class="pg-ellipsis">…</span>
+            <span v-if="idx > 0 && pg - (pageNumbers[idx - 1] ?? 0) > 1" class="pg-ellipsis">…</span>
             <button
               class="pg-num"
               :class="{ on: pg === currentPage }"
