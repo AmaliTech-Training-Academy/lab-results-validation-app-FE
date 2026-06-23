@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getAdminDashboard } from '@/services/admin.service'
+import { getAdminDashboard, getCsvUploads } from '@/services/admin.service'
 import { getInstructors } from '@/services/user.service'
 import { getCohorts } from '@/services/cohort.service'
 import { getLearners } from '@/services/learner.service'
-import type { AdminDashboardData } from '@/types/dashboard.types'
+import type { AdminDashboardData, Tone } from '@/types/dashboard.types'
+import type { CsvUploadEntry } from '@/types/report.types'
 import VStatCard from '@/components/base/VStatCard.vue'
 import VPill from '@/components/base/VPill.vue'
 import VIcon from '@/components/base/VIcon.vue'
@@ -20,6 +21,50 @@ const STAT_ROUTES: Record<string, string> = {
   Instructors: 'admin-users',
 }
 
+function emailToName(email: string): string {
+  const local = email.split('@')[0] ?? email
+  return local
+    .split('.')
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+    .join(' ')
+}
+
+function deriveUploadTone(status: string): Tone {
+  const s = status.toUpperCase()
+  if (s === 'COMPLETED' || s === 'SUCCESS') return 'success'
+  if (s === 'PARTIAL') return 'warning'
+  return 'danger'
+}
+
+function deriveUploadStatus(status: string): string {
+  const s = status.toUpperCase()
+  if (s === 'COMPLETED' || s === 'SUCCESS') return 'Completed'
+  if (s === 'PARTIAL') return 'Partial'
+  return 'Failed'
+}
+
+function mapToRecentUpload(entry: CsvUploadEntry) {
+  return {
+    instructor: emailToName(entry.uploadedByEmail),
+    file: entry.filename,
+    accepted: entry.acceptedRows,
+    rejected: entry.rejectedRows,
+    tone: deriveUploadTone(entry.status),
+    status: deriveUploadStatus(entry.status),
+  }
+}
+
+function mapToAttentionItem(entry: CsvUploadEntry) {
+  const total = entry.totalRows || 1
+  const pct = Math.round((entry.rejectedRows / total) * 100)
+  return {
+    instructor: emailToName(entry.uploadedByEmail),
+    file: entry.filename,
+    pct: `${pct}% Rejected`,
+    detail: `${entry.acceptedRows} Accepted / ${entry.rejectedRows} Rejected`,
+  }
+}
+
 const data = ref<AdminDashboardData | null>(null)
 const isLoading = ref(true)
 const loadError = ref<string | null>(null)
@@ -32,12 +77,13 @@ async function loadData() {
   loadSlow.value = false
   const slowTimer = setTimeout(() => { loadSlow.value = true }, LOAD_TIMEOUT_MS)
   try {
-    const [dashboard, instructors, cohortsPage, learnersPage, activeLearnersPage] = await Promise.all([
+    const [dashboard, instructors, cohortsPage, learnersPage, activeLearnersPage, uploadsPage] = await Promise.all([
       getAdminDashboard(),
       getInstructors(),
       getCohorts(0, 100),
       getLearners({ page: 0, size: 1 }),
       getLearners({ status: 'ACTIVE', page: 0, size: 1 }),
+      getCsvUploads(0, 5),
     ])
 
     const activeInstructors = instructors.content.filter((i) => i.active).length
@@ -65,6 +111,11 @@ async function loadData() {
       learnerStat.value = String(totalLearners)
       learnerStat.footText = `${activeLearners} Active · ${archivedLearners} Archived`
     }
+
+    dashboard.recentUploads = uploadsPage.content.map(mapToRecentUpload)
+    dashboard.attentionItems = uploadsPage.content
+      .filter((e) => e.totalRows > 0 && e.rejectedRows / e.totalRows > 0.5)
+      .map(mapToAttentionItem)
 
     data.value = dashboard
   } catch (err) {
