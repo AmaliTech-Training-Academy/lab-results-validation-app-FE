@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getMyUploads, getUploadReport } from '@/services/instructor.service'
+import { getMyUploads, getUploadReport, downloadCorrectionsCsv } from '@/services/instructor.service'
 import type { MyUploadFilters } from '@/services/instructor.service'
 import { useToastStore } from '@/stores/toast'
 import type { MyUpload } from '@/types/dashboard.types'
@@ -60,6 +60,7 @@ const pageNumbers = computed<number[]>(() => {
 
 const report = ref<ValidationReport | null>(null)
 const reportLoading = ref(false)
+const isDownloading = ref(false)
 
 const activeUploadId = computed(() => route.query.uploadId as string | undefined)
 
@@ -167,8 +168,19 @@ function backToList() {
   router.push({ name: 'instructor-uploads' })
 }
 
-function downloadCorrections() {
-  toast.show({ tone: 'info', title: 'Download started', body: report.value?.filename })
+async function downloadCorrections() {
+  if (!report.value || isDownloading.value) return
+  isDownloading.value = true
+  try {
+    const fallback = report.value.filename.replace(/(\.[^.]+)?$/, '-corrections.csv')
+    await downloadCorrectionsCsv(report.value.uploadId, fallback)
+    toast.show({ tone: 'success', title: 'Download started' })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    toast.show({ tone: 'danger', title: 'Download failed', body: msg || undefined })
+  } finally {
+    isDownloading.value = false
+  }
 }
 </script>
 
@@ -381,8 +393,8 @@ function downloadCorrections() {
           </div>
         </div>
         <div class="report-actions">
-          <VButton variant="ghost" icon="download" @click="downloadCorrections">
-            Download corrections CSV
+          <VButton variant="ghost" icon="download" :disabled="isDownloading" @click="downloadCorrections">
+            {{ isDownloading ? 'Downloading…' : 'Download corrections CSV' }}
           </VButton>
           <VButton variant="primary" icon="upload" :to="{ name: 'instructor-upload' }">
             Re-upload fixed file
