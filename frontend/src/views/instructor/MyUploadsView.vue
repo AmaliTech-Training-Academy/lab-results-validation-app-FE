@@ -224,7 +224,7 @@ function downloadCorrections() {
       <div class="load-error-icon"><VIcon name="wifi-off" :size="28" /></div>
       <p class="load-error-title">Could not load uploads</p>
       <p class="load-error-sub">{{ listError }}</p>
-      <VButton variant="ghost" icon="rotate-ccw" @click="loadUploads">Try again</VButton>
+      <VButton variant="ghost" icon="rotate-ccw" @click="() => loadUploads()">Try again</VButton>
     </div>
 
     <div v-else class="tbl-wrap">
