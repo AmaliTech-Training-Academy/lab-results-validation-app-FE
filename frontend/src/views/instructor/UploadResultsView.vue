@@ -3,9 +3,9 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { uploadCsv, BulkImportError } from '@/services/instructor.service'
 import { useToastStore } from '@/stores/toast'
-import type { BulkRowError } from '@/types/bulk.types'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
+import VModal from '@/components/base/VModal.vue'
 
 const router = useRouter()
 const toast = useToastStore()
@@ -13,10 +13,10 @@ const toast = useToastStore()
 const file = ref<File | null>(null)
 const phase = ref<'idle' | 'processing'>('idle')
 const isDragOver = ref(false)
-
-const bulkErrors = ref<BulkRowError[]>([])
-const bulkErrorSummary = ref('')
 const fileError = ref('')
+
+const showReportPrompt = ref(false)
+const pendingUploadId = ref<string | null>(null)
 
 const MAX_MB = 5
 
@@ -39,8 +39,6 @@ function handleDrop(e: DragEvent) {
   if (err) { fileError.value = err; file.value = null; return }
   file.value = dropped
   fileError.value = ''
-  bulkErrors.value = []
-  bulkErrorSummary.value = ''
 }
 
 function handleFileInput(e: Event) {
@@ -50,20 +48,21 @@ function handleFileInput(e: Event) {
   if (err) { fileError.value = err; file.value = null; return }
   file.value = picked
   fileError.value = ''
-  bulkErrors.value = []
-  bulkErrorSummary.value = ''
 }
 
 function clearFile() {
   file.value = null
   fileError.value = ''
-  bulkErrors.value = []
-  bulkErrorSummary.value = ''
 }
 
-function dismissErrors() {
-  bulkErrors.value = []
-  bulkErrorSummary.value = ''
+function goToReport() {
+  router.push({ name: 'instructor-uploads', query: { uploadId: pendingUploadId.value ?? undefined } })
+}
+
+function dismissPrompt() {
+  showReportPrompt.value = false
+  pendingUploadId.value = null
+  clearFile()
 }
 
 function isCohortLockedError(err: unknown): boolean {
@@ -73,21 +72,23 @@ function isCohortLockedError(err: unknown): boolean {
 async function validate() {
   if (!file.value) return
   phase.value = 'processing'
-  bulkErrors.value = []
-  bulkErrorSummary.value = ''
   try {
     const result = await uploadCsv(file.value)
-    toast.show({ tone: 'success', title: 'Upload complete', body: 'Your file has been validated.' })
-    router.push({ name: 'instructor-uploads', query: { uploadId: result.uploadId } })
+    pendingUploadId.value = result.uploadId
+    showReportPrompt.value = true
+    phase.value = 'idle'
   } catch (err) {
     if (err instanceof BulkImportError && err.errors.length > 0) {
-      bulkErrors.value = err.errors
       const failCount = err.failed ?? err.errors.length
       const createdCount = err.created
-      bulkErrorSummary.value = createdCount !== undefined
+      const body = createdCount !== undefined
         ? `${failCount} row${failCount !== 1 ? 's' : ''} failed — ${createdCount} imported successfully.`
         : `${failCount} row${failCount !== 1 ? 's' : ''} failed validation.`
-      toast.show({ tone: 'warning', title: 'Upload completed with errors', body: bulkErrorSummary.value })
+      toast.show({ tone: 'warning', title: 'Upload completed with errors', body })
+      if (err.uploadId) {
+        pendingUploadId.value = err.uploadId
+        showReportPrompt.value = true
+      }
     } else if (isCohortLockedError(err)) {
       toast.show({ tone: 'warning', title: 'Cohort is locked', body: 'Results cannot be uploaded until the cohort is locked for grading.' })
     } else {
@@ -173,38 +174,20 @@ async function validate() {
       Need the template?
       <router-link :to="{ name: 'instructor-template' }" class="link">Download it here.</router-link>
     </div>
-
-    <div v-if="bulkErrors.length" class="bulk-error-log" role="alert" aria-live="polite">
-      <div class="bulk-error-log-head">
-        <VIcon name="alert-triangle" :size="16" style="color: var(--danger); flex-shrink: 0" />
-        <p class="bulk-error-log-title">{{ bulkErrorSummary || `${bulkErrors.length} row${bulkErrors.length !== 1 ? 's' : ''} failed validation` }}</p>
-        <button class="bulk-error-log-dismiss" aria-label="Dismiss errors" @click="dismissErrors">
-          <VIcon name="x" :size="16" />
-        </button>
-      </div>
-      <div class="bulk-error-log-body tbl-wrap" style="border: none; border-radius: 0; box-shadow: none">
-        <table class="tbl tbl-light">
-          <thead>
-            <tr>
-              <th style="width: 60px">Row</th>
-              <th style="width: 140px">Field</th>
-              <th>Error</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(err, i) in bulkErrors" :key="i">
-              <td style="font-variant-numeric: tabular-nums; color: var(--text-secondary)">
-                {{ err.row ?? '—' }}
-              </td>
-              <td>
-                <span v-if="err.field" class="rule-id">{{ err.field }}</span>
-                <span v-else style="color: var(--text-secondary)">—</span>
-              </td>
-              <td style="color: var(--danger)">{{ err.message }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
   </div>
+
+  <VModal
+    :open="showReportPrompt"
+    title="Upload complete"
+    subtitle="Your file was validated and processed successfully."
+    @close="dismissPrompt"
+  >
+    <p style="font-size: 14px; color: var(--text-secondary); margin: 0">
+      Would you like to view the full upload report now?
+    </p>
+    <template #footer>
+      <VButton variant="ghost" @click="dismissPrompt">Maybe later</VButton>
+      <VButton variant="primary" icon="file-text" @click="goToReport">View report</VButton>
+    </template>
+  </VModal>
 </template>

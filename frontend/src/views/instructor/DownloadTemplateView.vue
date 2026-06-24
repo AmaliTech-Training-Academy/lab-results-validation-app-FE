@@ -127,7 +127,7 @@ async function downloadTemplate() {
     <!-- Template legend -->
     <div class="tpl-section">
       <button type="button" class="tpl-sec-head" @click="legendOpen = !legendOpen">
-        <span class="sec-title">Template legend</span>
+        <span class="sec-title">Available Templates</span>
         <VIcon
           name="chevron-up"
           :size="18"

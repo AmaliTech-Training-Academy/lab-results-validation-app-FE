@@ -44,6 +44,8 @@ export interface AssignedModule {
 export interface MyUpload {
   file: string
   date: string
+  uploadedAt: string
+  totalRows: number
   accepted: number
   rejected: number
   tone: Tone

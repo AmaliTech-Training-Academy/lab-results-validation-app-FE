@@ -8,12 +8,14 @@ export class BulkImportError extends Error {
   readonly errors: BulkRowError[]
   readonly created?: number
   readonly failed?: number
+  readonly uploadId?: string
 
-  constructor(message: string, errors: BulkRowError[], created?: number, failed?: number) {
+  constructor(message: string, errors: BulkRowError[], created?: number, failed?: number, uploadId?: string) {
     super(message)
     this.name = 'BulkImportError'
     this.errors = errors
     this.created = created
     this.failed = failed
+    this.uploadId = uploadId
   }
 }
