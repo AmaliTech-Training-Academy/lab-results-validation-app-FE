@@ -8,8 +8,11 @@ import VModal from '@/components/base/VModal.vue'
 import { useToastStore } from '@/stores/toast'
 import {
   getSpecializations,
+  getAllSpecializations,
   getModules,
+  getAllModsBySpec,
   getLabs,
+  getAllLabsByModule,
   addSpecialization,
   updateSpecialization,
   addModule,
@@ -77,6 +80,22 @@ const forceEditForm = ref({ maxScore: '', reason: '', error: '' })
 const editSpecForm = ref({ name: '', code: '', error: '' })
 const editModForm = ref({ name: '', status: 'ACTIVE', error: '' })
 
+// ── Pickers ───────────────────────────────────────────────────────────────────
+const specPickerQuery = ref('')
+const specPickerOpen = ref(false)
+const allSpecsForPicker = ref<Specialization[]>([])
+const loadingSpecPicker = ref(false)
+
+const modPickerQuery = ref('')
+const modPickerOpen = ref(false)
+const allModsForPicker = ref<Module[]>([])
+const loadingModPicker = ref(false)
+
+const labPickerQuery = ref('')
+const labPickerOpen = ref(false)
+const allLabsForPicker = ref<Lab[]>([])
+const loadingLabPicker = ref(false)
+
 // ── Computed ─────────────────────────────────────────────────────────────────
 const selectedSpec = computed(() =>
   specializations.value.find((s) => s.id === selectedSpecId.value) ?? null,
@@ -84,6 +103,26 @@ const selectedSpec = computed(() =>
 const selectedCohort = computed(() =>
   cohorts.value.find((c) => c.id === selectedCohortId.value) ?? null,
 )
+
+const filteredSpecPicker = computed(() => {
+  const q = specPickerQuery.value.trim().toLowerCase()
+  if (!q) return allSpecsForPicker.value
+  return allSpecsForPicker.value.filter(
+    (s) => s.name.toLowerCase().includes(q) || s.code.toLowerCase().includes(q),
+  )
+})
+
+const filteredModPicker = computed(() => {
+  const q = modPickerQuery.value.trim().toLowerCase()
+  if (!q) return allModsForPicker.value
+  return allModsForPicker.value.filter((m) => m.name.toLowerCase().includes(q))
+})
+
+const filteredLabPicker = computed(() => {
+  const q = labPickerQuery.value.trim().toLowerCase()
+  if (!q) return allLabsForPicker.value
+  return allLabsForPicker.value.filter((l) => l.title.toLowerCase().includes(q))
+})
 
 // ── Fetch helpers (also used by retry buttons) ────────────────────────────────
 async function fetchSpecs(id: string, page = 0) {
@@ -175,6 +214,45 @@ watch(selectedModId, async (id) => {
   await fetchLabs(id, 0)
 })
 
+watch(showAddSpecDrawer, async (open) => {
+  if (!open) return
+  specPickerQuery.value = ''
+  allSpecsForPicker.value = []
+  loadingSpecPicker.value = true
+  try {
+    allSpecsForPicker.value = await getAllSpecializations()
+  } catch { /* picker is non-critical */ }
+  finally { loadingSpecPicker.value = false }
+})
+
+watch(showAddModDrawer, async (open) => {
+  if (!open) return
+  modPickerQuery.value = ''
+  allModsForPicker.value = []
+  loadingModPicker.value = true
+  try {
+    const allSpecs = await getAllSpecializations()
+    const lists = await Promise.all(allSpecs.map((s) => getAllModsBySpec(s.id)))
+    allModsForPicker.value = lists.flat()
+  } catch { /* picker is non-critical */ }
+  finally { loadingModPicker.value = false }
+})
+
+watch(showAddLabDrawer, async (open) => {
+  if (!open) return
+  labPickerQuery.value = ''
+  allLabsForPicker.value = []
+  loadingLabPicker.value = true
+  try {
+    const allSpecs = await getAllSpecializations()
+    const allModLists = await Promise.all(allSpecs.map((s) => getAllModsBySpec(s.id)))
+    const allMods = allModLists.flat()
+    const allLabLists = await Promise.all(allMods.map((m) => getAllLabsByModule(m.id)))
+    allLabsForPicker.value = allLabLists.flat()
+  } catch { /* picker is non-critical */ }
+  finally { loadingLabPicker.value = false }
+})
+
 // ── Mount ────────────────────────────────────────────────────────────────────
 onMounted(async () => {
   const result = await getCohorts(0, 100)
@@ -204,16 +282,47 @@ function selectMod(id: string) {
 function closeAddSpecDrawer() {
   showAddSpecDrawer.value = false
   addSpecForm.value = { name: '', code: '', error: '' }
+  specPickerQuery.value = ''
+  specPickerOpen.value = false
 }
 
 function closeAddModDrawer() {
   showAddModDrawer.value = false
   addModForm.value = { name: '', error: '' }
+  modPickerQuery.value = ''
+  modPickerOpen.value = false
 }
 
 function closeAddLabDrawer() {
   showAddLabDrawer.value = false
   addLabForm.value = { title: '', maxScore: '', error: '' }
+  labPickerQuery.value = ''
+  labPickerOpen.value = false
+}
+
+function closePickerOnBlur(e: FocusEvent, closeFn: () => void) {
+  const related = e.relatedTarget as Node | null
+  if (!(e.currentTarget as HTMLElement).contains(related)) closeFn()
+}
+
+function prefillFromSpec(spec: Specialization) {
+  addSpecForm.value.name = spec.name
+  addSpecForm.value.code = spec.code
+  specPickerQuery.value = spec.name
+  specPickerOpen.value = false
+}
+
+function prefillFromMod(mod: Module) {
+  addModForm.value.name = mod.name
+  modPickerQuery.value = mod.name
+  modPickerOpen.value = false
+}
+
+function prefillFromLab(lab: Lab) {
+  addLabForm.value.title = lab.title
+  addLabForm.value.maxScore = String(lab.maxScore)
+  labPickerQuery.value = lab.title
+  labPickerOpen.value = false
 }
 
 function openEditSpec(spec: Specialization) {
@@ -821,6 +930,51 @@ async function submitForceEdit() {
     :error="addSpecForm.error || undefined"
     @close="closeAddSpecDrawer"
   >
+    <div class="ff">
+      <span class="ff-label">Copy from existing <span class="ff-optional">(optional)</span></span>
+      <div
+        class="picker-wrap"
+        @focusout="closePickerOnBlur($event, () => (specPickerOpen = false))"
+      >
+        <div class="ff-input picker-input-row">
+          <VIcon name="search" :size="15" style="color: var(--text-secondary); flex-shrink: 0" />
+          <input
+            v-model="specPickerQuery"
+            placeholder="Search by name or code…"
+            @focus="specPickerOpen = true"
+            @input="specPickerOpen = true"
+          />
+          <button
+            v-if="specPickerQuery"
+            class="picker-clear"
+            type="button"
+            tabindex="-1"
+            @mousedown.prevent="specPickerQuery = ''; specPickerOpen = false"
+          >
+            <VIcon name="x" :size="14" />
+          </button>
+        </div>
+        <div v-if="specPickerOpen" class="picker-dropdown">
+          <div v-if="loadingSpecPicker" class="picker-empty">Loading…</div>
+          <template v-else>
+            <ul v-if="filteredSpecPicker.length" class="picker-list">
+              <li
+                v-for="spec in filteredSpecPicker"
+                :key="spec.id"
+                class="picker-item"
+                @mousedown.prevent="prefillFromSpec(spec)"
+              >
+                <span class="picker-item-name">{{ spec.name }}</span>
+                <span class="picker-item-meta mono">{{ spec.code }}</span>
+              </li>
+            </ul>
+            <p v-else class="picker-empty">No matching specializations found.</p>
+          </template>
+        </div>
+      </div>
+      <span class="ff-hint">Select an existing specialization from another cohort to pre-fill the fields below.</span>
+    </div>
+    <div class="or-divider"><span>or fill manually</span></div>
     <label class="ff">
       <span class="ff-label">Code <span style="color: var(--danger)">*</span></span>
       <span class="ff-input">
@@ -850,6 +1004,51 @@ async function submitForceEdit() {
     :error="addModForm.error || undefined"
     @close="closeAddModDrawer"
   >
+    <div class="ff">
+      <span class="ff-label">Copy from existing <span class="ff-optional">(optional)</span></span>
+      <div
+        class="picker-wrap"
+        @focusout="closePickerOnBlur($event, () => (modPickerOpen = false))"
+      >
+        <div class="ff-input picker-input-row">
+          <VIcon name="search" :size="15" style="color: var(--text-secondary); flex-shrink: 0" />
+          <input
+            v-model="modPickerQuery"
+            placeholder="Search by name…"
+            @focus="modPickerOpen = true"
+            @input="modPickerOpen = true"
+          />
+          <button
+            v-if="modPickerQuery"
+            class="picker-clear"
+            type="button"
+            tabindex="-1"
+            @mousedown.prevent="modPickerQuery = ''; modPickerOpen = false"
+          >
+            <VIcon name="x" :size="14" />
+          </button>
+        </div>
+        <div v-if="modPickerOpen" class="picker-dropdown">
+          <div v-if="loadingModPicker" class="picker-empty">Loading…</div>
+          <template v-else>
+            <ul v-if="filteredModPicker.length" class="picker-list">
+              <li
+                v-for="mod in filteredModPicker"
+                :key="mod.id"
+                class="picker-item"
+                @mousedown.prevent="prefillFromMod(mod)"
+              >
+                <span class="picker-item-name">{{ mod.name }}</span>
+                <span class="picker-item-meta">{{ mod.specializationName }}</span>
+              </li>
+            </ul>
+            <p v-else class="picker-empty">No matching modules found.</p>
+          </template>
+        </div>
+      </div>
+      <span class="ff-hint">Select a module from another specialization to pre-fill the name below.</span>
+    </div>
+    <div class="or-divider"><span>or fill manually</span></div>
     <label class="ff">
       <span class="ff-label">Module name <span style="color: var(--danger)">*</span></span>
       <span class="ff-input">
@@ -870,6 +1069,51 @@ async function submitForceEdit() {
     :error="addLabForm.error || undefined"
     @close="closeAddLabDrawer"
   >
+    <div class="ff">
+      <span class="ff-label">Copy from existing <span class="ff-optional">(optional)</span></span>
+      <div
+        class="picker-wrap"
+        @focusout="closePickerOnBlur($event, () => (labPickerOpen = false))"
+      >
+        <div class="ff-input picker-input-row">
+          <VIcon name="search" :size="15" style="color: var(--text-secondary); flex-shrink: 0" />
+          <input
+            v-model="labPickerQuery"
+            placeholder="Search by title…"
+            @focus="labPickerOpen = true"
+            @input="labPickerOpen = true"
+          />
+          <button
+            v-if="labPickerQuery"
+            class="picker-clear"
+            type="button"
+            tabindex="-1"
+            @mousedown.prevent="labPickerQuery = ''; labPickerOpen = false"
+          >
+            <VIcon name="x" :size="14" />
+          </button>
+        </div>
+        <div v-if="labPickerOpen" class="picker-dropdown">
+          <div v-if="loadingLabPicker" class="picker-empty">Loading…</div>
+          <template v-else>
+            <ul v-if="filteredLabPicker.length" class="picker-list">
+              <li
+                v-for="lab in filteredLabPicker"
+                :key="lab.id"
+                class="picker-item"
+                @mousedown.prevent="prefillFromLab(lab)"
+              >
+                <span class="picker-item-name">{{ lab.title }}</span>
+                <span class="picker-item-meta mono">{{ lab.maxScore }} pts</span>
+              </li>
+            </ul>
+            <p v-else class="picker-empty">No matching labs found.</p>
+          </template>
+        </div>
+      </div>
+      <span class="ff-hint">Select a lab from another module to pre-fill the fields below.</span>
+    </div>
+    <div class="or-divider"><span>or fill manually</span></div>
     <label class="ff">
       <span class="ff-label">Lab title <span style="color: var(--danger)">*</span></span>
       <span class="ff-input">
@@ -958,3 +1202,78 @@ async function submitForceEdit() {
     </template>
   </VModal>
 </template>
+
+<style scoped>
+.picker-wrap { position: relative; }
+.picker-input-row { gap: 8px; }
+.picker-clear {
+  background: none;
+  border: none;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  border-radius: var(--r-sm);
+}
+.picker-clear:hover { color: var(--text); background: var(--bg); }
+.picker-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-pop);
+  z-index: 20;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.picker-list { list-style: none; margin: 0; padding: 4px; }
+.picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  gap: 12px;
+}
+.picker-item:hover { background: var(--surface-alt); }
+.picker-item-name {
+  font-size: 14px;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.picker-item-meta { font-size: 12px; color: var(--text-secondary); flex-shrink: 0; }
+.picker-empty {
+  padding: 12px 16px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+  text-align: center;
+}
+.ff-optional { font-weight: 400; color: var(--text-muted); font-size: 13px; }
+.or-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+.or-divider::before,
+.or-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+</style>
