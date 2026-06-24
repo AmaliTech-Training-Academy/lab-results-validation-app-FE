@@ -4,7 +4,6 @@ import { createRouter, createMemoryHistory } from 'vue-router'
 import { createPinia } from 'pinia'
 import ReportsView from '@/views/admin/ReportsView.vue'
 import { getCsvUploads, getUploadReport } from '@/services/admin.service'
-import { getInstructors } from '@/services/user.service'
 import type { CsvUploadEntry, PagedCsvUploads, ValidationReport } from '@/types/report.types'
 import type { PagedInstructors } from '@/types/user.types'
 
