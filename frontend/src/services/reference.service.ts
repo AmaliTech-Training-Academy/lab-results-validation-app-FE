@@ -16,8 +16,18 @@ export async function getModules(specializationId: string, page = 0, size = 10):
   return http.get<PagedReference<Module>>(`/modules?specializationId=${specializationId}&page=${page}&size=${size}`)
 }
 
+export async function getAllModsBySpec(specId: string): Promise<Module[]> {
+  const result = await http.get<PagedReference<Module>>(`/modules?specializationId=${specId}&size=200`)
+  return result.content
+}
+
 export async function getLabs(moduleId: string, page = 0, size = 10): Promise<PagedReference<Lab>> {
   return http.get<PagedReference<Lab>>(`/admin/labs?moduleId=${moduleId}&page=${page}&size=${size}`)
+}
+
+export async function getAllLabsByModule(moduleId: string): Promise<Lab[]> {
+  const result = await http.get<PagedReference<Lab>>(`/admin/labs?moduleId=${moduleId}&size=200`)
+  return result.content
 }
 
 // ── Mutations — wired once the endpoints are defined ─────────────────────────
