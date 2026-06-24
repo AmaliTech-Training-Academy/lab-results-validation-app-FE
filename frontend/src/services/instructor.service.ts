@@ -3,7 +3,7 @@ import type { TemplateData } from '@/types/instructor.types'
 import type { ValidationReport } from '@/types/report.types'
 import { BulkImportError } from '@/types/bulk.types'
 import type { BulkRowError } from '@/types/bulk.types'
-import { http } from './http'
+import { http, parseHttpError } from './http'
 import { getAllLabsByModule } from './reference.service'
 import type { Lab } from '@/types/reference.types'
 
@@ -167,14 +167,7 @@ export async function downloadLabTemplate(labId: string): Promise<string> {
 
   if (!res.ok) {
     const errText = await res.text().catch(() => '')
-    let message = `HTTP ${res.status}`
-    if (errText) {
-      try {
-        const errJson = JSON.parse(errText) as Record<string, unknown>
-        if (typeof errJson.message === 'string') message = errJson.message
-      } catch { message = errText || message }
-    }
-    throw new Error(message)
+    throw new Error(parseHttpError(res.status, errText))
   }
 
   const blob = await res.blob()
@@ -232,10 +225,16 @@ export async function uploadCsv(file: File): Promise<{ uploadId: string }> {
   })
 
   const text = await res.text().catch(() => '')
-  if (!text) throw new Error(`HTTP ${res.status}`)
 
-  const json = JSON.parse(text) as Record<string, unknown>
-  if ('data' in json && 'success' in json) {
+  let json: Record<string, unknown> | null = null
+  try {
+    json = text ? (JSON.parse(text) as Record<string, unknown>) : null
+  } catch {
+    // response body is not JSON (e.g. HTML gateway error)
+    throw new Error(parseHttpError(res.status, ''))
+  }
+
+  if (json && 'data' in json && 'success' in json) {
     interface BulkData {
       errors?: Array<{ rowNumber?: number; field?: string; message?: string }>
       insertedCount?: number
@@ -262,11 +261,8 @@ export async function uploadCsv(file: File): Promise<{ uploadId: string }> {
     return envelope.data as { uploadId: string }
   }
 
-  if (!res.ok) {
-    const message = typeof json.message === 'string' ? json.message : text
-    throw new Error(message || `HTTP ${res.status}`)
-  }
-  return json as { uploadId: string }
+  if (!res.ok) throw new Error(parseHttpError(res.status, text))
+  return (json ?? {}) as { uploadId: string }
 }
 
 export async function fetchLabResultsTemplateHeaders(): Promise<string[]> {
@@ -281,16 +277,7 @@ export async function fetchLabResultsTemplateHeaders(): Promise<string[]> {
   })
 
   const text = await res.text().catch(() => '')
-  if (!res.ok) {
-    let message = `HTTP ${res.status}`
-    if (text) {
-      try {
-        const errJson = JSON.parse(text) as Record<string, unknown>
-        if (typeof errJson.message === 'string') message = errJson.message
-      } catch { message = text || message }
-    }
-    throw new Error(message)
-  }
+  if (!res.ok) throw new Error(parseHttpError(res.status, text))
 
   const firstLine = text.split(/\r?\n/)[0] ?? ''
   return firstLine.split(',').map((col) => col.replace(/^"|"$/g, '').trim()).filter(Boolean)
@@ -309,14 +296,7 @@ export async function downloadLabResultsTemplate(): Promise<void> {
 
   if (!res.ok) {
     const errText = await res.text().catch(() => '')
-    let message = `HTTP ${res.status}`
-    if (errText) {
-      try {
-        const errJson = JSON.parse(errText) as Record<string, unknown>
-        if (typeof errJson.message === 'string') message = errJson.message
-      } catch { message = errText || message }
-    }
-    throw new Error(message)
+    throw new Error(parseHttpError(res.status, errText))
   }
 
   const blob = await res.blob()

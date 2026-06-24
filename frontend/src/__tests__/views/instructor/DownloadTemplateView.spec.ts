@@ -3,26 +3,26 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { createPinia } from 'pinia'
 import DownloadTemplateView from '@/views/instructor/DownloadTemplateView.vue'
-import { getTemplateData } from '@/services/instructor.service'
-import type { TemplateData } from '@/types/instructor.types'
+import { getInstructorModulesWithLabs } from '@/services/instructor.service'
+import type { InstructorModuleLabs } from '@/services/instructor.service'
 
 vi.mock('@/services/instructor.service', () => ({
-  getTemplateData: vi.fn<() => Promise<TemplateData>>(),
+  getInstructorModulesWithLabs: vi.fn<() => Promise<InstructorModuleLabs[]>>(),
   fetchLabResultsTemplateHeaders: vi.fn<() => Promise<string[]>>().mockResolvedValue([]),
-  downloadLabResultsTemplate: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+  downloadLabTemplate: vi.fn<() => Promise<string>>().mockResolvedValue('lab-template.csv'),
 }))
 
-const MOCK_TEMPLATE: TemplateData = {
-  filename: 'labs_results_template.csv',
-  legend: [
-    { lab: 'REACT_COMPONENTS_V1', max: 100 },
-    { lab: 'NODE_REST_API_V1',    max: 100 },
-  ],
-  columns: [
-    { name: 'learner_email', desc: 'Must match a learner email.', req: true  },
-    { name: 'graded_by',     desc: 'Optional instructor name.',   req: true  },
-  ],
-}
+const MOCK_MODULE_LABS: InstructorModuleLabs[] = [
+  {
+    moduleId: 'mod-1',
+    moduleName: 'React & Frontend',
+    specializationName: 'Frontend Development',
+    labs: [
+      { id: 'lab-1', moduleId: 'mod-1', title: 'REACT_COMPONENTS_V1', maxScore: 100, hasResults: false },
+      { id: 'lab-2', moduleId: 'mod-1', title: 'NODE_REST_API_V1',    maxScore: 100, hasResults: false },
+    ],
+  },
+]
 
 const testRouter = createRouter({
   history: createMemoryHistory(),
@@ -30,7 +30,7 @@ const testRouter = createRouter({
 })
 
 function mountView() {
-  vi.mocked(getTemplateData).mockResolvedValue(MOCK_TEMPLATE)
+  vi.mocked(getInstructorModulesWithLabs).mockResolvedValue(MOCK_MODULE_LABS)
   return mount(DownloadTemplateView, {
     global: { plugins: [createPinia(), testRouter] },
   })
@@ -46,10 +46,10 @@ describe('DownloadTemplateView', () => {
       expect(wrapper.find('h1').text()).toBe('Download template')
     })
 
-    it('renders the download button with filename', async () => {
+    it('renders download button disabled until a lab is selected', async () => {
       const wrapper = mountView()
       await flushPromises()
-      expect(wrapper.text()).toContain('labs_results_template.csv')
+      expect(wrapper.text()).toContain('Select a lab above to download')
     })
 
     it('renders legend rows', async () => {
@@ -77,9 +77,18 @@ describe('DownloadTemplateView', () => {
       const wrapper = mountView()
       await flushPromises()
       const yesCells = wrapper.findAll('.req-yes')
-      const noCells = wrapper.findAll('.req-no')
+      const noCells  = wrapper.findAll('.req-no')
       expect(yesCells.length).toBeGreaterThan(0)
       expect(noCells.length).toBe(0)
+    })
+  })
+
+  describe('lab selection', () => {
+    it('updates download button text when a lab row is clicked', async () => {
+      const wrapper = mountView()
+      await flushPromises()
+      await wrapper.find('tr.lab-row').trigger('click')
+      expect(wrapper.text()).toContain('Download template for REACT_COMPONENTS_V1')
     })
   })
 
@@ -89,7 +98,6 @@ describe('DownloadTemplateView', () => {
       await flushPromises()
       const headers = wrapper.findAll('.tpl-sec-head')
       expect(headers.length).toBeGreaterThanOrEqual(1)
-      // legend table visible before toggle
       expect(wrapper.text()).toContain('REACT_COMPONENTS_V1')
       await headers[0]!.trigger('click')
       expect(wrapper.text()).not.toContain('REACT_COMPONENTS_V1')
@@ -108,7 +116,7 @@ describe('DownloadTemplateView', () => {
 
   describe('error state', () => {
     it('shows retry button when load fails', async () => {
-      vi.mocked(getTemplateData).mockRejectedValue(new Error('network'))
+      vi.mocked(getInstructorModulesWithLabs).mockRejectedValue(new Error('network'))
       const wrapper = mount(DownloadTemplateView, {
         global: { plugins: [createPinia(), testRouter] },
       })
