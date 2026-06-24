@@ -606,7 +606,7 @@ async function submitForceEdit() {
   <div class="page-head">
     <div>
       <div class="crumbs" style="margin-bottom: 6px">
-        <span>Home</span>
+        <RouterLink :to="{ name: 'admin-dashboard' }">Home</RouterLink>
         <VIcon name="chevron-right" :size="14" />
         <span class="cur">Reference data</span>
       </div>

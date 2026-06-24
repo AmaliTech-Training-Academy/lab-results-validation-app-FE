@@ -4,6 +4,7 @@ import VIcon from '@/components/base/VIcon.vue'
 
 defineProps<{
   crumb: string
+  homeRoute: string
   userName: string
   userRole: string
   userInitials: string
@@ -42,7 +43,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 <template>
   <header class="topbar">
     <nav class="crumbs" aria-label="Breadcrumb">
-      <span>Home</span>
+      <RouterLink :to="{ name: homeRoute }">Home</RouterLink>
       <VIcon name="chevron-right" :size="15" />
       <span class="cur" aria-current="page">{{ crumb }}</span>
     </nav>
