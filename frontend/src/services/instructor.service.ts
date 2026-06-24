@@ -309,6 +309,42 @@ export async function fetchLabResultsTemplateHeaders(): Promise<string[]> {
   return firstLine.split(',').map((col) => col.replace(/^"|"$/g, '').trim()).filter(Boolean)
 }
 
+export async function downloadCorrectionsCsv(uploadId: string, fallbackFilename = 'corrections.csv'): Promise<void> {
+  const token = localStorage.getItem('auth_token')
+  const headers: HeadersInit = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(`${BASE_URL}/lab-results/uploads/${uploadId}/corrections`, {
+    method: 'GET',
+    headers,
+    credentials: 'include',
+  })
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '')
+    let message = `HTTP ${res.status}`
+    if (errText) {
+      try {
+        const errJson = JSON.parse(errText) as Record<string, unknown>
+        if (typeof errJson.message === 'string') message = errJson.message
+      } catch { message = errText || message }
+    }
+    throw new Error(message)
+  }
+
+  const blob = await res.blob()
+  const disposition = res.headers.get('Content-Disposition') ?? ''
+  const match = disposition.match(/filename[^;=\n]*=(['"]?)([^'";\n]+)\1/)
+  const filename = match?.[2]?.trim() ?? fallbackFilename
+
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 export async function downloadLabResultsTemplate(): Promise<void> {
   const token = localStorage.getItem('auth_token')
   const headers: HeadersInit = {}

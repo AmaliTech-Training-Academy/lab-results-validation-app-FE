@@ -62,6 +62,7 @@ describe('DownloadTemplateView', () => {
     it('renders column reference rows', async () => {
       const wrapper = mountView()
       await flushPromises()
+      await wrapper.findAll('.tpl-sec-head')[1]!.trigger('click')
       expect(wrapper.text()).toContain('learner_email')
       expect(wrapper.text()).toContain('graded_by')
     })
@@ -69,6 +70,7 @@ describe('DownloadTemplateView', () => {
     it('marks required columns as Yes', async () => {
       const wrapper = mountView()
       await flushPromises()
+      await wrapper.findAll('.tpl-sec-head')[1]!.trigger('click')
       const cells = wrapper.findAll('.req-yes')
       expect(cells.length).toBeGreaterThan(0)
     })
@@ -76,6 +78,7 @@ describe('DownloadTemplateView', () => {
     it('marks all columns as required (Yes)', async () => {
       const wrapper = mountView()
       await flushPromises()
+      await wrapper.findAll('.tpl-sec-head')[1]!.trigger('click')
       const yesCells = wrapper.findAll('.req-yes')
       const noCells  = wrapper.findAll('.req-no')
       expect(yesCells.length).toBeGreaterThan(0)
@@ -103,11 +106,13 @@ describe('DownloadTemplateView', () => {
       expect(wrapper.text()).not.toContain('REACT_COMPONENTS_V1')
     })
 
-    it('hides column reference table when section header is clicked', async () => {
+    it('toggles column reference table when section header is clicked', async () => {
       const wrapper = mountView()
       await flushPromises()
       const headers = wrapper.findAll('.tpl-sec-head')
       expect(headers.length).toBeGreaterThanOrEqual(2)
+      expect(wrapper.text()).not.toContain('learner_email')
+      await headers[1]!.trigger('click')
       expect(wrapper.text()).toContain('learner_email')
       await headers[1]!.trigger('click')
       expect(wrapper.text()).not.toContain('learner_email')

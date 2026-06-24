@@ -22,22 +22,16 @@ const COLUMN_META: Record<string, { desc: string; req: boolean }> = {
 const isLoading = ref(true)
 const loadError = ref<string | null>(null)
 const legendOpen = ref(true)
-const columnsOpen = ref(true)
+const columnsOpen = ref(false)
 const isDownloading = ref(false)
 const templateCols = ref<string[]>([])
 const labsByModule = ref<InstructorModuleLabs[]>([])
 const selectedLabId = ref<string | null>(null)
 const selectedLabTitle = ref<string | null>(null)
 
-const resolvedColumns = computed(() => {
-  if (templateCols.value.length) {
-    return templateCols.value.map((name) => ({
-      name,
-      ...(COLUMN_META[name] ?? { desc: '', req: true }),
-    }))
-  }
-  return Object.entries(COLUMN_META).map(([name, meta]) => ({ name, ...meta }))
-})
+const resolvedColumns = computed(() =>
+  Object.entries(COLUMN_META).map(([name, meta]) => ({ name, ...meta }))
+)
 
 const hasAnyLab = computed(() => labsByModule.value.some((g) => g.labs.length > 0))
 
