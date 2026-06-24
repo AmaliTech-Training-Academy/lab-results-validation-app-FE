@@ -93,7 +93,7 @@ const loadingModPicker = ref(false)
 
 const labPickerQuery = ref('')
 const labPickerOpen = ref(false)
-const allLabsForPicker = ref<Lab[]>([])
+const allLabsForPicker = ref<(Lab & { moduleName: string })[]>([])
 const loadingLabPicker = ref(false)
 
 // ── Computed ─────────────────────────────────────────────────────────────────
@@ -248,7 +248,9 @@ watch(showAddLabDrawer, async (open) => {
     const allModLists = await Promise.all(allSpecs.map((s) => getAllModsBySpec(s.id)))
     const allMods = allModLists.flat()
     const allLabLists = await Promise.all(allMods.map((m) => getAllLabsByModule(m.id)))
-    allLabsForPicker.value = allLabLists.flat()
+    allLabsForPicker.value = allLabLists.flatMap((labs, i) =>
+      labs.map((l) => ({ ...l, moduleName: allMods[i]!.name })),
+    )
   } catch { /* picker is non-critical */ }
   finally { loadingLabPicker.value = false }
 })
@@ -767,13 +769,7 @@ async function submitForceEdit() {
     <div class="card rd-col">
       <div class="rd-colhead">
         <h2 class="rd-coltitle">Labs</h2>
-        <VButton
-          v-if="selectedModId"
-          variant="primary"
-          size="sm"
-          icon="plus"
-          @click="showAddLabDrawer = true"
-        >Add lab</VButton>
+        <button v-if="selectedModId" class="link" @click="showAddLabDrawer = true">+ Add</button>
       </div>
       <div v-if="loading.labs" class="rd-list" style="border-top: 1px solid var(--border)">
         <div v-for="i in 4" :key="i" class="rd-item" style="pointer-events: none">
@@ -1104,7 +1100,7 @@ async function submitForceEdit() {
                 @mousedown.prevent="prefillFromLab(lab)"
               >
                 <span class="picker-item-name">{{ lab.title }}</span>
-                <span class="picker-item-meta mono">{{ lab.maxScore }} pts</span>
+                <span class="picker-item-meta">{{ lab.moduleName }}</span>
               </li>
             </ul>
             <p v-else class="picker-empty">No matching labs found.</p>

@@ -1,6 +1,6 @@
-import type { InstructorDashboardData, MyUpload, AssignedModule } from '@/types/dashboard.types'
+import type { InstructorDashboardData, MyUpload, AssignedModule, Tone } from '@/types/dashboard.types'
 import type { TemplateData } from '@/types/instructor.types'
-import type { ValidationReport } from '@/types/report.types'
+import type { ValidationReport, CsvUploadError, CsvUploadEntry, PagedCsvUploads } from '@/types/report.types'
 import { BulkImportError } from '@/types/bulk.types'
 import type { BulkRowError } from '@/types/bulk.types'
 import { http, parseHttpError } from './http'
@@ -34,33 +34,6 @@ export interface LabResultItem {
   gradedBy: string
 }
 
-// ---------------------------------------------------------------------------
-// Mock data — DELETE and replace service bodies when wiring the real API
-// ---------------------------------------------------------------------------
-const MOCK_DASHBOARD: InstructorDashboardData = {
-  modules: [
-    {
-      name: 'React & Component Design',
-      cohort: 'GTP 2024-A',
-      specialization: 'Frontend Development',
-      submitted: 22,
-    },
-    {
-      name: 'Node.js & REST APIs',
-      cohort: 'GTP 2024-B',
-      specialization: 'Backend Engineering',
-      submitted: 17,
-    },
-  ],
-
-  recentUploads: [
-    { file: 'react_state_lab_oct.csv',    date: 'Oct 24, 2024', accepted: 19, rejected: 3,  tone: 'warning', status: 'Partial Success', hasReport: true,  uploadId: 'UP-A1B2C3' },
-    { file: 'node_api_cohortB_w3.csv',    date: 'Oct 20, 2024', accepted: 17, rejected: 0,  tone: 'success', status: 'Success',         hasReport: false },
-    { file: 'react_hooks_cohortA_w2.csv', date: 'Oct 15, 2024', accepted: 22, rejected: 0,  tone: 'success', status: 'Success',         hasReport: false },
-    { file: 'node_express_initial.csv',   date: 'Oct 08, 2024', accepted: 0,  rejected: 21, tone: 'danger',  status: 'Failed',          hasReport: true,  uploadId: 'UP-D4E5F6' },
-  ],
-}
-
 const MOCK_TEMPLATE: TemplateData = {
   filename: 'labs_results_template.csv',
   legend: [
@@ -81,32 +54,36 @@ const MOCK_TEMPLATE: TemplateData = {
   ],
 }
 
-const MOCK_UPLOADS: MyUpload[] = [
-  { file: 'react_state_lab_oct.csv',    date: 'Oct 24, 2024', accepted: 19, rejected: 3,  tone: 'warning', status: 'Partial Success', hasReport: true,  uploadId: 'UP-A1B2C3' },
-  { file: 'node_api_cohortB_w3.csv',    date: 'Oct 20, 2024', accepted: 17, rejected: 0,  tone: 'success', status: 'Success',         hasReport: false },
-  { file: 'react_hooks_cohortA_w2.csv', date: 'Oct 15, 2024', accepted: 22, rejected: 0,  tone: 'success', status: 'Success',         hasReport: false },
-  { file: 'node_express_initial.csv',   date: 'Oct 08, 2024', accepted: 0,  rejected: 21, tone: 'danger',  status: 'Failed',          hasReport: true,  uploadId: 'UP-D4E5F6' },
-  { file: 'react_props_cohortA_w1.csv', date: 'Oct 01, 2024', accepted: 22, rejected: 0,  tone: 'success', status: 'Success',         hasReport: false },
-]
+const fmt = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 
-const MOCK_REPORT: ValidationReport = {
-  uploadId: 'UP-A1B2C3',
-  filename: 'react_state_lab_oct.csv',
-  uploadedAt: 'Oct 24, 2024 at 09:41 AM',
-  totalRows: 22,
-  accepted: 19,
-  rejected: 3,
-  rejectedRows: [
-    { row: 4,  email: 'j.mensah@amalitechtraining.org',  field: 'score',          ruleId: 'V5',  message: 'Score 105 exceeds configured max of 100.'         },
-    { row: 11, email: 'a.boateng@amalitechtraining.org', field: 'submitted_on',   ruleId: 'V7',  message: 'Invalid date format. Expected YYYY-MM-DD.'        },
-    { row: 19, email: 'k.asante@amalitechtraining.org',  field: 'attempt_number', ruleId: 'V6',  message: 'Attempt number must be 1 or 2.'                   },
-  ],
+function deriveUploadTone(status: string): Tone {
+  const s = status.toUpperCase()
+  if (s === 'COMPLETED' || s === 'SUCCESS') return 'success'
+  if (s === 'PARTIAL') return 'warning'
+  return 'danger'
 }
 
-function delay(ms: number) {
-  return new Promise<void>((resolve) => setTimeout(resolve, ms))
+function deriveUploadLabel(status: string): string {
+  const s = status.toUpperCase()
+  if (s === 'COMPLETED' || s === 'SUCCESS') return 'Success'
+  if (s === 'PARTIAL') return 'Partial Success'
+  return 'Failed'
 }
-// ---------------------------------------------------------------------------
+
+function mapUploadEntry(entry: CsvUploadEntry): MyUpload {
+  return {
+    file:       entry.filename,
+    date:       fmt.format(new Date(entry.uploadedAt)),
+    uploadedAt: entry.uploadedAt,
+    totalRows:  entry.totalRows,
+    accepted:   entry.acceptedRows,
+    rejected:   entry.rejectedRows,
+    tone:       deriveUploadTone(entry.status),
+    status:     deriveUploadLabel(entry.status),
+    hasReport:  true,
+    uploadId:   entry.id,
+  }
+}
 
 export async function getModuleLabResults(moduleId: string): Promise<LabResultItem[]> {
   const result = await http.get<LabResultItem[] | { content: LabResultItem[] }>(`/lab-results/modules/${moduleId}`)
@@ -186,27 +163,75 @@ export async function downloadLabTemplate(labId: string): Promise<string> {
 }
 
 export async function getInstructorDashboard(): Promise<InstructorDashboardData> {
-  // TODO: replace with → return http.get<InstructorDashboardData>('/instructor/dashboard')
-  await delay(300)
-  return MOCK_DASHBOARD
+  const paged = await getMyUploads(0, 5)
+  return { modules: [], recentUploads: paged.content }
 }
 
 export async function getTemplateData(): Promise<TemplateData> {
-  // TODO: replace with → return http.get<TemplateData>('/instructor/template')
-  await delay(300)
   return MOCK_TEMPLATE
 }
 
-export async function getMyUploads(): Promise<MyUpload[]> {
-  // TODO: replace with → return http.get<MyUpload[]>('/instructor/uploads')
-  await delay(300)
-  return MOCK_UPLOADS
+export interface PagedMyUploads {
+  content: MyUpload[]
+  page: number
+  totalPages: number
+  totalElements: number
+  last: boolean
 }
 
-export async function getUploadReport(uploadId: string): Promise<ValidationReport> {
-  // TODO: replace with → return http.get<ValidationReport>(`/instructor/uploads/${uploadId}/report`)
-  await delay(200)
-  return { ...MOCK_REPORT, uploadId }
+export interface MyUploadFilters {
+  startDate?: string
+  endDate?: string
+  status?: string
+  search?: string
+}
+
+export async function getMyUploads(page = 0, size = 10, filters: MyUploadFilters = {}): Promise<PagedMyUploads> {
+  const params = new URLSearchParams({ page: String(page), size: String(size) })
+  if (filters.startDate) params.set('startDate', filters.startDate)
+  if (filters.endDate)   params.set('endDate',   filters.endDate)
+  if (filters.status)    params.set('status',    filters.status)
+  if (filters.search)    params.set('search',    filters.search)
+  const paged = await http.get<PagedCsvUploads>(`/lab-results/uploads?${params}`)
+  return {
+    content:       (paged.content ?? []).map(mapUploadEntry),
+    page:          paged.page,
+    totalPages:    paged.totalPages,
+    totalElements: paged.totalElements,
+    last:          paged.last,
+  }
+}
+
+interface LabUploadReport {
+  uploadId:      string
+  status:        string
+  totalRows:     number
+  insertedCount: number
+  updatedCount:  number
+  rejectedCount: number
+  skippedCount:  number
+  filename?:     string
+  uploadedAt?:   string
+  errors?:       CsvUploadError[]
+}
+
+export async function getUploadReport(uploadId: string, meta?: { filename?: string; uploadedAt?: string }): Promise<ValidationReport> {
+  const report = await http.get<LabUploadReport>(`/lab-results/uploads/${uploadId}`)
+  return {
+    uploadId,
+    filename:    report.filename  ?? meta?.filename  ?? '',
+    uploadedAt:  report.uploadedAt ?? meta?.uploadedAt ?? '',
+    totalRows:   report.totalRows,
+    accepted:    (report.insertedCount ?? 0) + (report.updatedCount ?? 0),
+    rejected:    report.rejectedCount ?? 0,
+    rejectedRows: (report.errors ?? []).map((e) => ({
+      row:     e.rowNumber,
+      email:   '',
+      field:   e.field  ?? '—',
+      ruleId:  e.rule   ?? '—',
+      message: e.message,
+    })),
+  }
 }
 
 export async function uploadCsv(file: File): Promise<{ uploadId: string }> {
@@ -256,6 +281,7 @@ export async function uploadCsv(file: File): Promise<{ uploadId: string }> {
         rowErrors,
         inserted > 0 ? inserted : undefined,
         data.rejectedCount,
+        typeof data.uploadId === 'string' ? data.uploadId : undefined,
       )
     }
     return envelope.data as { uploadId: string }

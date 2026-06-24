@@ -4,18 +4,27 @@ import { createRouter, createMemoryHistory } from 'vue-router'
 import { createPinia } from 'pinia'
 import MyUploadsView from '@/views/instructor/MyUploadsView.vue'
 import { getMyUploads, getUploadReport } from '@/services/instructor.service'
+import type { PagedMyUploads } from '@/services/instructor.service'
 import type { MyUpload } from '@/types/dashboard.types'
 import type { ValidationReport } from '@/types/report.types'
 
 vi.mock('@/services/instructor.service', () => ({
-  getMyUploads:    vi.fn<() => Promise<MyUpload[]>>(),
+  getMyUploads:    vi.fn<() => Promise<PagedMyUploads>>(),
   getUploadReport: vi.fn<(id: string) => Promise<ValidationReport>>(),
 }))
 
-const MOCK_UPLOADS: MyUpload[] = [
-  { file: 'results_oct.csv', date: 'Oct 24, 2024', accepted: 19, rejected: 3, tone: 'warning', status: 'Partial Success', hasReport: true,  uploadId: 'UP-AAA111' },
-  { file: 'results_sep.csv', date: 'Sep 30, 2024', accepted: 22, rejected: 0, tone: 'success', status: 'Success',         hasReport: false },
+const MOCK_UPLOADS_CONTENT: MyUpload[] = [
+  { file: 'oct.csv', date: 'Oct 24, 2024', uploadedAt: '2024-10-24T09:41:00Z', totalRows: 22, accepted: 19, rejected: 3, tone: 'warning', status: 'Partial Success', hasReport: true,  uploadId: 'UP-AAA111' },
+  { file: 'sep.csv', date: 'Sep 30, 2024', uploadedAt: '2024-09-30T10:00:00Z', totalRows: 22, accepted: 22, rejected: 0, tone: 'success', status: 'Success',         hasReport: false },
 ]
+
+const MOCK_UPLOADS: PagedMyUploads = {
+  content:       MOCK_UPLOADS_CONTENT,
+  page:          0,
+  totalPages:    1,
+  totalElements: 2,
+  last:          true,
+}
 
 const MOCK_REPORT: ValidationReport = {
   uploadId:    'UP-AAA111',
@@ -63,15 +72,15 @@ describe('MyUploadsView', () => {
     it('renders a row for each upload', async () => {
       const { wrapper } = await mountView()
       await flushPromises()
-      expect(wrapper.text()).toContain('results_oct.csv')
-      expect(wrapper.text()).toContain('results_sep.csv')
+      expect(wrapper.text()).toContain('oct.csv')
+      expect(wrapper.text()).toContain('sep.csv')
     })
 
-    it('renders "View report →" only for uploads with a report and uploadId', async () => {
+    it('renders "Details" link only for uploads with a report and uploadId', async () => {
       const { wrapper } = await mountView()
       await flushPromises()
-      const reportLinks = wrapper.findAll('.link').filter((l) => l.text().includes('View report'))
-      expect(reportLinks).toHaveLength(1)
+      const detailLinks = wrapper.findAll('button.link').filter((l) => l.text() === 'Details')
+      expect(detailLinks).toHaveLength(1)
     })
 
     it('shows a dash for uploads without a report', async () => {
@@ -85,7 +94,7 @@ describe('MyUploadsView', () => {
     it('calls getUploadReport with the query uploadId', async () => {
       await mountView({ uploadId: 'UP-AAA111' })
       await flushPromises()
-      expect(vi.mocked(getUploadReport)).toHaveBeenCalledWith('UP-AAA111')
+      expect(vi.mocked(getUploadReport)).toHaveBeenCalledWith('UP-AAA111', expect.any(Object))
     })
 
     it('renders "Validation report" heading', async () => {

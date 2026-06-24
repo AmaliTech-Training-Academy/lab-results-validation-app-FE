@@ -24,7 +24,10 @@ function makeFile(name = 'results.csv') {
 
 function mountView() {
   return mount(UploadResultsView, {
-    global: { plugins: [createPinia(), testRouter] },
+    global: {
+      plugins: [createPinia(), testRouter],
+      stubs: { Teleport: true },
+    },
   })
 }
 
@@ -77,7 +80,8 @@ describe('UploadResultsView', () => {
 
   describe('upload flow', () => {
     it('switches to processing state while uploading', async () => {
-      vi.mocked(uploadCsv).mockResolvedValue({ uploadId: 'UP-TEST01' })
+      let settle: (v: { uploadId: string }) => void
+      vi.mocked(uploadCsv).mockReturnValue(new Promise((r) => { settle = r }))
       const wrapper = mountView()
       const input = wrapper.find('input[type="file"]')
       Object.defineProperty(input.element, 'files', {
@@ -91,9 +95,28 @@ describe('UploadResultsView', () => {
       await validateBtn.trigger('click')
 
       expect(wrapper.text()).toContain('Validating')
+      settle!({ uploadId: 'UP-TEST01' })
+      await flushPromises()
     })
 
-    it('redirects to instructor-uploads with uploadId on success', async () => {
+    it('shows report prompt after successful upload', async () => {
+      vi.mocked(uploadCsv).mockResolvedValue({ uploadId: 'UP-TEST01' })
+      const wrapper = mountView()
+      const input = wrapper.find('input[type="file"]')
+      Object.defineProperty(input.element, 'files', {
+        value: [makeFile()],
+        configurable: true,
+      })
+      await input.trigger('change')
+
+      const validateBtn = wrapper.findAll('button').find((b) => b.text().includes('Validate'))!
+      await validateBtn.trigger('click')
+      await flushPromises()
+
+      expect(wrapper.text()).toContain('Would you like to view the full upload report now?')
+    })
+
+    it('redirects to instructor-uploads when View report is clicked', async () => {
       vi.mocked(uploadCsv).mockResolvedValue({ uploadId: 'UP-TEST01' })
       const pushSpy = vi.spyOn(testRouter, 'push').mockResolvedValue(undefined as never)
       const wrapper = mountView()
@@ -104,10 +127,12 @@ describe('UploadResultsView', () => {
       })
       await input.trigger('change')
 
-      const buttons = wrapper.findAll('button')
-      const validateBtn = buttons.find((b) => b.text().includes('Validate'))!
+      const validateBtn = wrapper.findAll('button').find((b) => b.text().includes('Validate'))!
       await validateBtn.trigger('click')
       await flushPromises()
+
+      const viewBtn = wrapper.findAll('button').find((b) => b.text().includes('View report'))!
+      await viewBtn.trigger('click')
 
       expect(pushSpy).toHaveBeenCalledWith({
         name: 'instructor-uploads',
