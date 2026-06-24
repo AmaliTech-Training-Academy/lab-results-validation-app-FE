@@ -56,3 +56,11 @@ export interface PagedInstructors {
   totalPages: number
   last: boolean
 }
+
+export interface InstructorFilters {
+  email?: string
+  active?: boolean
+  moduleId?: string
+  page?: number
+  size?: number
+}

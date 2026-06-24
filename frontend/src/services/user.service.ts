@@ -1,9 +1,16 @@
-import type { InstructorUser, ModuleGroup, InstructorPayload, CreateInstructorPayload, CreatedInstructor, AssignModulesResponse, RemoveModulesResponse, PagedInstructors } from '@/types/user.types'
+import type { InstructorUser, ModuleGroup, InstructorPayload, CreateInstructorPayload, CreatedInstructor, AssignModulesResponse, RemoveModulesResponse, PagedInstructors, InstructorFilters } from '@/types/user.types'
 import { getAllSpecializations, getModules } from './reference.service'
 import { http } from './http'
 
-export async function getInstructors(page = 0, size = 10): Promise<PagedInstructors> {
-  return http.get<PagedInstructors>(`/admin/users/instructors?page=${page}&size=${size}`)
+export async function getInstructors(filters: InstructorFilters = {}): Promise<PagedInstructors> {
+  const params = new URLSearchParams()
+  if (filters.email) params.set('email', filters.email)
+  if (filters.active !== undefined) params.set('active', String(filters.active))
+  if (filters.moduleId) params.set('moduleId', filters.moduleId)
+  if (filters.page !== undefined) params.set('page', String(filters.page))
+  if (filters.size !== undefined) params.set('size', String(filters.size))
+  const qs = params.toString()
+  return http.get<PagedInstructors>(`/admin/users/instructors${qs ? `?${qs}` : ''}`)
 }
 
 export async function getModuleGroups(): Promise<ModuleGroup[]> {

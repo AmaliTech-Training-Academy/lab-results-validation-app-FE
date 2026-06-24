@@ -79,7 +79,7 @@ async function loadData() {
   try {
     const [dashboard, instructors, cohortsPage, learnersPage, activeLearnersPage, uploadsPage] = await Promise.all([
       getAdminDashboard(),
-      getInstructors(),
+      getInstructors({ page: 0, size: 1000 }),
       getCohorts(0, 100),
       getLearners({ page: 0, size: 1 }),
       getLearners({ status: 'ACTIVE', page: 0, size: 1 }),

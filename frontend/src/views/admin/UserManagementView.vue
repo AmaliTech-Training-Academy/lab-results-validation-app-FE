@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import VPill from '@/components/base/VPill.vue'
@@ -11,6 +11,12 @@ import type { InstructorUser, ModuleGroup, AssignModulesResponse } from '@/types
 const toast = useToastStore()
 
 const PAGE_SIZE = 10
+
+// ── Filters ───────────────────────────────────────────────────────────────────
+type ActiveFilter = 'all' | 'active' | 'inactive'
+const filterEmail = ref('')
+const filterActive = ref<ActiveFilter>('all')
+const filterModuleId = ref('')
 
 // ── Data ─────────────────────────────────────────────────────────────────────
 const instructors = ref<InstructorUser[]>([])
@@ -73,12 +79,47 @@ const drawerSubtitle = computed(() =>
 const showingFrom = computed(() => totalElements.value === 0 ? 0 : currentPage.value * PAGE_SIZE + 1)
 const showingTo = computed(() => Math.min((currentPage.value + 1) * PAGE_SIZE, totalElements.value))
 
+const moduleOptions = computed(() =>
+  moduleGroups.value.flatMap((g) => g.modules.map((m) => ({ id: m.id, name: m.name })))
+)
+
+const hasActiveFilter = computed(() =>
+  !!filterEmail.value.trim() || filterActive.value !== 'all' || !!filterModuleId.value
+)
+
 function emailToName(email: string): string {
   const local = email.split('@')[0] ?? email
   return local
     .split('.')
     .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
     .join(' ')
+}
+
+// ── Filter actions ────────────────────────────────────────────────────────────
+let emailDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(filterEmail, () => {
+  if (emailDebounceTimer) clearTimeout(emailDebounceTimer)
+  emailDebounceTimer = setTimeout(() => loadInstructors(0), 300)
+})
+
+function onStatusChange(val: ActiveFilter) {
+  filterActive.value = val
+  loadInstructors(0)
+}
+
+function onModuleChange(event: Event) {
+  filterModuleId.value = (event.target as HTMLSelectElement).value
+  loadInstructors(0)
+}
+
+function clearFilters() {
+  if (emailDebounceTimer) clearTimeout(emailDebounceTimer)
+  emailDebounceTimer = null
+  filterEmail.value = ''
+  filterActive.value = 'all'
+  filterModuleId.value = ''
+  loadInstructors(0)
 }
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
@@ -88,7 +129,13 @@ async function loadInstructors(page = 0) {
   loadSlow.value = false
   const slowTimer = setTimeout(() => { loadSlow.value = true }, LOAD_TIMEOUT_MS)
   try {
-    const result = await getInstructors(page, PAGE_SIZE)
+    const result = await getInstructors({
+      page,
+      size: PAGE_SIZE,
+      email: filterEmail.value.trim() || undefined,
+      active: filterActive.value === 'all' ? undefined : filterActive.value === 'active',
+      moduleId: filterModuleId.value || undefined,
+    })
     instructors.value = result.content
     currentPage.value = result.page
     totalElements.value = result.totalElements
@@ -123,6 +170,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('click', closeKebab)
+  if (emailDebounceTimer) clearTimeout(emailDebounceTimer)
 })
 
 // ── Actions ───────────────────────────────────────────────────────────────────
@@ -383,6 +431,42 @@ async function submitForm() {
 
   <!-- Table + Pagination -->
   <div v-else class="tbl-wrap">
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <!-- Email search -->
+      <div class="search" style="flex: 1; min-width: 200px">
+        <VIcon name="search" :size="17" style="color: var(--text-secondary)" />
+        <input v-model="filterEmail" type="email" placeholder="Search by email…" />
+      </div>
+
+      <!-- Module filter -->
+      <div style="position: relative; display: inline-flex; align-items: center">
+        <select
+          class="selectf-btn"
+          style="appearance: none; -webkit-appearance: none; padding-right: 36px; cursor: pointer; width: 180px"
+          :value="filterModuleId"
+          @change="onModuleChange"
+        >
+          <option value="">All Modules</option>
+          <option v-for="m in moduleOptions" :key="m.id" :value="m.id">{{ m.name }}</option>
+        </select>
+        <VIcon name="chevron-down" :size="16" style="position: absolute; right: 12px; pointer-events: none; color: var(--text-secondary)" />
+      </div>
+
+      <!-- Status toggle -->
+      <div class="segtoggle">
+        <button
+          v-for="tab in (['all', 'active', 'inactive'] as const)"
+          :key="tab"
+          :class="['segtoggle-btn', { on: filterActive === tab }]"
+          @click="onStatusChange(tab)"
+        >{{ tab.charAt(0).toUpperCase() + tab.slice(1) }}</button>
+      </div>
+
+      <!-- Clear filters -->
+      <VButton v-if="hasActiveFilter" variant="ghost" icon="x" @click="clearFilters">Clear</VButton>
+    </div>
+
     <table class="tbl">
       <thead>
         <tr>
@@ -405,7 +489,7 @@ async function submitForm() {
       <tbody v-else>
         <tr v-if="!instructors.length">
           <td colspan="5" style="text-align: center; color: var(--text-secondary); padding: 32px">
-            No instructors yet. Add one to get started.
+            {{ hasActiveFilter ? 'No instructors match your filters.' : 'No instructors yet. Add one to get started.' }}
           </td>
         </tr>
         <tr v-for="u in instructors" :key="u.id">

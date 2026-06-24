@@ -27,7 +27,7 @@ async function copyValue(value: string, label: string) {
   <div class="page-head">
     <div>
       <div class="crumbs" style="margin-bottom: 6px">
-        <span>Settings</span>
+        <RouterLink :to="{ name: 'admin-settings' }">Settings</RouterLink>
         <VIcon name="chevron-right" :size="14" />
         <span class="cur">Power BI Connection</span>
       </div>

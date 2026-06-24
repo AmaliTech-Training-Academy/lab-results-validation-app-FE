@@ -76,7 +76,7 @@ async function loadData(page = 0) {
 
 onMounted(() => {
   loadData(0)
-  getInstructors(0, 200).then((res) => { instructors.value = res.content }).catch(() => {})
+  getInstructors({ page: 0, size: 200 }).then((res) => { instructors.value = res.content }).catch(() => {})
 })
 
 // Select/date filters apply immediately; search text is debounced

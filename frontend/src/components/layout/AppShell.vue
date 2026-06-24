@@ -34,6 +34,7 @@ const collapsed = ref(false)
     <div class="main">
       <AppTopbar
         :crumb="crumb"
+        :home-route="role === 'admin' ? 'admin-dashboard' : 'instructor-dashboard'"
         :user-name="userName"
         :user-role="userRole"
         :user-initials="userInitials"

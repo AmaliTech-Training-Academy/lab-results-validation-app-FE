@@ -280,7 +280,7 @@ function goToPage(page: number) {
   <div class="page-head">
     <div>
       <div class="crumbs" style="margin-bottom: 6px">
-        <span>Admin</span>
+        <RouterLink :to="{ name: 'admin-dashboard' }">Admin</RouterLink>
         <VIcon name="chevron-right" :size="14" />
         <span class="cur">Learner roster</span>
       </div>
