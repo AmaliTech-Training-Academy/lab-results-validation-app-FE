@@ -58,16 +58,18 @@ const fmt = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', y
 
 function deriveUploadTone(status: string): Tone {
   const s = status.toUpperCase()
-  if (s === 'COMPLETED' || s === 'SUCCESS') return 'success'
+  if (s === 'COMPLETED') return 'success'
   if (s === 'PARTIAL') return 'warning'
-  return 'danger'
+  if (s === 'FAILED') return 'danger'
+  return 'info'
 }
 
 function deriveUploadLabel(status: string): string {
   const s = status.toUpperCase()
-  if (s === 'COMPLETED' || s === 'SUCCESS') return 'Success'
-  if (s === 'PARTIAL') return 'Partial Success'
-  return 'Failed'
+  if (s === 'COMPLETED') return 'Completed'
+  if (s === 'PARTIAL') return 'Partial'
+  if (s === 'FAILED') return 'Failed'
+  return 'Processing'
 }
 
 function mapUploadEntry(entry: CsvUploadEntry): MyUpload {

@@ -143,5 +143,19 @@ describe('MyUploadsView', () => {
       expect(pushSpy).toHaveBeenCalledWith({ name: 'instructor-uploads' })
       pushSpy.mockRestore()
     })
+
+    it('navigates to instructor-upload when Re-upload fixed file is clicked', async () => {
+      const { wrapper, router } = await mountView({ uploadId: 'UP-AAA111' })
+      const pushSpy = vi.spyOn(router, 'push').mockResolvedValue(undefined as never)
+      await flushPromises()
+
+      const buttons = wrapper.findAll('button')
+      const reUploadBtn = buttons.find((b) => b.text().includes('Re-upload fixed file'))
+      expect(reUploadBtn).toBeDefined()
+      await reUploadBtn!.trigger('click')
+
+      expect(pushSpy).toHaveBeenCalledWith({ name: 'instructor-upload' })
+      pushSpy.mockRestore()
+    })
   })
 })
