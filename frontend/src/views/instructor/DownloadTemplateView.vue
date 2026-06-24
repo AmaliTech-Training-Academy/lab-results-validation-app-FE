@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { getTemplateData, downloadLabResultsTemplate, fetchLabResultsTemplateHeaders } from '@/services/instructor.service'
+import { fetchLabResultsTemplateHeaders, getInstructorModulesWithLabs, downloadLabTemplate } from '@/services/instructor.service'
+import type { InstructorModuleLabs } from '@/services/instructor.service'
+import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
-import type { TemplateData } from '@/types/instructor.types'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
 
+const auth = useAuthStore()
 const toast = useToastStore()
 
 const COLUMN_META: Record<string, { desc: string; req: boolean }> = {
@@ -17,13 +19,15 @@ const COLUMN_META: Record<string, { desc: string; req: boolean }> = {
   graded_by:      { desc: 'Optional qualitative feedback / instructor name.',         req: true  },
 }
 
-const data = ref<TemplateData | null>(null)
 const isLoading = ref(true)
 const loadError = ref<string | null>(null)
 const legendOpen = ref(true)
 const columnsOpen = ref(true)
 const isDownloading = ref(false)
 const templateCols = ref<string[]>([])
+const labsByModule = ref<InstructorModuleLabs[]>([])
+const selectedLabId = ref<string | null>(null)
+const selectedLabTitle = ref<string | null>(null)
 
 const resolvedColumns = computed(() => {
   if (templateCols.value.length) {
@@ -32,22 +36,28 @@ const resolvedColumns = computed(() => {
       ...(COLUMN_META[name] ?? { desc: '', req: true }),
     }))
   }
-  return data.value?.columns ?? []
+  return Object.entries(COLUMN_META).map(([name, meta]) => ({ name, ...meta }))
 })
+
+const hasAnyLab = computed(() => labsByModule.value.some((g) => g.labs.length > 0))
 
 async function loadData() {
   isLoading.value = true
   loadError.value = null
+  selectedLabId.value = null
+  selectedLabTitle.value = null
+  const instructorId = auth.user?.userId ?? ''
   try {
-    const [templateData, headers] = await Promise.allSettled([
-      getTemplateData(),
+    const [moduleLabs, headers] = await Promise.allSettled([
+      getInstructorModulesWithLabs(instructorId),
       fetchLabResultsTemplateHeaders(),
     ])
-    if (templateData.status === 'fulfilled') data.value = templateData.value
-    else {
-      const reason = (templateData as PromiseRejectedResult).reason
+    if (moduleLabs.status === 'fulfilled') {
+      labsByModule.value = moduleLabs.value
+    } else {
+      const reason = (moduleLabs as PromiseRejectedResult).reason
       const msg = reason instanceof Error ? reason.message : ''
-      loadError.value = msg || 'Failed to load template data. Check your connection and try again.'
+      loadError.value = msg || 'Failed to load labs. Check your connection and try again.'
     }
     if (headers.status === 'fulfilled') templateCols.value = headers.value
   } finally {
@@ -57,11 +67,17 @@ async function loadData() {
 
 onMounted(loadData)
 
+function selectLab(labId: string, labTitle: string) {
+  selectedLabId.value = labId
+  selectedLabTitle.value = labTitle
+}
+
 async function downloadTemplate() {
+  if (!selectedLabId.value) return
   isDownloading.value = true
   try {
-    await downloadLabResultsTemplate()
-    toast.show({ tone: 'success', title: 'Download started', body: data.value?.filename })
+    const filename = await downloadLabTemplate(selectedLabId.value)
+    toast.show({ tone: 'success', title: 'Download started', body: filename })
   } catch (err) {
     const msg = err instanceof Error ? err.message : ''
     toast.show({ tone: 'danger', title: 'Download failed', body: msg || 'Could not download the template. Please try again.' })
@@ -89,8 +105,7 @@ async function downloadTemplate() {
     <div class="tpl-intro">
       <h2 class="upload-title">Your personalised CSV template</h2>
       <p class="dz-sub" style="text-align: center; max-width: 560px; margin: 8px auto 0">
-        This template is pre-scoped to your assigned modules. Use the exact lab titles listed in the
-        legend below.
+        Select a lab from the legend below, then download its pre-formatted CSV template.
       </p>
     </div>
 
@@ -98,8 +113,15 @@ async function downloadTemplate() {
     <template v-if="isLoading">
       <span class="skel" style="width: 100%; height: 38px; display: block; border-radius: var(--r-sm)" />
     </template>
-    <VButton v-else variant="primary" icon="download" style="width: 100%" :disabled="isDownloading" @click="downloadTemplate">
-      {{ isDownloading ? 'Downloading…' : `Download ${data?.filename}` }}
+    <VButton
+      v-else
+      variant="primary"
+      icon="download"
+      style="width: 100%"
+      :disabled="isDownloading || !selectedLabId"
+      @click="downloadTemplate"
+    >
+      {{ isDownloading ? 'Downloading…' : selectedLabId ? `Download template for ${selectedLabTitle}` : 'Select a lab above to download' }}
     </VButton>
 
     <!-- Template legend -->
@@ -117,21 +139,51 @@ async function downloadTemplate() {
         <table class="tbl">
           <thead>
             <tr>
-              <th>Module / Lab title</th>
+              <th style="width: 36px"></th>
+              <th>Module</th>
+              <th>Lab title</th>
               <th style="text-align: right">Max score</th>
             </tr>
           </thead>
           <tbody v-if="isLoading">
             <tr v-for="i in 6" :key="i" class="skel-row">
+              <td><span class="skel" style="width: 14px; height: 14px; border-radius: 50%; display: inline-block" /></td>
+              <td><span class="skel" style="width: 50%" /></td>
               <td><span class="skel mono" style="width: 65%" /></td>
               <td style="text-align: right"><span class="skel mono" style="width: 40px; display: inline-block" /></td>
             </tr>
           </tbody>
-          <tbody v-else>
-            <tr v-for="row in data?.legend" :key="row.lab">
-              <td class="mono" style="text-align: center">{{ row.lab }}</td>
-              <td class="mono" style="text-align: right">{{ row.max }}</td>
+          <tbody v-else-if="!hasAnyLab">
+            <tr>
+              <td colspan="4" style="text-align: center; color: var(--text-secondary); padding: 32px 16px">
+                No labs are assigned to your modules yet.
+              </td>
             </tr>
+          </tbody>
+          <tbody v-else>
+            <template v-for="group in labsByModule" :key="group.moduleId">
+              <tr
+                v-for="lab in group.labs"
+                :key="lab.id"
+                class="lab-row"
+                :class="{ 'is-selected': selectedLabId === lab.id }"
+                @click="selectLab(lab.id, lab.title)"
+              >
+                <td>
+                  <input
+                    type="radio"
+                    name="lab-select"
+                    :value="lab.id"
+                    :checked="selectedLabId === lab.id"
+                    @change="selectLab(lab.id, lab.title)"
+                    @click.stop
+                  />
+                </td>
+                <td style="color: var(--text-secondary)">{{ group.moduleName }}</td>
+                <td class="mono">{{ lab.title }}</td>
+                <td class="mono" style="text-align: right">{{ lab.maxScore }}</td>
+              </tr>
+            </template>
           </tbody>
         </table>
       </div>
@@ -179,3 +231,10 @@ async function downloadTemplate() {
     </div>
   </div>
 </template>
+
+<style scoped>
+.lab-row { cursor: pointer; }
+.lab-row:hover { background: var(--surface-alt) !important; }
+.lab-row.is-selected { background: rgba(255, 90, 0, 0.07) !important; }
+.lab-row input[type='radio'] { accent-color: var(--orange); cursor: pointer; }
+</style>

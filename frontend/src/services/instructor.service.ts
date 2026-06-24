@@ -4,6 +4,8 @@ import type { ValidationReport } from '@/types/report.types'
 import { BulkImportError } from '@/types/bulk.types'
 import type { BulkRowError } from '@/types/bulk.types'
 import { http } from './http'
+import { getAllLabsByModule } from './reference.service'
+import type { Lab } from '@/types/reference.types'
 
 export { BulkImportError }
 
@@ -125,6 +127,69 @@ export async function getInstructorModules(instructorId: string): Promise<Assign
     specialization: m.specializationName,
     submitted: counts[i]?.status === 'fulfilled' ? counts[i].value.length : 0,
   }))
+}
+
+export interface InstructorModuleLabs {
+  moduleId: string
+  moduleName: string
+  specializationName: string
+  labs: Lab[]
+}
+
+export async function getInstructorModulesWithLabs(instructorId: string): Promise<InstructorModuleLabs[]> {
+  const response = await http.get<PagedModuleItems>(`/admin/instructors/${instructorId}/modules`)
+  const items = response.content ?? []
+
+  if (items.length === 0) return []
+
+  const labResults = await Promise.all(
+    items.map((m) => getAllLabsByModule(m.moduleId)),
+  )
+
+  return items.map((m, i) => ({
+    moduleId: m.moduleId,
+    moduleName: m.moduleName,
+    specializationName: m.specializationName,
+    labs: labResults[i] ?? [],
+  }))
+}
+
+export async function downloadLabTemplate(labId: string): Promise<string> {
+  const token = localStorage.getItem('auth_token')
+  const headers: HeadersInit = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(`${BASE_URL}/lab-results/template/${labId}`, {
+    method: 'GET',
+    headers,
+    credentials: 'include',
+  })
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '')
+    let message = `HTTP ${res.status}`
+    if (errText) {
+      try {
+        const errJson = JSON.parse(errText) as Record<string, unknown>
+        if (typeof errJson.message === 'string') message = errJson.message
+      } catch { message = errText || message }
+    }
+    throw new Error(message)
+  }
+
+  const blob = await res.blob()
+  const disposition = res.headers.get('Content-Disposition') ?? ''
+  const match = disposition.match(/filename[^;=\n]*=(['"]?)([^'";\n]+)\1/)
+  const filename = match?.[2]?.trim() ?? `lab-${labId}-template.csv`
+
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+
+  return filename
 }
 
 export async function getInstructorDashboard(): Promise<InstructorDashboardData> {

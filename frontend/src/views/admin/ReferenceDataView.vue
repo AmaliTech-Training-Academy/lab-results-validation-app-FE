@@ -220,8 +220,7 @@ watch(showAddSpecDrawer, async (open) => {
   allSpecsForPicker.value = []
   loadingSpecPicker.value = true
   try {
-    const all = await getAllSpecializations()
-    allSpecsForPicker.value = all.filter((s) => s.cohortId !== selectedCohortId.value)
+    allSpecsForPicker.value = await getAllSpecializations()
   } catch { /* picker is non-critical */ }
   finally { loadingSpecPicker.value = false }
 })
@@ -232,11 +231,9 @@ watch(showAddModDrawer, async (open) => {
   allModsForPicker.value = []
   loadingModPicker.value = true
   try {
-    const otherSpecs = specializations.value.filter((s) => s.id !== selectedSpecId.value)
-    if (otherSpecs.length) {
-      const lists = await Promise.all(otherSpecs.map((s) => getAllModsBySpec(s.id)))
-      allModsForPicker.value = lists.flat()
-    }
+    const allSpecs = await getAllSpecializations()
+    const lists = await Promise.all(allSpecs.map((s) => getAllModsBySpec(s.id)))
+    allModsForPicker.value = lists.flat()
   } catch { /* picker is non-critical */ }
   finally { loadingModPicker.value = false }
 })
@@ -247,11 +244,11 @@ watch(showAddLabDrawer, async (open) => {
   allLabsForPicker.value = []
   loadingLabPicker.value = true
   try {
-    const otherMods = modules.value.filter((m) => m.id !== selectedModId.value)
-    if (otherMods.length) {
-      const lists = await Promise.all(otherMods.map((m) => getAllLabsByModule(m.id)))
-      allLabsForPicker.value = lists.flat()
-    }
+    const allSpecs = await getAllSpecializations()
+    const allModLists = await Promise.all(allSpecs.map((s) => getAllModsBySpec(s.id)))
+    const allMods = allModLists.flat()
+    const allLabLists = await Promise.all(allMods.map((m) => getAllLabsByModule(m.id)))
+    allLabsForPicker.value = allLabLists.flat()
   } catch { /* picker is non-critical */ }
   finally { loadingLabPicker.value = false }
 })
