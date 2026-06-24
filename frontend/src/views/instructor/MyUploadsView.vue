@@ -87,6 +87,7 @@ function truncateFilename(name: string): string {
 function statusDot(tone: string): string {
   if (tone === 'success') return 'var(--success)'
   if (tone === 'warning') return 'var(--warning)'
+  if (tone === 'info') return 'var(--info)'
   return 'var(--danger)'
 }
 
@@ -396,7 +397,7 @@ async function downloadCorrections() {
           <VButton variant="ghost" icon="download" :disabled="isDownloading" @click="downloadCorrections">
             {{ isDownloading ? 'Downloading…' : 'Download corrections CSV' }}
           </VButton>
-          <VButton variant="primary" icon="upload" :to="{ name: 'instructor-upload' }">
+          <VButton variant="primary" icon="upload" @click="router.push({ name: 'instructor-upload' })">
             Re-upload fixed file
           </VButton>
         </div>
