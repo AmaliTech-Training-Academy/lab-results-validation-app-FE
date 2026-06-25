@@ -21,7 +21,7 @@ import {
   updateLab,
   forceEditLab,
 } from '@/services/reference.service'
-import { getCohorts } from '@/services/cohort.service'
+import { getCohorts, lockCohort, unlockCohort } from '@/services/cohort.service'
 import type { Specialization, Module, Lab } from '@/types/reference.types'
 import type { CohortRow } from '@/types/cohort.types'
 
@@ -266,6 +266,30 @@ onMounted(async () => {
     selectedCohortId.value = cohorts.value[0]!.id
   }
 })
+
+// ── Lock toggle ───────────────────────────────────────────────────────────────
+const isTogglingLock = ref(false)
+
+async function toggleLock() {
+  if (!selectedCohort.value || isTogglingLock.value) return
+  isTogglingLock.value = true
+  const cohort = selectedCohort.value
+  try {
+    if (cohort.locked) {
+      await unlockCohort(cohort.id)
+    } else {
+      await lockCohort(cohort.id)
+    }
+    const idx = cohorts.value.findIndex((c) => c.id === cohort.id)
+    if (idx !== -1) cohorts.value[idx]!.locked = !cohort.locked
+    toast.show({ tone: 'success', title: cohort.locked ? 'Cohort unlocked' : 'Cohort locked' })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    toast.show({ tone: 'warning', title: 'Action failed', body: msg || 'Please try again.' })
+  } finally {
+    isTogglingLock.value = false
+  }
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function isCohortLockedError(err: unknown): boolean {
@@ -608,30 +632,44 @@ async function submitForceEdit() {
       <div class="crumbs" style="margin-bottom: 6px">
         <RouterLink :to="{ name: 'admin-dashboard' }">Home</RouterLink>
         <VIcon name="chevron-right" :size="14" />
+        <RouterLink :to="{ name: 'admin-cohorts' }">Cohorts</RouterLink>
+        <VIcon name="chevron-right" :size="14" />
         <span class="cur">Reference data</span>
       </div>
       <h1 class="page-title">Reference data</h1>
     </div>
-    <!-- Cohort selector -->
-    <div v-if="cohorts.length" class="selectf">
-      <span class="selectf-label">Cohort</span>
-      <div style="position: relative; display: inline-flex; align-items: center">
-        <select
-          :value="selectedCohortId ?? ''"
-          class="selectf-btn"
-          style="appearance: none; -webkit-appearance: none; padding-right: 36px; cursor: pointer; width: 280px"
-          @change="selectedCohortId = ($event.target as HTMLSelectElement).value"
-        >
-          <option v-for="c in cohorts" :key="c.id" :value="c.id">
-            {{ c.name }}{{ !c.active ? ' (archived)' : '' }}
-          </option>
-        </select>
-        <VIcon
-          name="chevron-down"
-          :size="16"
-          style="position: absolute; right: 12px; pointer-events: none; color: var(--text-secondary)"
-        />
+    <!-- Cohort selector + lock toggle -->
+    <div v-if="cohorts.length" style="display: flex; align-items: center; gap: 12px">
+      <div class="selectf">
+        <span class="selectf-label">Cohort</span>
+        <div style="position: relative; display: inline-flex; align-items: center">
+          <select
+            :value="selectedCohortId ?? ''"
+            class="selectf-btn"
+            style="appearance: none; -webkit-appearance: none; padding-right: 36px; cursor: pointer; width: 280px"
+            @change="selectedCohortId = ($event.target as HTMLSelectElement).value"
+          >
+            <option v-for="c in cohorts" :key="c.id" :value="c.id">
+              {{ c.name }}{{ !c.active ? ' (archived)' : '' }}
+            </option>
+          </select>
+          <VIcon
+            name="chevron-down"
+            :size="16"
+            style="position: absolute; right: 12px; pointer-events: none; color: var(--text-secondary)"
+          />
+        </div>
       </div>
+      <VButton
+        v-if="selectedCohort"
+        variant="ghost"
+        :icon="selectedCohort.locked ? 'lock' : 'lock-open'"
+        :disabled="isTogglingLock"
+        :title="selectedCohort.locked ? 'Cohort is locked — click to unlock' : 'Cohort is unlocked — click to lock'"
+        @click="toggleLock"
+      >
+        {{ selectedCohort.locked ? 'Locked' : 'Unlocked' }}
+      </VButton>
     </div>
   </div>
 
