@@ -385,7 +385,7 @@ function backToList() {
             <span><VIcon name="clock" :size="15" /><span style="margin-left: 4px">{{ formatDate(report.uploadedAt) }}</span></span>
           </div>
         </div>
-        <div class="report-actions">
+        <div v-if="report.rejected > 0" class="report-actions">
           <VButton
             variant="ghost"
             icon="download"
