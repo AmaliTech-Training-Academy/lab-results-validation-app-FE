@@ -21,6 +21,7 @@ export async function getModuleGroups(): Promise<ModuleGroup[]> {
       return {
         specId: spec.id,
         specName: spec.name,
+        cohortName: modules[0]?.cohortName ?? '',
         modules: modules.map((m) => ({ id: m.id, name: m.name })),
       }
     }),

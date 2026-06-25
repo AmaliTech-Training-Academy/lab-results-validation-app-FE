@@ -43,13 +43,14 @@ const modulesTarget = ref<InstructorUser | null>(null)
 
 const groupedModules = computed(() => {
   if (!modulesTarget.value) return []
-  const map = new Map<string, string[]>()
+  const map = new Map<string, { spec: string; cohort: string; modules: string[] }>()
   for (const m of modulesTarget.value.assignedModules) {
-    const list = map.get(m.specializationName) ?? []
-    list.push(m.moduleName)
-    map.set(m.specializationName, list)
+    const key = `${m.cohortName}||${m.specializationName}`
+    const entry = map.get(key) ?? { spec: m.specializationName, cohort: m.cohortName, modules: [] }
+    entry.modules.push(m.moduleName)
+    map.set(key, entry)
   }
-  return Array.from(map.entries()).map(([spec, modules]) => ({ spec, modules }))
+  return Array.from(map.values())
 })
 
 function openModules(instructor: InstructorUser) {
@@ -552,9 +553,10 @@ async function submitForm() {
     <div v-if="!groupedModules.length" style="color: var(--text-secondary); font-size: 14px; padding: 8px 0">
       No modules assigned.
     </div>
-    <div v-for="group in groupedModules" :key="group.spec" class="mg">
+    <div v-for="group in groupedModules" :key="`${group.cohort}||${group.spec}`" class="mg">
       <div class="mg-head">
         <span class="mg-spec">{{ group.spec }}</span>
+        <span v-if="group.cohort" class="mg-code">{{ group.cohort }}</span>
       </div>
       <div
         v-for="mod in group.modules"
@@ -604,9 +606,12 @@ async function submitForm() {
       <div v-for="group in moduleGroups" :key="group.specId" class="mg">
         <div class="mg-head">
           <span class="mg-spec">{{ group.specName }}</span>
-          <button class="link" @click="toggleGroup(group)">
-            {{ isGroupAllSelected(group) ? 'Deselect all' : 'Select all' }}
-          </button>
+          <div style="display: flex; align-items: center; gap: 12px">
+            <span v-if="group.cohortName" class="mg-code">{{ group.cohortName }}</span>
+            <button class="link" @click="toggleGroup(group)">
+              {{ isGroupAllSelected(group) ? 'Deselect all' : 'Select all' }}
+            </button>
+          </div>
         </div>
         <label v-for="m in group.modules" :key="m.id" class="mg-row" style="cursor: pointer">
           <input type="checkbox" :checked="assignedIds.includes(m.id)" @change="toggleModule(m.id)" />

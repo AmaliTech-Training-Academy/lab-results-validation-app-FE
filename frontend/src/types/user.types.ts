@@ -2,6 +2,7 @@ export interface AssignedModule {
   moduleId: string
   moduleName: string
   specializationName: string
+  cohortName: string
 }
 
 export interface InstructorUser {
@@ -19,6 +20,7 @@ export interface ModuleOption {
 export interface ModuleGroup {
   specId: string
   specName: string
+  cohortName: string
   modules: ModuleOption[]
 }
 

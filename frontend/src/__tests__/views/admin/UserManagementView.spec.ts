@@ -93,7 +93,7 @@ describe('UserManagementView — filters', () => {
 
   it('calls getInstructors with moduleId when module filter changes', async () => {
     vi.mocked(getModuleGroups).mockResolvedValue([
-      { specId: 's1', specName: 'Dev', modules: [{ id: 'm1', name: 'JavaScript' }] },
+      { specId: 's1', specName: 'Dev', cohortName: 'Cohort 1', modules: [{ id: 'm1', name: 'JavaScript' }] },
     ])
     const wrapper = mountView()
     await flushPromises()
