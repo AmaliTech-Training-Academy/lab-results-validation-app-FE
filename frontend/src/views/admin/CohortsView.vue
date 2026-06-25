@@ -154,8 +154,8 @@ async function doSubmit() {
       }
       toast.show({ tone: 'success', title: 'Cohort updated' })
     } else {
-      const created = await createCohort(payload)
-      cohorts.value.push(created)
+      await createCohort(payload)
+      await loadCohorts(0)
       toast.show({ tone: 'success', title: 'Cohort created' })
     }
     closeDrawer()
@@ -344,6 +344,7 @@ async function toggleLock(cohort: CohortRow) {
         {{ activeKebabCohort.locked ? 'Unlock' : 'Lock' }}
       </button>
       <button
+        v-if="cohortStatus(activeKebabCohort) !== 'completed'"
         style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 16px; border: none; background: none; font-family: inherit; font-size: 14px; color: var(--text); cursor: pointer; text-align: left"
         @mouseenter="($event.target as HTMLElement).style.background = 'var(--bg)'"
         @mouseleave="($event.target as HTMLElement).style.background = 'none'"
