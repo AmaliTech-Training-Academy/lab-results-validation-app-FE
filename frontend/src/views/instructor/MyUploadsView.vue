@@ -393,7 +393,7 @@ async function downloadCorrections() {
             </span>
           </div>
         </div>
-        <div class="report-actions">
+        <div v-if="report.rejected > 0" class="report-actions">
           <VButton variant="ghost" icon="download" :disabled="isDownloading" @click="downloadCorrections">
             {{ isDownloading ? 'Downloading…' : 'Download corrections CSV' }}
           </VButton>
