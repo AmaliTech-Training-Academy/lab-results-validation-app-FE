@@ -639,7 +639,7 @@ async function submitForceEdit() {
       <h1 class="page-title">Reference data</h1>
     </div>
     <!-- Cohort selector + lock toggle -->
-    <div v-if="cohorts.length" style="display: flex; align-items: center; gap: 12px">
+    <div v-if="cohorts.length" style="display: flex; align-items: flex-end; gap: 12px">
       <div class="selectf">
         <span class="selectf-label">Cohort</span>
         <div style="position: relative; display: inline-flex; align-items: center">
