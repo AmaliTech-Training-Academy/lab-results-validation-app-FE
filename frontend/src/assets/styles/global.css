@@ -48,6 +48,8 @@
 .btn-ghost:hover { background: var(--surface-alt); }
 .btn-danger { background: var(--danger); color: #fff; }
 .btn-danger:hover { background: #8a2626; }
+.btn-warning { background: var(--warning-bg); color: var(--warning); border-color: var(--warning); }
+.btn-warning:hover { background: #fce8b2; }
 .btn-sm { height: 36px; font-size: 14px; padding: 0 14px; }
 
 /* ---------- Cards ---------- */

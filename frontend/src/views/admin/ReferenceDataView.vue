@@ -5,6 +5,7 @@ import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import VDrawer from '@/components/base/VDrawer.vue'
 import VModal from '@/components/base/VModal.vue'
+import VToggle from '@/components/base/VToggle.vue'
 import { useToastStore } from '@/stores/toast'
 import {
   getSpecializations,
@@ -660,16 +661,15 @@ async function submitForceEdit() {
           />
         </div>
       </div>
-      <VButton
-        v-if="selectedCohort"
-        variant="ghost"
-        :icon="selectedCohort.locked ? 'lock' : 'lock-open'"
-        :disabled="isTogglingLock"
-        :title="selectedCohort.locked ? 'Cohort is locked — click to unlock' : 'Cohort is unlocked — click to lock'"
-        @click="toggleLock"
-      >
-        {{ selectedCohort.locked ? 'Locked' : 'Unlocked' }}
-      </VButton>
+      <div v-if="selectedCohort" class="selectf">
+        <VToggle
+          :model-value="selectedCohort.locked"
+          :label="selectedCohort.locked ? 'Locked' : 'Unlocked'"
+          :disabled="isTogglingLock"
+          active-color="warning"
+          @update:model-value="toggleLock"
+        />
+      </div>
     </div>
   </div>
 
