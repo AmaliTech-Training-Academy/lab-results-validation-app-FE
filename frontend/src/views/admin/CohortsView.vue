@@ -37,6 +37,11 @@ const cohortDurationDays = computed(() => {
 const activeKebabId = ref<string | null>(null)
 const kebabPos = ref<{ top: number; left: number } | null>(null)
 const activeKebabCohort = computed(() => cohorts.value.find((c) => c.id === activeKebabId.value) ?? null)
+const activeKebabReadOnly = computed(() => {
+  if (!activeKebabCohort.value) return false
+  const s = cohortStatus(activeKebabCohort.value)
+  return s === 'completed' || s === 'archived'
+})
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const drawerTitle = computed(() => editTarget.value ? 'Edit cohort' : 'Create new cohort')
@@ -108,6 +113,8 @@ function openCreate() {
 }
 
 function openEdit(cohort: CohortRow) {
+  const s = cohortStatus(cohort)
+  if (s === 'completed' || s === 'archived') return
   activeKebabId.value = null
   editTarget.value = cohort
   form.value = { name: cohort.name, startDate: cohort.startDate, endDate: cohort.endDate, error: '' }
@@ -325,7 +332,17 @@ async function toggleLock(cohort: CohortRow) {
       }"
       @click.stop
     >
+      <div
+        v-if="activeKebabReadOnly"
+        style="display: flex; align-items: flex-start; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--bg); font-size: 12px; color: var(--text-secondary); line-height: 1.4"
+      >
+        <VIcon name="lock" :size="13" style="flex-shrink: 0; margin-top: 1px; color: var(--text-secondary)" />
+        <span>
+          This cohort is <strong>{{ cohortStatus(activeKebabCohort) }}</strong> and cannot be edited.
+        </span>
+      </div>
       <button
+        v-if="!activeKebabReadOnly"
         style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 16px; border: none; background: none; font-family: inherit; font-size: 14px; color: var(--text); cursor: pointer; text-align: left"
         @mouseenter="($event.target as HTMLElement).style.background = 'var(--bg)'"
         @mouseleave="($event.target as HTMLElement).style.background = 'none'"
