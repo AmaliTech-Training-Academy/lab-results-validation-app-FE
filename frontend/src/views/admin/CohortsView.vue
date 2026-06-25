@@ -25,6 +25,13 @@ const showDrawer = ref(false)
 const editTarget = ref<CohortRow | null>(null)
 const submitting = ref(false)
 const form = ref({ name: '', startDate: '', endDate: '', error: '' })
+const showShortDurationWarning = ref(false)
+
+const cohortDurationDays = computed(() => {
+  if (!form.value.startDate || !form.value.endDate) return null
+  const diff = Math.round((new Date(form.value.endDate).getTime() - new Date(form.value.startDate).getTime()) / 86_400_000)
+  return diff + 1
+})
 
 // ── Kebab ─────────────────────────────────────────────────────────────────────
 const activeKebabId = ref<string | null>(null)
@@ -110,6 +117,7 @@ function openEdit(cohort: CohortRow) {
 function closeDrawer() {
   showDrawer.value = false
   editTarget.value = null
+  showShortDurationWarning.value = false
   form.value = { name: '', startDate: '', endDate: '', error: '' }
 }
 
@@ -123,6 +131,16 @@ async function submitForm() {
     form.value.error = dateRangeError.value
     return
   }
+  const days = cohortDurationDays.value ?? 0
+  if (days <= 30) {
+    showShortDurationWarning.value = true
+    return
+  }
+  await doSubmit()
+}
+
+async function doSubmit() {
+  showShortDurationWarning.value = false
   submitting.value = true
   const payload = { name: form.value.name.trim(), startDate: form.value.startDate, endDate: form.value.endDate }
   try {
@@ -357,6 +375,7 @@ async function toggleLock(cohort: CohortRow) {
         label="Start date"
         required
         :max="form.endDate || undefined"
+        @update:modelValue="showShortDurationWarning = false"
       />
       <VDatePicker
         v-model="form.endDate"
@@ -364,13 +383,27 @@ async function toggleLock(cohort: CohortRow) {
         required
         :min="form.startDate || undefined"
         :error="dateRangeError"
+        @update:modelValue="showShortDurationWarning = false"
       />
     </div>
+    <div v-if="showShortDurationWarning" class="short-dur-warn">
+      <VIcon name="alert-triangle" :size="15" style="flex-shrink: 0; color: var(--warning, #d97706)" />
+      You are about to {{ editTarget ? 'save' : 'create' }} a cohort that runs for
+      <strong>{{ cohortDurationDays }} day{{ cohortDurationDays === 1 ? '' : 's' }}</strong>. Proceed?
+    </div>
     <template #footer>
-      <VButton variant="ghost" @click="closeDrawer">Cancel</VButton>
-      <VButton variant="primary" :disabled="submitting" @click="submitForm">
-        {{ editTarget ? 'Save changes' : 'Create cohort' }}
-      </VButton>
+      <template v-if="showShortDurationWarning">
+        <VButton variant="ghost" @click="showShortDurationWarning = false">Go back</VButton>
+        <VButton variant="primary" :disabled="submitting" @click="doSubmit">
+          {{ submitting ? 'Saving…' : 'Yes, proceed' }}
+        </VButton>
+      </template>
+      <template v-else>
+        <VButton variant="ghost" @click="closeDrawer">Cancel</VButton>
+        <VButton variant="primary" :disabled="submitting" @click="submitForm">
+          {{ editTarget ? 'Save changes' : 'Create cohort' }}
+        </VButton>
+      </template>
     </template>
   </VDrawer>
 </template>

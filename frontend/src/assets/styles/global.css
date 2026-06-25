@@ -107,6 +107,7 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .ff-input input { border: none; outline: none; flex: 1; font-family: inherit; font-size: 15px; color: var(--text); background: transparent; min-width: 0; }
 .ff-input input.mono { font-family: var(--font-mono); font-size: 14px; }
 .ff-input:focus-within { border-color: var(--orange); box-shadow: var(--ring-focus); }
+.short-dur-warn { display: flex; align-items: flex-start; gap: 8px; padding: 12px 14px; background: var(--warning-bg); border: 1px solid var(--warning); border-radius: var(--r-sm); font-size: 14px; color: var(--warning); margin-top: 4px; }
 .ff-select { justify-content: space-between; color: var(--text); font-size: 15px; cursor: default; }
 .ff-hint { font-size: 12px; color: var(--text-secondary); }
 .ff-group-title { font-family: var(--font-display); font-weight: 600; font-size: 15px; color: var(--text); }
