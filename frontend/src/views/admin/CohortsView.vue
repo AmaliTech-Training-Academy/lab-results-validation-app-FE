@@ -387,9 +387,8 @@ async function toggleLock(cohort: CohortRow) {
       />
     </div>
     <div v-if="showShortDurationWarning" class="short-dur-warn">
-      <VIcon name="alert-triangle" :size="15" style="flex-shrink: 0; color: var(--warning, #d97706)" />
-      You are about to {{ editTarget ? 'save' : 'create' }} a cohort that runs for
-      <strong>{{ cohortDurationDays }} day{{ cohortDurationDays === 1 ? '' : 's' }}</strong>. Proceed?
+      <VIcon name="alert-triangle" :size="15" style="flex-shrink: 0; margin-top: 1px" />
+      <span>You are about to {{ editTarget ? 'save' : 'create' }} a cohort that runs for <strong>{{ cohortDurationDays }} day{{ cohortDurationDays === 1 ? '' : 's' }}</strong>. Proceed?</span>
     </div>
     <template #footer>
       <template v-if="showShortDurationWarning">
