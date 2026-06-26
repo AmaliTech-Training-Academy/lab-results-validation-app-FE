@@ -389,7 +389,7 @@ async function downloadCorrections() {
             </span>
             <span>
               <VIcon name="clock" :size="15" />
-              <span style="margin-left: 4px">{{ report.uploadedAt }}</span>
+              <span style="margin-left: 4px">{{ formatDate(report.uploadedAt) }}</span>
             </span>
           </div>
         </div>
