@@ -142,14 +142,10 @@ async function loadReport(uploadId: string) {
   }
 }
 
-watch(
-  activeUploadId,
-  (id) => {
-    if (id) loadReport(id)
-    else report.value = null
-  },
-  { immediate: true },
-)
+watch(activeUploadId, (id) => {
+  if (id) loadReport(id)
+  else report.value = null
+})
 
 watch([startDate, endDate, statusFilter], () => loadUploads(0))
 
@@ -159,7 +155,10 @@ watch(search, () => {
   debounceTimer = setTimeout(() => loadUploads(0), 400)
 })
 
-onMounted(() => loadUploads(0))
+onMounted(async () => {
+  await loadUploads(0)
+  if (activeUploadId.value) loadReport(activeUploadId.value)
+})
 
 function openReport(uploadId: string) {
   router.push({ name: 'instructor-uploads', query: { uploadId } })
