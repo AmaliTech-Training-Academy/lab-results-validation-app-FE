@@ -1,169 +1,152 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import VButton from '@/components/base/VButton.vue'
+import VToggle from '@/components/base/VToggle.vue'
 import VIcon from '@/components/base/VIcon.vue'
-import { useRouter } from 'vue-router'
+import { useSettingsStore } from '@/stores/settings'
+import { useToastStore } from '@/stores/toast'
 
-const router = useRouter()
+const store = useSettingsStore()
+const toast = useToastStore()
 
-const strictColumnOrder = ref(true)
-const caseInsensitive = ref(true)
-const uploadSummary = ref(true)
-const highFailureDigest = ref(true)
+const autoSend = ref(false)
+const schedule = ref({ enabled: true, day: 'MONDAY', time: '08:00', timezone: 'GMT' })
+
+const DAYS = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
+const TIMEZONES = ['GMT', 'UTC', 'Africa/Accra', 'Europe/London']
+
+// Seed local editable state whenever the store loads/changes.
+watch(
+  () => store.settings,
+  (s) => {
+    if (!s) return
+    autoSend.value = s.autoSendInstructorEmails
+    schedule.value = { ...s.syncSchedule }
+  },
+  { immediate: true },
+)
+
+const dirty = computed(() => {
+  const s = store.settings
+  if (!s) return false
+  return (
+    autoSend.value !== s.autoSendInstructorEmails ||
+    schedule.value.enabled !== s.syncSchedule.enabled ||
+    schedule.value.day !== s.syncSchedule.day ||
+    schedule.value.time !== s.syncSchedule.time ||
+    schedule.value.timezone !== s.syncSchedule.timezone
+  )
+})
+
+onMounted(() => store.fetch())
+
+async function save() {
+  try {
+    await store.update({ autoSendInstructorEmails: autoSend.value, syncSchedule: { ...schedule.value } })
+    toast.show({ tone: 'success', title: 'Settings saved' })
+  } catch {
+    toast.show({ tone: 'warning', title: 'Could not save settings', body: store.error ?? 'Please try again.' })
+  }
+}
 </script>
 
 <template>
   <div class="page-head">
     <div>
       <h1 class="page-title">Settings</h1>
-      <p class="page-sub">Configure validation behaviour, notifications, and integrations.</p>
+      <p class="page-sub">Notification policy and the weekly grading-sync schedule.</p>
     </div>
+    <VButton variant="primary" icon="check" :disabled="!dirty || store.saving" @click="save">
+      {{ store.saving ? 'Saving…' : 'Save changes' }}
+    </VButton>
   </div>
 
-  <div class="set-stack">
-    <!-- Validation preferences -->
-    <section class="card">
-      <div class="sec-head"><h2 class="sec-title">Validation preferences</h2></div>
-      <div class="set-body">
-        <div class="set-row">
-          <div class="set-row-text">
-            <div class="set-row-title">Strict column order</div>
-            <div class="set-row-desc">Require uploaded CSVs to match the template column order exactly.</div>
-          </div>
-          <div class="set-row-ctrl">
-            <button
-              type="button"
-              class="toggle"
-              :class="{ on: strictColumnOrder }"
-              :aria-pressed="strictColumnOrder"
-              @click="strictColumnOrder = !strictColumnOrder"
-            ><span class="toggle-knob" /></button>
-          </div>
-        </div>
-        <div class="set-row">
-          <div class="set-row-text">
-            <div class="set-row-title">Case-insensitive matching</div>
-            <div class="set-row-desc">
-              Match lab titles and module names ignoring case — flags a warning when case differs from
-              the configured form.
-            </div>
-          </div>
-          <div class="set-row-ctrl">
-            <button
-              type="button"
-              class="toggle"
-              :class="{ on: caseInsensitive }"
-              :aria-pressed="caseInsensitive"
-              @click="caseInsensitive = !caseInsensitive"
-            ><span class="toggle-knob" /></button>
-          </div>
-        </div>
-        <div class="set-row last">
-          <div class="set-row-text">
-            <div class="set-row-title">Max attempts per lab</div>
-            <div class="set-row-desc">Maximum submissions allowed per learner, per lab.</div>
-          </div>
-          <div class="set-row-ctrl">
-            <button type="button" class="selectf-btn" style="width: 90px">
-              <span>2</span>
-              <VIcon name="chevron-down" :size="16" style="color: var(--text-secondary)" />
-            </button>
-          </div>
-        </div>
-      </div>
-    </section>
+  <div v-if="store.loading && !store.settings" class="muted">Loading settings…</div>
 
+  <div v-else class="set-stack">
     <!-- Notifications -->
     <section class="card">
       <div class="sec-head"><h2 class="sec-title">Notifications</h2></div>
       <div class="set-body">
-        <div class="set-row">
+        <div class="set-row last">
           <div class="set-row-text">
-            <div class="set-row-title">Upload-complete summary</div>
+            <div class="set-row-title">Auto-send instructor emails</div>
             <div class="set-row-desc">
-              Email the uploading instructor an accepted / rejected summary when validation finishes.
+              When on, per-run instructor grading digests are sent automatically. When off (default), they are
+              <strong>held</strong> for review on each run's page before you send them.
             </div>
           </div>
           <div class="set-row-ctrl">
-            <button
-              type="button"
-              class="toggle"
-              :class="{ on: uploadSummary }"
-              :aria-pressed="uploadSummary"
-              @click="uploadSummary = !uploadSummary"
-            ><span class="toggle-knob" /></button>
+            <VToggle v-model="autoSend" active-color="success" />
           </div>
         </div>
+      </div>
+    </section>
+
+    <!-- Grading sync schedule -->
+    <section class="card">
+      <div class="sec-head"><h2 class="sec-title">Grading sync schedule</h2></div>
+      <div class="set-body">
         <div class="set-row">
           <div class="set-row-text">
-            <div class="set-row-title">High-failure admin digest</div>
-            <div class="set-row-desc">Email admins when an upload's rejection rate exceeds the threshold below.</div>
+            <div class="set-row-title">Scheduled sync</div>
+            <div class="set-row-desc">Automatically ingest grading sheets for stood-up cohorts on a recurring schedule.</div>
           </div>
-          <div class="set-row-ctrl">
-            <button
-              type="button"
-              class="toggle"
-              :class="{ on: highFailureDigest }"
-              :aria-pressed="highFailureDigest"
-              @click="highFailureDigest = !highFailureDigest"
-            ><span class="toggle-knob" /></button>
-          </div>
+          <div class="set-row-ctrl"><VToggle v-model="schedule.enabled" /></div>
         </div>
-        <div class="set-row last">
-          <div class="set-row-text">
-            <div class="set-row-title">High-failure threshold</div>
-            <div class="set-row-desc">Rejection rate that triggers the admin digest.</div>
-          </div>
-          <div class="set-row-ctrl">
-            <button type="button" class="selectf-btn" style="width: 100px">
-              <span>50%</span>
-              <VIcon name="chevron-down" :size="16" style="color: var(--text-secondary)" />
-            </button>
-          </div>
-        </div>
-      </div>
-    </section>
 
-    <!-- Integrations -->
-    <section class="card">
-      <div class="sec-head"><h2 class="sec-title">Integrations</h2></div>
-      <div class="set-body">
-        <div class="set-row last">
+        <div class="set-row last" :class="{ 'set-row--disabled': !schedule.enabled }">
           <div class="set-row-text">
-            <div class="set-row-title">Power BI</div>
-            <div class="set-row-desc">Read-only reporting views for dashboards. Connected · last synced today.</div>
+            <div class="set-row-title">Run every</div>
+            <div class="set-row-desc">Day and time the weekly sync runs.</div>
           </div>
-          <div class="set-row-ctrl">
-            <VButton
-              variant="ghost"
-              size="sm"
-              icon-right="arrow-right"
-              @click="router.push({ name: 'admin-power-bi' })"
-            >
-              Manage
-            </VButton>
+          <div class="set-row-ctrl schedule-ctrl">
+            <select v-model="schedule.day" :disabled="!schedule.enabled" aria-label="Sync day">
+              <option v-for="d in DAYS" :key="d" :value="d">{{ d.charAt(0) + d.slice(1).toLowerCase() }}</option>
+            </select>
+            <input v-model="schedule.time" type="time" :disabled="!schedule.enabled" aria-label="Sync time" />
+            <select v-model="schedule.timezone" :disabled="!schedule.enabled" aria-label="Timezone">
+              <option v-for="tz in TIMEZONES" :key="tz" :value="tz">{{ tz }}</option>
+            </select>
           </div>
         </div>
       </div>
-    </section>
-
-    <!-- Data retention -->
-    <section class="card">
-      <div class="sec-head"><h2 class="sec-title">Data retention</h2></div>
-      <div class="set-body">
-        <div class="set-row last">
-          <div class="set-row-text">
-            <div class="set-row-title">Keep upload error reports</div>
-            <div class="set-row-desc">How long to retain structured validation reports for audit.</div>
-          </div>
-          <div class="set-row-ctrl">
-            <button type="button" class="selectf-btn" style="width: 170px">
-              <span>Indefinitely</span>
-              <VIcon name="chevron-down" :size="16" style="color: var(--text-secondary)" />
-            </button>
-          </div>
-        </div>
-      </div>
+      <p class="provisional-note">
+        <VIcon name="info" :size="14" />
+        Schedule timing is provisional (pending decision D-TRIG). The default is Monday 08:00 GMT.
+      </p>
     </section>
   </div>
 </template>
+
+<style scoped>
+.page-sub { color: var(--text-secondary); font-size: 14px; margin-top: 4px; }
+.muted { color: var(--text-secondary); }
+
+.schedule-ctrl { display: flex; gap: 8px; }
+.schedule-ctrl select,
+.schedule-ctrl input {
+  height: 38px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm, 4px);
+  background: #fff;
+  padding: 0 10px;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text);
+}
+.schedule-ctrl input[type='time'] { font-family: var(--font-mono); }
+.schedule-ctrl select:focus-visible,
+.schedule-ctrl input:focus-visible { outline: none; border-color: var(--orange); box-shadow: var(--ring-focus); }
+
+.set-row--disabled { opacity: 0.55; }
+
+.provisional-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  padding: 12px 20px 4px;
+}
+</style>

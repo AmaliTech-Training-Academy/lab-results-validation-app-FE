@@ -69,7 +69,7 @@ async function submit() {
     } else {
       const response = await changePasswordApi(auth.tempPassword ?? '', password.value)
       auth.completedPasswordSetup(response.token)
-      router.push({ name: auth.isAdmin ? 'admin-dashboard' : 'instructor-dashboard' })
+      router.push({ name: 'admin-dashboard' })
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : ''

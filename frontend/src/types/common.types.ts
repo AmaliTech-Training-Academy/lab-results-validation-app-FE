@@ -1,0 +1,25 @@
+// Shared shapes used across the v2 domain types.
+
+/** Spring-style paged response envelope. */
+export interface Paged<T> {
+  content: T[]
+  page: number
+  size: number
+  totalElements: number
+  totalPages: number
+  last: boolean
+}
+
+/**
+ * A located validation/ingestion error. Flexible enough to carry a link-level
+ * message, a missing-folder/file name, or a per-file + sheet + row + rule
+ * failure (PRD §3.3 Gate errors, §4.4 ingestion rules).
+ */
+export interface LocatedError {
+  file?: string
+  sheet?: string
+  row?: number
+  /** Rule id, e.g. "S2", "R1", "F2" (PRD §4.4) or a stand-up gate rule. */
+  rule?: string
+  message: string
+}

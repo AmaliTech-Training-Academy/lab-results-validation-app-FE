@@ -5,7 +5,6 @@ import { useAuthStore } from '@/stores/auth'
 declare module 'vue-router' {
   interface RouteMeta {
     requiresAuth?: boolean
-    allowedRole?: 'admin' | 'instructor'
   }
 }
 
@@ -32,44 +31,28 @@ const router = createRouter({
       component: () => import('@/views/auth/ForgotPasswordView.vue'),
     },
 
-    // 403
+    // 403 — retained for unauthenticated redirects / defensive fallbacks
     {
       path: '/403',
       name: 'forbidden',
       component: () => import('@/views/ForbiddenView.vue'),
     },
 
-    // Admin routes — shell layout renders for all children via <RouterView />
+    // Admin routes (single role) — shell layout renders children via <RouterView />
     {
       path: '/admin',
       redirect: '/admin/dashboard',
       component: () => import('@/views/admin/AdminDashboardView.vue'),
-      meta: { requiresAuth: true, allowedRole: 'admin' },
+      meta: { requiresAuth: true },
       children: [
         { path: 'dashboard', name: 'admin-dashboard', component: () => import('@/views/admin/AdminHomeView.vue') },
-        { path: 'cohorts',        name: 'admin-cohorts',      component: () => import('@/views/admin/CohortsView.vue') },
-        { path: 'cohorts/bulk-setup', name: 'admin-cohorts-bulk', component: () => import('@/views/admin/BulkSetupView.vue') },
-        { path: 'reference', name: 'admin-reference', component: () => import('@/views/admin/ReferenceDataView.vue') },
-        { path: 'learners',            name: 'admin-learners',       component: () => import('@/views/admin/LearnersView.vue') },
-        { path: 'learners/bulk-setup', name: 'admin-learners-bulk',  component: () => import('@/views/admin/LearnersBulkSetupView.vue') },
-        { path: 'users',     name: 'admin-users',     component: () => import('@/views/admin/UserManagementView.vue') },
-        { path: 'reports',   name: 'admin-reports',   component: () => import('@/views/admin/ReportsView.vue') },
-        { path: 'power-bi',  name: 'admin-power-bi',  component: () => import('@/views/admin/PowerBiView.vue') },
-        { path: 'settings',  name: 'admin-settings',  component: () => import('@/views/admin/SettingsView.vue') },
-      ],
-    },
-
-    // Instructor routes — shell layout renders for all children via <RouterView />
-    {
-      path: '/instructor',
-      redirect: '/instructor/dashboard',
-      component: () => import('@/views/instructor/InstructorDashboardView.vue'),
-      meta: { requiresAuth: true, allowedRole: 'instructor' },
-      children: [
-        { path: 'dashboard', name: 'instructor-dashboard', component: () => import('@/views/instructor/InstructorHomeView.vue') },
-        { path: 'template',  name: 'instructor-template',  component: () => import('@/views/instructor/DownloadTemplateView.vue') },
-        { path: 'upload',    name: 'instructor-upload',    component: () => import('@/views/instructor/UploadResultsView.vue') },
-        { path: 'uploads',   name: 'instructor-uploads',   component: () => import('@/views/instructor/MyUploadsView.vue') },
+        { path: 'cohorts',   name: 'admin-cohorts',   component: () => import('@/views/admin/CohortsView.vue') },
+        { path: 'cohorts/:id/standup', name: 'admin-cohort-standup', component: () => import('@/views/admin/CohortStandupView.vue') },
+        { path: 'cohorts/:id',         name: 'admin-cohort-detail',  component: () => import('@/views/admin/CohortDetailView.vue') },
+        { path: 'runs',      name: 'admin-runs',       component: () => import('@/views/admin/RunsView.vue') },
+        { path: 'runs/:id',  name: 'admin-run-review', component: () => import('@/views/admin/RunReviewView.vue') },
+        { path: 'audit',     name: 'admin-audit',      component: () => import('@/views/admin/AuditView.vue') },
+        { path: 'settings',  name: 'admin-settings',   component: () => import('@/views/admin/SettingsView.vue') },
       ],
     },
 
@@ -83,9 +66,7 @@ export function navigationGuard(to: RouteLocationNormalized): RouteLocationRaw |
 
   // Authenticated users have no reason to see login — send them where they belong
   if (to.name === 'login' && auth.isAuthenticated) {
-    return auth.mustChangePassword
-      ? { name: 'set-password' }
-      : { name: auth.isAdmin ? 'admin-dashboard' : 'instructor-dashboard' }
+    return auth.mustChangePassword ? { name: 'set-password' } : { name: 'admin-dashboard' }
   }
 
   // Public routes — let through
@@ -99,24 +80,17 @@ export function navigationGuard(to: RouteLocationNormalized): RouteLocationRaw |
     return { name: 'login', query: { redirect: to.fullPath } }
   }
 
-  // Password change is mandatory — only /set-password is allowed
+  // Password change is mandatory — only /set-password is allowed until it's done
   if (auth.mustChangePassword && to.name !== 'set-password') {
     return { name: 'set-password' }
   }
 
   // Password already changed — no need to revisit /set-password (unless it's a reset link)
   if (!auth.mustChangePassword && to.name === 'set-password' && !to.query.token) {
-    return { name: auth.isAdmin ? 'admin-dashboard' : 'instructor-dashboard' }
+    return { name: 'admin-dashboard' }
   }
 
-  // Role enforcement — only when a route declares allowedRole
-  if (to.meta.allowedRole) {
-    const allowed =
-      (to.meta.allowedRole === 'admin' && auth.isAdmin) ||
-      (to.meta.allowedRole === 'instructor' && auth.isInstructor)
-    if (!allowed) return { name: 'forbidden' }
-  }
-
+  // Single role: any authenticated admin may access all /admin/* surfaces.
   return true
 }
 

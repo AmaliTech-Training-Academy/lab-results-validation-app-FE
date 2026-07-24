@@ -49,9 +49,6 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   const isAuthenticated = computed(() => user.value !== null)
-  const ADMIN_ROLES: UserRole[] = ['admin', 'super_admin']
-  const isAdmin = computed(() => !!user.value && ADMIN_ROLES.includes(user.value.role))
-  const isInstructor = computed(() => user.value?.role === 'instructor')
 
   function login(response: LoginResponse, plainPassword?: string) {
     const payload = decodeJwtPayload(response.token)
@@ -95,8 +92,6 @@ export const useAuthStore = defineStore('auth', () => {
     mustChangePassword,
     tempPassword,
     isAuthenticated,
-    isAdmin,
-    isInstructor,
     login,
     completedPasswordSetup,
     logout,

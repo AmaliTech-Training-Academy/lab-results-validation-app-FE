@@ -1,300 +1,178 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getAdminDashboard, getCsvUploads } from '@/services/admin.service'
-import { getInstructors } from '@/services/user.service'
-import { getCohorts } from '@/services/cohort.service'
-import { getLearners } from '@/services/learner.service'
-import type { AdminDashboardData, Tone } from '@/types/dashboard.types'
-import type { CsvUploadEntry } from '@/types/report.types'
 import VStatCard from '@/components/base/VStatCard.vue'
 import VPill from '@/components/base/VPill.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import VButton from '@/components/base/VButton.vue'
+import { useCohortsStore } from '@/stores/cohorts'
+import { useRunsStore } from '@/stores/runs'
+import type { IngestionRun, RunStatus } from '@/types/run.types'
 import '@/assets/styles/dashboard.css'
 
 const router = useRouter()
+const cohorts = useCohortsStore()
+const runs = useRunsStore()
 
-const STAT_ROUTES: Record<string, string> = {
-  Cohorts: 'admin-cohorts',
-  Learners: 'admin-learners',
-  Instructors: 'admin-users',
-}
+const loading = computed(() => cohorts.loading || runs.loading)
+const error = computed(() => cohorts.error || runs.error)
 
-function emailToName(email: string): string {
-  const local = email.split('@')[0] ?? email
-  return local
-    .split('.')
-    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
-    .join(' ')
-}
+onMounted(() => {
+  cohorts.fetchList()
+  runs.fetchList()
+})
 
-function deriveUploadTone(status: string): Tone {
-  const s = status.toUpperCase()
-  if (s === 'COMPLETED' || s === 'SUCCESS') return 'success'
-  if (s === 'PARTIAL') return 'warning'
-  return 'danger'
-}
-
-function deriveUploadStatus(status: string): string {
-  const s = status.toUpperCase()
-  if (s === 'COMPLETED' || s === 'SUCCESS') return 'Completed'
-  if (s === 'PARTIAL') return 'Partial'
-  return 'Failed'
-}
-
-function mapToRecentUpload(entry: CsvUploadEntry) {
+// ── Cohorts by state ────────────────────────────────────────────────────────
+const cohortCounts = computed(() => {
+  const l = cohorts.list
   return {
-    instructor: emailToName(entry.uploadedByEmail),
-    file: entry.filename,
-    accepted: entry.acceptedRows,
-    rejected: entry.rejectedRows,
-    tone: deriveUploadTone(entry.status),
-    status: deriveUploadStatus(entry.status),
+    total: l.length,
+    draft: l.filter((c) => c.lifecycleState === 'DRAFT').length,
+    refAccepted: l.filter((c) => c.lifecycleState === 'REFERENCE_ACCEPTED').length,
+    stoodUp: l.filter((c) => c.lifecycleState === 'STOOD_UP' && !c.isLocked).length,
+    locked: l.filter((c) => c.lifecycleState === 'STOOD_UP' && c.isLocked).length,
   }
+})
+
+// ── Runs ────────────────────────────────────────────────────────────────────
+const recentRuns = computed(() => runs.list.slice(0, 5))
+const attentionRuns = computed(() =>
+  runs.list.filter((r) => r.highFailure || r.status === 'partial' || r.status === 'failed'),
+)
+const openConflicts = computed(() => runs.list.reduce((n, r) => n + r.counts.conflicts, 0))
+
+const RUN_TONE: Record<RunStatus, 'success' | 'warning' | 'danger' | 'info'> = {
+  completed: 'success', partial: 'warning', failed: 'danger', skipped: 'info', processing: 'info',
 }
 
-function mapToAttentionItem(entry: CsvUploadEntry) {
-  const total = entry.totalRows || 1
-  const pct = Math.round((entry.rejectedRows / total) * 100)
-  return {
-    instructor: emailToName(entry.uploadedByEmail),
-    file: entry.filename,
-    pct: `${pct}% Rejected`,
-    detail: `${entry.acceptedRows} Accepted / ${entry.rejectedRows} Rejected`,
-  }
+function rejectPct(r: IngestionRun): number {
+  return r.counts.rowsRead > 0 ? Math.round((r.counts.skippedInvalid / r.counts.rowsRead) * 100) : 0
 }
-
-const data = ref<AdminDashboardData | null>(null)
-const isLoading = ref(true)
-const loadError = ref<string | null>(null)
-const loadSlow = ref(false)
-const LOAD_TIMEOUT_MS = 8000
-
-async function loadData() {
-  isLoading.value = true
-  loadError.value = null
-  loadSlow.value = false
-  const slowTimer = setTimeout(() => { loadSlow.value = true }, LOAD_TIMEOUT_MS)
-  try {
-    const [dashboard, instructors, cohortsPage, learnersPage, activeLearnersPage, uploadsPage] = await Promise.all([
-      getAdminDashboard(),
-      getInstructors({ page: 0, size: 1000 }),
-      getCohorts(0, 100),
-      getLearners({ page: 0, size: 1 }),
-      getLearners({ status: 'ACTIVE', page: 0, size: 1 }),
-      getCsvUploads(0, 5),
-    ])
-
-    const activeInstructors = instructors.content.filter((i) => i.active).length
-    const instructorStat = dashboard.stats.find((s) => s.label === 'Instructors')
-    if (instructorStat) {
-      instructorStat.value = String(instructors.totalElements)
-      instructorStat.footText = `${activeInstructors} Active · ${instructors.totalElements - activeInstructors} Inactive`
-    }
-
-    const today = new Date().toISOString().split('T')[0]!
-    const activeCohorts = cohortsPage.content.filter((c) => c.active && c.endDate >= today).length
-    const completedCohorts = cohortsPage.content.filter((c) => c.endDate < today).length
-    const archivedCohorts = cohortsPage.content.filter((c) => !c.active && c.endDate >= today).length
-    const cohortStat = dashboard.stats.find((s) => s.label === 'Cohorts')
-    if (cohortStat) {
-      cohortStat.value = String(cohortsPage.totalElements)
-      cohortStat.footText = `${activeCohorts} Active · ${completedCohorts} Completed · ${archivedCohorts} Archived`
-    }
-
-    const totalLearners = learnersPage.totalElements
-    const activeLearners = activeLearnersPage.totalElements
-    const archivedLearners = totalLearners - activeLearners
-    const learnerStat = dashboard.stats.find((s) => s.label === 'Learners')
-    if (learnerStat) {
-      learnerStat.value = String(totalLearners)
-      learnerStat.footText = `${activeLearners} Active · ${archivedLearners} Archived`
-    }
-
-    dashboard.recentUploads = uploadsPage.content.map(mapToRecentUpload)
-    dashboard.attentionItems = uploadsPage.content
-      .filter((e) => e.totalRows > 0 && e.rejectedRows / e.totalRows > 0.5)
-      .map(mapToAttentionItem)
-
-    data.value = dashboard
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : ''
-    loadError.value = msg || 'Failed to load dashboard. Check your connection and try again.'
-  } finally {
-    clearTimeout(slowTimer)
-    isLoading.value = false
-    loadSlow.value = false
-  }
+function fmt(iso: string): string {
+  return iso.replace('T', ' ').slice(0, 16)
 }
-
-onMounted(loadData)
+function openRun(r: IngestionRun) {
+  router.push({ name: 'admin-run-review', params: { id: r.id } })
+}
 </script>
 
 <template>
   <div class="dash">
-  <div v-if="loadSlow && isLoading" class="load-slow-banner">
-    <VIcon name="clock" :size="15" />
-    This is taking longer than expected…
-  </div>
-
-  <div v-else-if="loadError && !isLoading" class="load-error-state">
-    <div class="load-error-icon"><VIcon name="wifi-off" :size="28" /></div>
-    <p class="load-error-title">Could not load dashboard</p>
-    <p class="load-error-sub">{{ loadError }}</p>
-    <VButton variant="ghost" icon="rotate-ccw" @click="loadData">Try again</VButton>
-  </div>
-
-  <div v-else-if="isLoading">
     <div class="page-head">
       <div>
         <h1 class="page-title">Dashboard</h1>
-        <p class="page-sub">Overview of current validation system status.</p>
-      </div>
-    </div>
-    <div class="stats">
-      <div v-for="i in 4" :key="i" class="skel-stat" />
-    </div>
-    <div class="dash-grid" style="margin-top: 24px">
-      <div class="card" style="overflow: hidden">
-        <div style="padding: 20px 20px 0"><span class="skel" style="width: 140px; margin-bottom: 16px" /></div>
-        <table class="tbl"><tbody>
-          <tr v-for="i in 4" :key="i" class="skel-row">
-            <td><span class="skel" style="width: 55%" /></td>
-            <td><span class="skel mono" style="width: 70%" /></td>
-            <td><span class="skel" style="width: 30px; display:inline-block" /></td>
-            <td><span class="skel" style="width: 30px; display:inline-block" /></td>
-            <td><span class="skel" style="width: 60px; border-radius: 999px; display:inline-block" /></td>
-          </tr>
-        </tbody></table>
-      </div>
-      <div class="card card-pad skel-card" />
-    </div>
-  </div>
-
-  <div v-else-if="data">
-    <div class="page-head">
-      <div>
-        <h1 class="page-title">Dashboard</h1>
-        <p class="page-sub">Overview of current validation system status.</p>
+        <p class="page-sub">Cohort stand-up progress and grading ingestion at a glance.</p>
       </div>
     </div>
 
-    <!-- Stat cards -->
-    <div class="stats">
-      <VStatCard
-        v-for="s in data.stats"
-        :key="s.label"
-        :label="s.label"
-        :value="s.value"
-        :chip-icon="s.chipIcon"
-        :chip-bg="s.chipBg"
-        :chip-fg="s.chipFg"
-        :foot-dot="s.footDot"
-        :foot-text="s.footText"
-        :style="STAT_ROUTES[s.label] ? 'cursor: pointer' : ''"
-        @click="STAT_ROUTES[s.label] && router.push({ name: STAT_ROUTES[s.label] })"
-      />
+    <div v-if="error && !loading" class="load-error-state">
+      <div class="load-error-icon"><VIcon name="wifi-off" :size="28" /></div>
+      <p class="load-error-title">Could not load the dashboard</p>
+      <p class="load-error-sub">{{ error }}</p>
+      <VButton variant="ghost" icon="rotate-ccw" @click="() => { cohorts.fetchList(); runs.fetchList() }">Try again</VButton>
     </div>
 
-    <div class="dash-grid">
-      <!-- Recent uploads -->
-      <div class="card">
-        <div class="sec-head">
-          <h2 class="sec-title">Recent uploads</h2>
-          <button class="link" @click="router.push({ name: 'admin-reports' })">View all</button>
-        </div>
-        <div class="uploads-scroll">
-          <table class="tbl">
-            <thead>
-              <tr>
-                <th class="col-instructor">Instructor</th>
-                <th class="col-file">File</th>
-                <th class="col-accepted">Accepted</th>
-                <th class="col-rejected">Rejected</th>
-                <th class="col-status">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="(row, i) in data.recentUploads"
-                :key="i"
-                style="cursor: pointer"
-                @click="router.push({ name: 'admin-reports' })"
-              >
-                <td class="col-instructor" style="font-weight: 500; white-space: nowrap">{{ row.instructor }}</td>
-                <td class="col-file mono">{{ row.file }}</td>
-                <td class="col-accepted">{{ row.accepted }}</td>
-                <td
-                  class="col-rejected"
-                  :style="{
-                    color: row.rejected > 0 ? 'var(--danger)' : 'inherit',
-                    fontWeight: row.rejected > 0 ? 600 : 400,
-                  }"
-                >{{ row.rejected }}</td>
-                <td class="col-status"><VPill :tone="row.tone">{{ row.status }}</VPill></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+    <template v-else>
+      <!-- Stat cards -->
+      <div class="stats">
+        <VStatCard
+          label="Cohorts" :value="cohortCounts.total"
+          chip-icon="layers" chip-bg="rgba(70,97,119,0.12)" chip-fg="#466177"
+          foot-dot="#466177" :foot-text="`${cohortCounts.draft} draft · ${cohortCounts.refAccepted} in setup`"
+          style="cursor: pointer" @click="router.push({ name: 'admin-cohorts' })"
+        />
+        <VStatCard
+          label="Stood up" :value="cohortCounts.stoodUp + cohortCounts.locked"
+          chip-icon="flag" chip-bg="rgba(46,125,50,0.12)" chip-fg="var(--success)"
+          foot-dot="var(--success)" :foot-text="`${cohortCounts.locked} locked`"
+        />
+        <VStatCard
+          label="Grading runs" :value="runs.list.length"
+          chip-icon="refresh-cw" chip-bg="rgba(255,90,0,0.12)" chip-fg="var(--orange)"
+          foot-dot="var(--orange)" :foot-text="`${attentionRuns.length} need attention`"
+          style="cursor: pointer" @click="router.push({ name: 'admin-runs' })"
+        />
+        <VStatCard
+          label="Open conflicts" :value="openConflicts"
+          chip-icon="git-merge" chip-bg="var(--danger-bg)" chip-fg="var(--danger)"
+          foot-dot="var(--danger)" foot-text="Awaiting resolution"
+        />
       </div>
 
-      <!-- Attention required -->
-      <div class="card card-pad">
-        <div class="att-head">
-          <VIcon name="alert-triangle" :size="22" color="#A83900" />
-          <h2 class="sec-title">Attention required</h2>
-        </div>
-        <p class="att-intro">
-          The following recent uploads have a rejection rate greater than 50%.
-          Manual intervention may be required.
-        </p>
-        <div v-for="(a, i) in data.attentionItems" :key="i" class="att-item">
-          <div class="att-row">
-            <span class="att-who">Instructor: {{ a.instructor }}</span>
-            <VPill tone="danger">{{ a.pct }}</VPill>
+      <div class="dash-grid">
+        <!-- Recent runs -->
+        <div class="card">
+          <div class="sec-head">
+            <h2 class="sec-title">Recent grading runs</h2>
+            <button class="link" @click="router.push({ name: 'admin-runs' })">View all</button>
           </div>
-          <div class="mono att-file">{{ a.file }}</div>
-          <div class="att-foot">
-            <span>{{ a.detail }}</span>
-            <button class="link" @click="router.push({ name: 'admin-reports' })">View details →</button>
+          <div class="uploads-scroll">
+            <table class="tbl">
+              <thead>
+                <tr><th>File</th><th class="col-cohort">Cohort</th><th class="col-status">Status</th><th class="col-when">When</th></tr>
+              </thead>
+              <tbody v-if="loading">
+                <tr v-for="i in 4" :key="i" class="skel-row">
+                  <td><span class="skel mono" style="width: 70%" /></td>
+                  <td class="col-cohort"><span class="skel" style="width: 60%" /></td>
+                  <td class="col-status"><span class="skel" style="width: 64px; border-radius: 999px; display: inline-block" /></td>
+                  <td class="col-when"><span class="skel mono" style="width: 80px" /></td>
+                </tr>
+              </tbody>
+              <tbody v-else>
+                <tr v-for="r in recentRuns" :key="r.id" style="cursor: pointer" @click="openRun(r)">
+                  <td class="mono col-file" style="font-weight: 500">{{ r.workbookFilename }}</td>
+                  <td class="col-cohort">{{ r.cohortName ?? '—' }}</td>
+                  <td class="col-status"><VPill :tone="RUN_TONE[r.status]">{{ r.status }}</VPill></td>
+                  <td class="col-when mono" style="color: var(--text-secondary)">{{ fmt(r.runAt) }}</td>
+                </tr>
+                <tr v-if="recentRuns.length === 0"><td colspan="4" style="text-align: center; color: var(--text-secondary); padding: 24px">No runs yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Attention required -->
+        <div class="card card-pad">
+          <div class="att-head">
+            <VIcon name="alert-triangle" :size="22" color="#A83900" />
+            <h2 class="sec-title">Attention required</h2>
+          </div>
+          <p class="att-intro">Runs with a high failure rate, partial commits, or unresolved conflicts.</p>
+
+          <p v-if="!loading && attentionRuns.length === 0" class="att-empty">
+            <VIcon name="check-circle-2" :size="15" style="color: var(--success)" /> Nothing needs attention.
+          </p>
+
+          <div v-for="r in attentionRuns" :key="r.id" class="att-item">
+            <div class="att-row">
+              <span class="att-who">{{ r.cohortName }}</span>
+              <VPill :tone="r.highFailure ? 'danger' : 'warning'">
+                {{ r.highFailure ? `${rejectPct(r)}% rejected` : r.status }}
+              </VPill>
+            </div>
+            <div class="mono att-file">{{ r.workbookFilename }}</div>
+            <div class="att-foot">
+              <span>{{ r.counts.committedNew }} new · {{ r.counts.skippedInvalid }} invalid · {{ r.counts.conflicts }} conflicts</span>
+              <button class="link" @click="openRun(r)">Review →</button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  </div>
+    </template>
   </div>
 </template>
 
 <style scoped>
-/* ── Grid layout ──────────────────────────────────────────────────────────────
-   At ≤1280 px the recent-uploads card shrinks to ~590 px (60 % of ~990 px
-   content area). Stack both cards to full width instead.                       */
 @media (max-width: 1280px) {
   .dash-grid { grid-template-columns: 1fr; }
 }
-
-/* ── Recent uploads table ─────────────────────────────────────────────────── */
 .uploads-scroll { overflow-x: auto; }
-
-/* Fixed-width columns so they don't collapse before scroll kicks in */
-.col-accepted,
-.col-rejected { width: 88px; }
-.col-status   { width: 108px; }
-
-/* File: truncate long names with ellipsis */
-.col-file {
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* ── Column hiding at narrow stacked sizes ────────────────────────────────── */
-/* ≤1100 px  →  content area ≈ 816 px.  Hide Accepted + Rejected (counts are
-   visible in the full report); keeps the table clean on small desktops.        */
+.col-status { width: 108px; }
+.col-when { width: 140px; white-space: nowrap; }
+.col-file { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.att-empty { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 14px; }
 @media (max-width: 1100px) {
-  .col-accepted,
-  .col-rejected { display: none; }
+  .col-cohort { display: none; }
 }
 </style>

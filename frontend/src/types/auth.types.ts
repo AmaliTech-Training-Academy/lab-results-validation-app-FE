@@ -1,4 +1,5 @@
-export type UserRole = 'admin' | 'super_admin' | 'instructor'
+// LabGate v2 is a single-role app — the only in-app role is admin (PRD §7).
+export type UserRole = 'admin'
 
 export interface AuthUser {
   email: string
@@ -18,7 +19,7 @@ export interface LoginResponse {
 
 /**
  * Claims present in the JWT issued by the backend.
- * role is the Java enum name — uppercase (ADMIN | INSTRUCTOR).
+ * role is the Java enum name — uppercase (ADMIN).
  * sub is the user's email address.
  */
 export interface JwtPayload {

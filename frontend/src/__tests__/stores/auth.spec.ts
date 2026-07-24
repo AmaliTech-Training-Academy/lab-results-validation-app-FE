@@ -16,7 +16,7 @@ function makeMockJwt(payload: object): string {
   return `${header}.${body}.mocksig`
 }
 
-// Payloads match backend's generateToken / buildToken exactly
+// Payloads match backend's generateToken / buildToken exactly. Single role: ADMIN.
 const ADMIN_RESPONSE: LoginResponse = {
   token: makeMockJwt({ userId: '1', role: 'ADMIN', sub: 'david.kim@test.com' }),
   email: 'david.kim@test.com',
@@ -24,15 +24,15 @@ const ADMIN_RESPONSE: LoginResponse = {
   mustChangePassword: false,
 }
 
-const INSTRUCTOR_RESPONSE: LoginResponse = {
-  token: makeMockJwt({ userId: '2', role: 'INSTRUCTOR', sub: 's.jenkins@test.com' }),
-  email: 's.jenkins@test.com',
-  role: 'INSTRUCTOR',
+const ADMIN_MUST_CHANGE: LoginResponse = {
+  token: makeMockJwt({ userId: '2', role: 'ADMIN', sub: 'jane.doe@test.com' }),
+  email: 'jane.doe@test.com',
+  role: 'ADMIN',
   mustChangePassword: true,
 }
 
 // Token the backend issues after a successful password change — distinct from the original token
-const POST_CHANGE_TOKEN = makeMockJwt({ userId: '2', role: 'INSTRUCTOR', sub: 's.jenkins@test.com', iat: 9999 })
+const POST_CHANGE_TOKEN = makeMockJwt({ userId: '2', role: 'ADMIN', sub: 'jane.doe@test.com', iat: 9999 })
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
@@ -43,28 +43,15 @@ beforeEach(() => {
 describe('useAuthStore', () => {
   describe('initial state', () => {
     it('has no user when localStorage is empty', () => {
-      const store = useAuthStore()
-      expect(store.user).toBeNull()
+      expect(useAuthStore().user).toBeNull()
     })
 
     it('isAuthenticated is false before login', () => {
-      const store = useAuthStore()
-      expect(store.isAuthenticated).toBe(false)
-    })
-
-    it('isAdmin is false before login', () => {
-      const store = useAuthStore()
-      expect(store.isAdmin).toBe(false)
-    })
-
-    it('isInstructor is false before login', () => {
-      const store = useAuthStore()
-      expect(store.isInstructor).toBe(false)
+      expect(useAuthStore().isAuthenticated).toBe(false)
     })
 
     it('mustChangePassword is false when localStorage is empty', () => {
-      const store = useAuthStore()
-      expect(store.mustChangePassword).toBe(false)
+      expect(useAuthStore().mustChangePassword).toBe(false)
     })
   })
 
@@ -107,23 +94,9 @@ describe('useAuthStore', () => {
       expect(store.isAuthenticated).toBe(true)
     })
 
-    it('isAdmin is true for ADMIN role', () => {
-      const store = useAuthStore()
-      store.login(ADMIN_RESPONSE)
-      expect(store.isAdmin).toBe(true)
-      expect(store.isInstructor).toBe(false)
-    })
-
-    it('isInstructor is true for INSTRUCTOR role', () => {
-      const store = useAuthStore()
-      store.login(INSTRUCTOR_RESPONSE)
-      expect(store.isInstructor).toBe(true)
-      expect(store.isAdmin).toBe(false)
-    })
-
     it('sets mustChangePassword from response flag', () => {
       const store = useAuthStore()
-      store.login(INSTRUCTOR_RESPONSE)
+      store.login(ADMIN_MUST_CHANGE)
       expect(store.mustChangePassword).toBe(true)
     })
 
@@ -141,7 +114,7 @@ describe('useAuthStore', () => {
 
     it('does not persist token to localStorage when mustChangePassword is true', () => {
       const store = useAuthStore()
-      store.login(INSTRUCTOR_RESPONSE)
+      store.login(ADMIN_MUST_CHANGE)
       expect(localStorage.getItem('auth_token')).toBeNull()
       expect(localStorage.getItem('must_change_password')).toBeNull()
     })
@@ -155,9 +128,9 @@ describe('useAuthStore', () => {
     it('overwrites previous session on re-login', () => {
       const store = useAuthStore()
       store.login(ADMIN_RESPONSE)
-      store.login(INSTRUCTOR_RESPONSE)
-      expect(store.user?.role).toBe('instructor')
-      expect(store.isInstructor).toBe(true)
+      store.login(ADMIN_MUST_CHANGE)
+      expect(store.user?.email).toBe('jane.doe@test.com')
+      expect(store.mustChangePassword).toBe(true)
     })
   })
 
@@ -171,7 +144,7 @@ describe('useAuthStore', () => {
     })
 
     it('ignores stale must_change_password key in localStorage', () => {
-      localStorage.setItem('auth_token', INSTRUCTOR_RESPONSE.token)
+      localStorage.setItem('auth_token', ADMIN_RESPONSE.token)
       localStorage.setItem('must_change_password', 'true')
       const store = useAuthStore()
       expect(store.mustChangePassword).toBe(false)
@@ -188,14 +161,14 @@ describe('useAuthStore', () => {
   describe('completedPasswordSetup', () => {
     it('clears mustChangePassword ref', () => {
       const store = useAuthStore()
-      store.login(INSTRUCTOR_RESPONSE)
+      store.login(ADMIN_MUST_CHANGE)
       store.completedPasswordSetup(POST_CHANGE_TOKEN)
       expect(store.mustChangePassword).toBe(false)
     })
 
     it('replaces the old token with the new token in localStorage', () => {
       const store = useAuthStore()
-      store.login(INSTRUCTOR_RESPONSE)
+      store.login(ADMIN_MUST_CHANGE)
       expect(localStorage.getItem('auth_token')).toBeNull()
       store.completedPasswordSetup(POST_CHANGE_TOKEN)
       expect(localStorage.getItem('auth_token')).toBe(POST_CHANGE_TOKEN)
@@ -203,14 +176,14 @@ describe('useAuthStore', () => {
 
     it('does not persist the original restricted token', () => {
       const store = useAuthStore()
-      store.login(INSTRUCTOR_RESPONSE)
+      store.login(ADMIN_MUST_CHANGE)
       store.completedPasswordSetup(POST_CHANGE_TOKEN)
-      expect(localStorage.getItem('auth_token')).not.toBe(INSTRUCTOR_RESPONSE.token)
+      expect(localStorage.getItem('auth_token')).not.toBe(ADMIN_MUST_CHANGE.token)
     })
 
     it('updates the reactive token ref to the new token', () => {
       const store = useAuthStore()
-      store.login(INSTRUCTOR_RESPONSE)
+      store.login(ADMIN_MUST_CHANGE)
       store.completedPasswordSetup(POST_CHANGE_TOKEN)
       expect(store.token).toBe(POST_CHANGE_TOKEN)
       expect(store.user).not.toBeNull()
@@ -220,7 +193,7 @@ describe('useAuthStore', () => {
   describe('logout', () => {
     it('clears user, token, and mustChangePassword', () => {
       const store = useAuthStore()
-      store.login(INSTRUCTOR_RESPONSE)
+      store.login(ADMIN_MUST_CHANGE)
       store.logout()
       expect(store.user).toBeNull()
       expect(store.token).toBeNull()
@@ -236,7 +209,7 @@ describe('useAuthStore', () => {
 
     it('wipes both localStorage keys on logout', () => {
       const store = useAuthStore()
-      store.login(INSTRUCTOR_RESPONSE)
+      store.login(ADMIN_MUST_CHANGE)
       store.logout()
       expect(localStorage.getItem('auth_token')).toBeNull()
       expect(localStorage.getItem('must_change_password')).toBeNull()

@@ -8,11 +8,7 @@ const auth = useAuthStore()
 const router = useRouter()
 
 function goToDashboard() {
-  if (!auth.isAuthenticated) {
-    router.push({ name: 'login' })
-    return
-  }
-  router.push({ name: auth.isAdmin ? 'admin-dashboard' : 'instructor-dashboard' })
+  router.push({ name: auth.isAuthenticated ? 'admin-dashboard' : 'login' })
 }
 </script>
 

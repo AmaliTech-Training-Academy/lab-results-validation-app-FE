@@ -29,23 +29,11 @@ const ADMIN_RESPONSE: LoginResponse = {
   role: 'ADMIN',
   mustChangePassword: true,
 }
-const INSTRUCTOR_RESPONSE: LoginResponse = {
-  token: makeMockJwt({ userId: '2', role: 'INSTRUCTOR', sub: 's.jenkins@test.com' }),
-  email: 's.jenkins@test.com',
-  role: 'INSTRUCTOR',
-  mustChangePassword: true,
-}
-// Tokens the backend issues after a successful password change (role-matched, no mustChangePassword)
+// Token the backend issues after a successful password change (no mustChangePassword)
 const ADMIN_POST_CHANGE_RESPONSE: LoginResponse = {
   token: makeMockJwt({ userId: '1', role: 'ADMIN', sub: 'admin@test.com', iat: 9999 }),
   email: 'admin@test.com',
   role: 'ADMIN',
-  mustChangePassword: false,
-}
-const INSTRUCTOR_POST_CHANGE_RESPONSE: LoginResponse = {
-  token: makeMockJwt({ userId: '2', role: 'INSTRUCTOR', sub: 's.jenkins@test.com', iat: 9999 }),
-  email: 's.jenkins@test.com',
-  role: 'INSTRUCTOR',
   mustChangePassword: false,
 }
 
@@ -55,7 +43,6 @@ const testRouter = createRouter({
     { path: '/', component: { template: '<div/>' } },
     { path: '/login', name: 'login', component: { template: '<div/>' } },
     { path: '/admin/dashboard', name: 'admin-dashboard', component: { template: '<div/>' } },
-    { path: '/instructor/dashboard', name: 'instructor-dashboard', component: { template: '<div/>' } },
     { path: '/set-password', name: 'set-password', component: { template: '<div/>' } },
   ],
 })
@@ -66,7 +53,7 @@ describe('SetPasswordView', () => {
 
   beforeEach(() => {
     localStorage.clear()
-    vi.mocked(changePasswordApi).mockResolvedValue(INSTRUCTOR_POST_CHANGE_RESPONSE)
+    vi.mocked(changePasswordApi).mockResolvedValue(ADMIN_POST_CHANGE_RESPONSE)
     pushSpy = vi.spyOn(testRouter, 'push').mockResolvedValue(undefined as never)
   })
 
@@ -128,22 +115,15 @@ describe('SetPasswordView', () => {
     })
 
     it('calls completedPasswordSetup on success', async () => {
-      const { wrapper, store } = mountView(INSTRUCTOR_RESPONSE)
+      const { wrapper, store } = mountView(ADMIN_RESPONSE)
       await fillAndSubmit(wrapper, 'securepass123!', 'securepass123!')
       expect(store.mustChangePassword).toBe(false)
     })
 
-    it('routes admin to admin-dashboard after success', async () => {
-      vi.mocked(changePasswordApi).mockResolvedValueOnce(ADMIN_POST_CHANGE_RESPONSE)
+    it('routes to admin-dashboard after success', async () => {
       const { wrapper } = mountView(ADMIN_RESPONSE)
       await fillAndSubmit(wrapper, 'securepass123!', 'securepass123!')
       expect(pushSpy).toHaveBeenCalledWith({ name: 'admin-dashboard' })
-    })
-
-    it('routes instructor to instructor-dashboard after success', async () => {
-      const { wrapper } = mountView(INSTRUCTOR_RESPONSE)
-      await fillAndSubmit(wrapper, 'securepass123!', 'securepass123!')
-      expect(pushSpy).toHaveBeenCalledWith({ name: 'instructor-dashboard' })
     })
   })
 

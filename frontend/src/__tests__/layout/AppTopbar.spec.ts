@@ -34,14 +34,11 @@ describe('AppTopbar', () => {
     expect(wrapper.find('.avatar').text()).toBe('DK')
   })
 
-  it('does not show user name for Admin role', () => {
+  it('shows the role in the profile menu, not inline in the topbar', async () => {
     const wrapper = mountTopbar()
     expect(wrapper.find('.topbar-name').exists()).toBe(false)
-  })
-
-  it('shows user name for Instructor role', () => {
-    const wrapper = mountTopbar({ userRole: 'Instructor', userName: 'Sarah Jenkins' })
-    expect(wrapper.find('.topbar-name').text()).toBe('Sarah Jenkins')
+    await wrapper.find('.profile-btn').trigger('click')
+    expect(wrapper.find('.profile-role').text()).toBe('Admin')
   })
 
   it('updates the crumb label when prop changes', async () => {

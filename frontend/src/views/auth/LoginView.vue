@@ -68,7 +68,7 @@ async function submit() {
       return
     }
 
-    router.push(auth.isAdmin ? '/admin/dashboard' : '/instructor/dashboard')
+    router.push('/admin/dashboard')
   } catch (err) {
     const msg = err instanceof Error ? err.message : ''
     error.value = msg === 'Account is disabled'

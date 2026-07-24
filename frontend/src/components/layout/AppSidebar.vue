@@ -5,7 +5,6 @@ import iconUrl from '@/assets/validata-icon.png'
 
 withDefaults(
   defineProps<{
-    role: 'admin' | 'instructor'
     activeId: string
     collapsed?: boolean
   }>(),
@@ -25,33 +24,15 @@ interface NavItem {
 }
 
 const ADMIN_NAV: NavItem[] = [
-  { id: 'a-dashboard', label: 'Dashboard',       icon: 'layout-dashboard' },
-  { id: 'a-cohorts',   label: 'Cohorts',          icon: 'layers'           },
-  { id: 'a-refdata',   label: 'Reference Data',   icon: 'folder-tree'      },
-  { id: 'a-learners',  label: 'Learners',          icon: 'graduation-cap'   },
-  { id: 'a-users',     label: 'User Management',  icon: 'users'            },
-  { id: 'a-reports',   label: 'Reports',           icon: 'bar-chart-2'      },
-  { id: 'a-powerbi',   label: 'Power BI',          icon: 'plug-zap'         },
+  { id: 'a-dashboard', label: 'Dashboard',     icon: 'layout-dashboard' },
+  { id: 'a-cohorts',   label: 'Cohorts',       icon: 'layers'           },
+  { id: 'a-runs',      label: 'Grading runs',  icon: 'refresh-cw'       },
+  { id: 'a-audit',     label: 'Audit',         icon: 'scroll-text'      },
 ]
 
 const ADMIN_FOOTER: NavItem[] = [
   { id: 'a-settings', label: 'Settings', icon: 'settings' },
 ]
-
-const INSTRUCTOR_NAV: NavItem[] = [
-  { id: 'i-dashboard', label: 'Dashboard',          icon: 'layout-dashboard' },
-  { id: 'i-template',  label: 'Download Template',  icon: 'file-down'        },
-  { id: 'i-upload',    label: 'Upload Results',      icon: 'upload-cloud'     },
-  { id: 'i-myuploads', label: 'My Uploads',          icon: 'files'            },
-]
-
-function navItems(role: 'admin' | 'instructor') {
-  return role === 'instructor' ? INSTRUCTOR_NAV : ADMIN_NAV
-}
-
-function footerItems(role: 'admin' | 'instructor') {
-  return role === 'instructor' ? [] : ADMIN_FOOTER
-}
 </script>
 
 <template>
@@ -72,7 +53,7 @@ function footerItems(role: 'admin' | 'instructor') {
       </div>
       <nav class="nav" aria-label="Main menu">
         <button
-          v-for="item in navItems(role)"
+          v-for="item in ADMIN_NAV"
           :key="item.id"
           :class="['nav-item', { active: activeId === item.id }]"
           type="button"
@@ -87,7 +68,7 @@ function footerItems(role: 'admin' | 'instructor') {
     </div>
     <div class="nav-foot">
       <button
-        v-for="item in footerItems(role)"
+        v-for="item in ADMIN_FOOTER"
         :key="item.id"
         :class="['nav-item', { active: activeId === item.id }]"
         type="button"

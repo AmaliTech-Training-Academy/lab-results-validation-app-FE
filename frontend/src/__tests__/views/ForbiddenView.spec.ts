@@ -24,12 +24,6 @@ const ADMIN_RESPONSE: LoginResponse = {
   role: 'ADMIN',
   mustChangePassword: false,
 }
-const INSTRUCTOR_RESPONSE: LoginResponse = {
-  token: makeMockJwt({ userId: '2', role: 'INSTRUCTOR', sub: 's.jenkins@test.com' }),
-  email: 's.jenkins@test.com',
-  role: 'INSTRUCTOR',
-  mustChangePassword: false,
-}
 
 const testRouter = createRouter({
   history: createMemoryHistory(),
@@ -37,7 +31,6 @@ const testRouter = createRouter({
     { path: '/', component: { template: '<div/>' } },
     { path: '/login', name: 'login', component: { template: '<div/>' } },
     { path: '/admin/dashboard', name: 'admin-dashboard', component: { template: '<div/>' } },
-    { path: '/instructor/dashboard', name: 'instructor-dashboard', component: { template: '<div/>' } },
     { path: '/403', name: 'forbidden', component: { template: '<div/>' } },
   ],
 })
@@ -86,20 +79,12 @@ describe('ForbiddenView', () => {
       expect(pushSpy).toHaveBeenCalledWith({ name: 'login' })
     })
 
-    it('navigates to admin-dashboard for an admin user', async () => {
+    it('navigates to admin-dashboard for an authenticated user', async () => {
       const pinia = createPinia()
       const { wrapper, store } = mountView(pinia)
       store.login(ADMIN_RESPONSE)
       await wrapper.find('button').trigger('click')
       expect(pushSpy).toHaveBeenCalledWith({ name: 'admin-dashboard' })
-    })
-
-    it('navigates to instructor-dashboard for an instructor user', async () => {
-      const pinia = createPinia()
-      const { wrapper, store } = mountView(pinia)
-      store.login(INSTRUCTOR_RESPONSE)
-      await wrapper.find('button').trigger('click')
-      expect(pushSpy).toHaveBeenCalledWith({ name: 'instructor-dashboard' })
     })
   })
 })

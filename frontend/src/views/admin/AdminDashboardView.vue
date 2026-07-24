@@ -11,27 +11,28 @@ const route = useRoute()
 const NAV_TO_ROUTE: Record<string, string> = {
   'a-dashboard': 'admin-dashboard',
   'a-cohorts':   'admin-cohorts',
-  'a-refdata':   'admin-reference',
-  'a-learners':  'admin-learners',
-  'a-users':     'admin-users',
-  'a-reports':   'admin-reports',
-  'a-powerbi':   'admin-power-bi',
+  'a-runs':      'admin-runs',
+  'a-audit':     'admin-audit',
   'a-settings':  'admin-settings',
 }
 
-const ROUTE_TO_NAV: Record<string, string> = Object.fromEntries(
-  Object.entries(NAV_TO_ROUTE).map(([nav, r]) => [r, nav]),
-)
+// Route → active nav id. Child routes alias to their parent nav item.
+const ROUTE_TO_NAV: Record<string, string> = {
+  ...Object.fromEntries(Object.entries(NAV_TO_ROUTE).map(([nav, r]) => [r, nav])),
+  'admin-cohort-standup': 'a-cohorts',
+  'admin-cohort-detail':  'a-cohorts',
+  'admin-run-review':     'a-runs',
+}
 
 const CRUMBS: Record<string, string> = {
-  'admin-dashboard': 'Dashboard',
-  'admin-cohorts':   'Cohorts',
-  'admin-reference': 'Reference Data',
-  'admin-learners':  'Learners',
-  'admin-users':     'User Management',
-  'admin-reports':   'Reports',
-  'admin-power-bi':  'Power BI',
-  'admin-settings':  'Settings',
+  'admin-dashboard':      'Dashboard',
+  'admin-cohorts':        'Cohorts',
+  'admin-cohort-standup': 'Cohort stand-up',
+  'admin-cohort-detail':  'Cohort detail',
+  'admin-runs':           'Grading runs',
+  'admin-run-review':     'Run review',
+  'admin-audit':          'Audit',
+  'admin-settings':       'Settings',
 }
 
 const activeId = computed(() => ROUTE_TO_NAV[route.name as string] ?? 'a-dashboard')
@@ -54,7 +55,6 @@ function onLogout() {
 
 <template>
   <AppShell
-    role="admin"
     :active-id="activeId"
     :crumb="crumb"
     :user-name="auth.user?.name ?? ''"

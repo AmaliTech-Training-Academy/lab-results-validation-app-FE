@@ -3,7 +3,6 @@ import { mount } from '@vue/test-utils'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
 
 const adminProps = { role: 'admin' as const, activeId: 'a-dashboard' }
-const instructorProps = { role: 'instructor' as const, activeId: 'i-dashboard' }
 
 describe('AppSidebar', () => {
   describe('brand', () => {
@@ -15,11 +14,11 @@ describe('AppSidebar', () => {
     })
   })
 
-  describe('admin role', () => {
-    it('renders all 7 admin nav items', () => {
+  describe('admin nav', () => {
+    it('renders the admin nav items', () => {
       const wrapper = mount(AppSidebar, { props: adminProps })
       const navItems = wrapper.findAll('.nav .nav-item')
-      expect(navItems).toHaveLength(7)
+      expect(navItems).toHaveLength(4)
     })
 
     it('renders the Settings footer item', () => {
@@ -30,39 +29,13 @@ describe('AppSidebar', () => {
       expect(footItems[0]!.text()).toContain('Settings')
     })
 
-    it('renders all expected admin nav labels', () => {
+    it('renders the expected admin nav labels', () => {
       const wrapper = mount(AppSidebar, { props: adminProps })
       const labels = wrapper.findAll('.nav .nav-item').map((el) => el.text())
       expect(labels).toContain('Dashboard')
       expect(labels).toContain('Cohorts')
-      expect(labels).toContain('Reference Data')
-      expect(labels).toContain('Learners')
-      expect(labels).toContain('User Management')
-      expect(labels).toContain('Reports')
-      expect(labels).toContain('Power BI')
-    })
-  })
-
-  describe('instructor role', () => {
-    it('renders all 4 instructor nav items', () => {
-      const wrapper = mount(AppSidebar, { props: instructorProps })
-      const navItems = wrapper.findAll('.nav .nav-item')
-      expect(navItems).toHaveLength(4)
-    })
-
-    it('renders no footer nav items', () => {
-      const wrapper = mount(AppSidebar, { props: instructorProps })
-      const footItems = wrapper.findAll('.nav-foot .nav-item')
-      expect(footItems).toHaveLength(0)
-    })
-
-    it('renders all expected instructor nav labels', () => {
-      const wrapper = mount(AppSidebar, { props: instructorProps })
-      const labels = wrapper.findAll('.nav .nav-item').map((el) => el.text())
-      expect(labels).toContain('Dashboard')
-      expect(labels).toContain('Download Template')
-      expect(labels).toContain('Upload Results')
-      expect(labels).toContain('My Uploads')
+      expect(labels).toContain('Grading runs')
+      expect(labels).toContain('Audit')
     })
   })
 
@@ -104,8 +77,8 @@ describe('AppSidebar', () => {
     it('moves the active class when activeId prop changes', async () => {
       const wrapper = mount(AppSidebar, { props: adminProps })
       expect(wrapper.find('.nav-item.active').text()).toContain('Dashboard')
-      await wrapper.setProps({ activeId: 'a-reports' })
-      expect(wrapper.find('.nav-item.active').text()).toContain('Reports')
+      await wrapper.setProps({ activeId: 'a-cohorts' })
+      expect(wrapper.find('.nav-item.active').text()).toContain('Cohorts')
     })
   })
 })

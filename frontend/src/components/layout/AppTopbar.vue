@@ -49,8 +49,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
     </nav>
 
     <div class="topbar-right">
-      <span v-if="userRole.toLowerCase() === 'instructor'" class="topbar-name">{{ userName }}</span>
-<div ref="wrap" class="profile">
+      <div ref="wrap" class="profile">
         <button
           class="profile-btn"
           type="button"

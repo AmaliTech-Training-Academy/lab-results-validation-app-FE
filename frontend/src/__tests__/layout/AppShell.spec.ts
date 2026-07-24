@@ -3,7 +3,6 @@ import { mount } from '@vue/test-utils'
 import AppShell from '@/components/layout/AppShell.vue'
 
 const defaultProps = {
-  role: 'admin' as const,
   activeId: 'a-dashboard',
   crumb: 'Dashboard',
   userName: 'David Kim',
@@ -36,21 +35,19 @@ describe('AppShell', () => {
     expect(wrapper.find('.crumbs .cur').text()).toBe('Cohorts')
   })
 
-  it('passes the role to the sidebar', () => {
-    const instructorWrapper = mount(AppShell, {
-      props: { ...defaultProps, role: 'instructor', activeId: 'i-dashboard', userRole: 'Instructor' },
-    })
-    // Instructor sidebar has 4 nav items, not 7
-    expect(instructorWrapper.findAll('.nav .nav-item')).toHaveLength(4)
+  it('renders the admin sidebar nav', () => {
+    const wrapper = mount(AppShell, { props: defaultProps })
+    // Admin-only app: Dashboard, Cohorts, Grading runs, Audit
+    expect(wrapper.findAll('.nav .nav-item')).toHaveLength(4)
   })
 
   it('bubbles navigate event from the sidebar', async () => {
     const wrapper = mount(AppShell, { props: defaultProps })
-    const reportsBtn = wrapper
+    const cohortsBtn = wrapper
       .findAll('.nav .nav-item')
-      .find((el) => el.text().includes('Reports'))
-    await reportsBtn?.trigger('click')
-    expect(wrapper.emitted('navigate')?.[0]).toEqual(['a-reports'])
+      .find((el) => el.text().includes('Cohorts'))
+    await cohortsBtn?.trigger('click')
+    expect(wrapper.emitted('navigate')?.[0]).toEqual(['a-cohorts'])
   })
 
   it('bubbles logout event from the topbar profile menu', async () => {

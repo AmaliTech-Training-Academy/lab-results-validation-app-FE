@@ -4,7 +4,6 @@ import AppSidebar from './AppSidebar.vue'
 import AppTopbar from './AppTopbar.vue'
 
 defineProps<{
-  role: 'admin' | 'instructor'
   activeId: string
   crumb: string
   userName: string
@@ -24,7 +23,6 @@ const collapsed = ref(false)
   <div class="app">
     <a href="#main-content" class="skip-link">Skip to main content</a>
     <AppSidebar
-      :role="role"
       :active-id="activeId"
       :collapsed="collapsed"
       @navigate="$emit('navigate', $event)"
@@ -34,7 +32,7 @@ const collapsed = ref(false)
     <div class="main">
       <AppTopbar
         :crumb="crumb"
-        :home-route="role === 'admin' ? 'admin-dashboard' : 'instructor-dashboard'"
+        home-route="admin-dashboard"
         :user-name="userName"
         :user-role="userRole"
         :user-initials="userInitials"
