@@ -2,7 +2,7 @@ name: Deploy Dev (frontend)
 
 on:
   push:
-    branches: [dev]
+    branches: [develop]
   workflow_dispatch: {}
 
 permissions:
