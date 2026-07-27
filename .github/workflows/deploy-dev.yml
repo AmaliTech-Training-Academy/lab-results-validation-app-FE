@@ -1,11 +1,8 @@
 name: Deploy Dev (frontend)
 
-# NOTE: Deploys the `frontend/` app, which is not present on `develop`.
-# Automatic push trigger is disabled so it does not run on a frontend-less
-# branch; kept runnable manually. Restore the push trigger when frontend returns.
 on:
-  # push:
-  #   branches: [develop]
+  push:
+    branches: [develop]
   workflow_dispatch: {}
 
 permissions:

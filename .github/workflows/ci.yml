@@ -1,26 +1,50 @@
 name: CI
 
-# NOTE: This workflow builds the `frontend/` app, which is not present on the
-# `develop` branch. Automatic push/PR triggers are disabled so it does not fail
-# on a frontend-less branch. It remains runnable manually and the original
-# triggers below can be restored once buildable code returns.
 on:
   workflow_dispatch: {}
-  # push:
-  #   branches:
-  #     - main
-  #     - develop
-  #     - 'feature/**'
-  #     - 'feat/**'
-  #     - 'chore/**'
-  #     - 'hotfix/**'
-  #     - 'fix/**'
-  #     - 'bugfix/**'
-  #   paths-ignore: [ '**.md', '**.txt', 'docs/**', '**.pdf', '**.png', '**.jpg', '**.jpeg', '**.gif', '**.svg', '**.drawio', '**.puml', 'diagrams/**', 'LICENSE', '.gitignore' ]
-  # pull_request:
-  #   branches:
-  #     - develop
-  #   paths-ignore: [ '**.md', '**.txt', 'docs/**', '**.pdf', '**.png', '**.jpg', '**.jpeg', '**.gif', '**.svg', '**.drawio', '**.puml', 'diagrams/**', 'LICENSE', '.gitignore' ]
+  push:
+    branches:
+      - main
+      - develop
+      - 'feature/**'
+      - 'feat/**'
+      - 'chore/**'
+      - 'hotfix/**'
+      - 'fix/**'
+      - 'bugfix/**'
+    paths-ignore:
+      - '**.md'
+      - '**.txt'
+      - 'docs/**'
+      - '**.pdf'
+      - '**.png'
+      - '**.jpg'
+      - '**.jpeg'
+      - '**.gif'
+      - '**.svg'
+      - '**.drawio'
+      - '**.puml'
+      - 'diagrams/**'
+      - 'LICENSE'
+      - '.gitignore'
+  pull_request:
+    branches:
+      - develop
+    paths-ignore:
+      - '**.md'
+      - '**.txt'
+      - 'docs/**'
+      - '**.pdf'
+      - '**.png'
+      - '**.jpg'
+      - '**.jpeg'
+      - '**.gif'
+      - '**.svg'
+      - '**.drawio'
+      - '**.puml'
+      - 'diagrams/**'
+      - 'LICENSE'
+      - '.gitignore'
 
 # Cancel superseded runs on the same ref to save minutes.
 concurrency:
