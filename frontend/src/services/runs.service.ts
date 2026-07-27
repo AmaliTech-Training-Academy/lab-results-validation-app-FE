@@ -3,13 +3,13 @@ import { http } from './http'
 import type { IngestionRun, SyncTriggerPayload } from '@/types/run.types'
 import { USE_MOCKS, mockDelay, genId, runs, cohorts } from './mock/fixtures'
 
-export async function listRuns(cohortId?: string): Promise<IngestionRun[]> {
+/** Runs are scoped to a single cohort's stand-up (§9c) — there's no cross-cohort listing endpoint. */
+export async function listRuns(cohortId: string): Promise<IngestionRun[]> {
   if (USE_MOCKS) {
-    const list = cohortId ? runs.filter((r) => r.cohortId === cohortId) : runs
+    const list = runs.filter((r) => r.cohortId === cohortId)
     return mockDelay([...list].sort((a, b) => b.runAt.localeCompare(a.runAt)))
   }
-  const qs = cohortId ? `?cohortId=${encodeURIComponent(cohortId)}` : ''
-  return http.get<IngestionRun[]>(`/runs${qs}`)
+  return http.get<IngestionRun[]>(`/cohorts/${cohortId}/standup/runs`)
 }
 
 export async function getRun(id: string): Promise<IngestionRun> {

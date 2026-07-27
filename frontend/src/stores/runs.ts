@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { IngestionRun, SyncTriggerPayload } from '@/types/run.types'
 import { listRuns, getRun, triggerSync } from '@/services/runs.service'
+import { useCohortsStore } from '@/stores/cohorts'
 
 export const useRunsStore = defineStore('runs', () => {
   const list = ref<IngestionRun[]>([])
@@ -10,11 +11,24 @@ export const useRunsStore = defineStore('runs', () => {
   const syncing = ref(false)
   const error = ref<string | null>(null)
 
+  /**
+   * `listRuns` is scoped to one cohort (§9c) — there's no "all runs" endpoint.
+   * With no `cohortId`, fan out over every STOOD_UP cohort and merge, so the
+   * dashboard/"All cohorts" views keep working exactly as before.
+   */
   async function fetchList(cohortId?: string) {
     loading.value = true
     error.value = null
     try {
-      list.value = await listRuns(cohortId)
+      if (cohortId) {
+        list.value = await listRuns(cohortId)
+      } else {
+        const cohorts = useCohortsStore()
+        if (cohorts.list.length === 0) await cohorts.fetchList()
+        const eligible = cohorts.list.filter((c) => c.lifecycleState === 'STOOD_UP')
+        const perCohort = await Promise.all(eligible.map((c) => listRuns(c.id)))
+        list.value = perCohort.flat().sort((a, b) => b.runAt.localeCompare(a.runAt))
+      }
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load runs'
     } finally {

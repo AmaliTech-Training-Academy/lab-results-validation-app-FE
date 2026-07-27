@@ -1,4 +1,4 @@
-const BASE_URL = '/api/v1'
+export const BASE_URL = '/api/v1'
 
 const FRIENDLY_ERRORS: Record<number, string> = {
   400: 'Bad request. Please check your input and try again.',
@@ -34,7 +34,8 @@ export function setTokenProvider(fn: () => string | null) {
   tokenProvider = fn
 }
 
-function getToken(): string | null {
+/** The current JWT, if any. Exported so callers that can't send headers (e.g. EventSource) can pass it as a query param. */
+export function getToken(): string | null {
   return tokenProvider()
 }
 
