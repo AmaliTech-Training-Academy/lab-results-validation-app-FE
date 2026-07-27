@@ -1,0 +1,99 @@
+import { defineStore } from 'pinia'
+import { ref, computed } from 'vue'
+import type { AuthUser, LoginResponse, JwtPayload, UserRole } from '@/types/auth.types'
+import { logoutApi } from '@/services/auth.service'
+
+function decodeJwtPayload(token: string): JwtPayload {
+  const base64Url = token.split('.')[1] ?? ''
+  const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/')
+  return JSON.parse(atob(base64)) as JwtPayload
+}
+
+/** Derives a display name and initials from an email local-part.
+ *  s.jenkins@org.com → { name: 'S Jenkins', initials: 'SJ' }
+ *  admin@org.com     → { name: 'Admin',     initials: 'A'  }
+ */
+function deriveDisplayName(email: string): { name: string; initials: string } {
+  const local = email.split('@')[0] ?? ''
+  const parts = local.split('.')
+  const name = parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' ')
+  const initials = parts.map((p) => p.charAt(0).toUpperCase()).join('')
+  return { name, initials }
+}
+
+function buildUser(payload: JwtPayload): AuthUser {
+  const { name, initials } = deriveDisplayName(payload.sub)
+  return {
+    email: payload.sub,
+    name,
+    role: payload.role.toLowerCase() as UserRole,
+    initials,
+    userId: payload.userId,
+  }
+}
+
+export const useAuthStore = defineStore('auth', () => {
+  const token = ref<string | null>(localStorage.getItem('auth_token'))
+  const mustChangePassword = ref(false)
+  const tempPassword = ref<string | null>(null)
+  const user = ref<AuthUser | null>(null)
+
+  // Hydrate from storage on store creation — only tokens that survived past password setup are persisted
+  if (token.value) {
+    try {
+      user.value = buildUser(decodeJwtPayload(token.value))
+    } catch {
+      token.value = null
+      localStorage.removeItem('auth_token')
+    }
+  }
+
+  const isAuthenticated = computed(() => user.value !== null)
+
+  function login(response: LoginResponse, plainPassword?: string) {
+    const payload = decodeJwtPayload(response.token)
+    user.value = buildUser(payload)
+    token.value = response.token
+    mustChangePassword.value = response.mustChangePassword
+    tempPassword.value = response.mustChangePassword ? (plainPassword ?? null) : null
+    // Only persist to localStorage once the account is fully set up
+    if (!response.mustChangePassword) {
+      localStorage.setItem('auth_token', response.token)
+    }
+  }
+
+  function completedPasswordSetup(newToken: string) {
+    token.value = newToken
+    user.value = buildUser(decodeJwtPayload(newToken))
+    mustChangePassword.value = false
+    tempPassword.value = null
+    localStorage.setItem('auth_token', newToken)
+  }
+
+  function clearSession() {
+    user.value = null
+    token.value = null
+    mustChangePassword.value = false
+    tempPassword.value = null
+    localStorage.removeItem('auth_token')
+  }
+
+  async function logout() {
+    logoutApi().catch(() => {})
+    clearSession()
+  }
+
+  // http service dispatches this when refresh fails — session is already dead so skip the API call
+  window.addEventListener('auth:session-expired', clearSession)
+
+  return {
+    user,
+    token,
+    mustChangePassword,
+    tempPassword,
+    isAuthenticated,
+    login,
+    completedPasswordSetup,
+    logout,
+  }
+})

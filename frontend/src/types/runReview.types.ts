@@ -1,0 +1,77 @@
+// Run-Review screen: results + conflict queue + staged notifications
+// (PRD Epic B B10, Epic C, FE strategy §6.5). Schema: ingestion_conflicts, notifications.
+import type { IngestionRun } from './run.types'
+
+/** A single graded-row value, used for the GitHub-merge-style conflict view. */
+export interface LabResultValue {
+  learnerId: string
+  labTitle: string
+  score: number
+  submittedOn: string // ISO date
+  instructorId?: string
+  /** Where the incoming row came from (sheet + row), for the merge display. */
+  sourceRef?: string
+}
+
+export type ConflictKind = 'in_file_duplicate' // schema: only kind in v2
+export type ConflictStatus = 'PENDING' | 'RESOLVED' | 'DISMISSED'
+
+export interface IngestionConflict {
+  id: string
+  ingestionRunId: string
+  cohortId: string
+  learnerId?: string
+  labId?: string
+  conflictKind: ConflictKind
+  /** The already-committed record, if any (may be null for a pure in-file dup). */
+  existingResult: LabResultValue | null
+  /** The ≥2 conflicting incoming rows held for manual resolution (§4.3). */
+  incomingRows: LabResultValue[]
+  status: ConflictStatus
+  resolutionNote?: string
+}
+
+/** Admin picks which incoming row wins, or rejects all. */
+export interface ResolveConflictPayload {
+  /** Index into incomingRows; omit / null to reject all. */
+  chosenRowIndex?: number | null
+  note?: string
+}
+
+// --- Notifications (staged outbox + moderation, Epic C) -----------------------
+
+/** schema: notifications.type CHECK. */
+export type NotificationType =
+  | 'instructor_digest'
+  | 'admin_run_digest'
+  | 'standup_failure'
+  | 'high_failure'
+  | 'conflict_alert'
+  | 'stood_up'
+
+export type RecipientKind = 'instructor' | 'admin'
+export type DispatchPolicy = 'AUTO' | 'HELD'
+export type NotificationStatus = 'PENDING' | 'SENT' | 'SKIPPED' | 'FAILED'
+
+export interface Notification {
+  id: string
+  ingestionRunId: string | null
+  cohortId: string | null
+  type: NotificationType
+  recipientKind: RecipientKind
+  recipientName?: string
+  recipientEmail?: string
+  dispatchPolicy: DispatchPolicy
+  subject?: string
+  body?: string
+  status: NotificationStatus
+  errorDetail?: string
+  sentAt?: string | null
+}
+
+/** The unified Run-Review payload (§6.5): results + conflicts + notifications. */
+export interface RunReview {
+  run: IngestionRun
+  conflicts: IngestionConflict[]
+  notifications: Notification[]
+}

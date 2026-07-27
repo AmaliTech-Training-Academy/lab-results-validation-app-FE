@@ -1,0 +1,7 @@
+export { default as VIcon } from './VIcon.vue'
+export { default as VButton } from './VButton.vue'
+export { default as VPill } from './VPill.vue'
+export { default as VStatCard } from './VStatCard.vue'
+export { default as VDrawer } from './VDrawer.vue'
+export { default as VModal } from './VModal.vue'
+export { default as VToast } from './VToast.vue'
