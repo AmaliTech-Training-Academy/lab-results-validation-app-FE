@@ -6,8 +6,9 @@ import VIcon from '@/components/base/VIcon.vue'
 import { useCohortsStore } from '@/stores/cohorts'
 import { useStandupStore } from '@/stores/standup'
 import { useToastStore } from '@/stores/toast'
-import { useJobPolling } from '@/composables/useJobPolling'
-import type { GateStatus } from '@/types/standup.types'
+import { useStandupStream } from '@/composables/useStandupStream'
+import { useGate4Stream } from '@/composables/useGate4Stream'
+import type { FileGateStatus, GateStatus } from '@/types/standup.types'
 import type { LocatedError } from '@/types/common.types'
 
 const route = useRoute()
@@ -19,28 +20,50 @@ const toast = useToastStore()
 const cohortId = route.params.id as string
 const linkInput = ref('')
 const localError = ref('')
+/** Accept is a plain REST call with no stream of its own — tracked locally. */
+const acceptDone = ref(false)
 
 const cohort = computed(() => cohorts.current)
 
-const polling = useJobPolling(() => standup.refresh(cohortId), {
-  intervalMs: 1500,
-  onTerminal: (s) => {
-    if (s.gates.find((g) => g.id === 'gate4')?.status === 'passed') {
+// Gates 1-3 stream live over their own SSE (§9b); Gate 4 is triggered
+// separately post-accept and streams over its own SSE too (§9d) — there's no
+// single job spanning all four gates.
+const stream = useStandupStream(cohortId)
+const gate4 = useGate4Stream(cohortId, {
+  onDone: (overall) => {
+    if (overall === 'passed') {
       toast.show({ tone: 'success', title: 'Cohort stood up', body: 'Reference data committed and score sheets validated.' })
       router.replace({ name: 'admin-cohort-detail', params: { id: cohortId } })
     }
   },
 })
 
-const status = polling.status
-const gates = computed(() => status.value?.gates ?? [])
+const isBusy = computed(() => stream.isPolling.value || gate4.isPolling.value)
+
+const GATE4_TO_STEP: Record<'idle' | 'running' | 'passed' | 'failed', GateStatus> = {
+  idle: 'pending',
+  running: 'running',
+  passed: 'passed',
+  failed: 'failed',
+}
+
+const gates = computed(() =>
+  stream.gates.value.map((g) => {
+    if (g.status === 'not_run') return g
+    if (g.id === 'accept') return { ...g, status: (acceptDone.value ? 'passed' : g.status) as GateStatus }
+    if (g.id === 'gate4') return { ...g, status: GATE4_TO_STEP[gate4.overall.value] }
+    return g
+  }),
+)
 const gate = (id: string) => gates.value.find((g) => g.id === id)
-const failedGate = computed(() => gates.value.find((g) => g.status === 'failed'))
+const failedGate = computed(() =>
+  gates.value.find((g) => (g.id === 'gate1' || g.id === 'gate2' || g.id === 'gate3') && g.status === 'failed'),
+)
 const gate3Passed = computed(() => gate('gate3')?.status === 'passed')
 const accepted = computed(() => gate('accept')?.status === 'passed')
 const awaitingAccept = computed(() => gate3Passed.value && !accepted.value && !failedGate.value)
-const summary = computed(() => status.value?.acceptSummary)
-const started = computed(() => status.value !== null)
+const summary = computed(() => stream.status.value?.acceptSummary)
+const started = computed(() => stream.status.value !== null)
 
 onMounted(async () => {
   await cohorts.fetchCohort(cohortId)
@@ -58,25 +81,36 @@ async function runValidation() {
     return
   }
   await standup.start(cohortId, linkInput.value.trim())
-  polling.start()
+  stream.start() // drives Gates 1-3 over SSE
 }
 
 async function accept() {
   await standup.accept(cohortId)
+  acceptDone.value = true
   await cohorts.fetchCohort(cohortId)
-  polling.start() // resume polling for Gate 4
+  await standup.runGate4(cohortId)
+  gate4.start() // drives Gate 4 over its own SSE
+}
+
+async function retryGate4() {
+  await standup.runGate4(cohortId)
+  gate4.start()
 }
 
 async function discard() {
   await standup.discard(cohortId)
-  polling.stop()
+  stream.stop()
+  gate4.stop()
+  acceptDone.value = false
   standup.reset()
   await cohorts.fetchCohort(cohortId)
   toast.show({ tone: 'info', title: 'Reset to draft', body: 'Committed reference data was cleared. Resubmit the link to redo.' })
 }
 
 function startOver() {
-  polling.stop()
+  stream.stop()
+  gate4.stop()
+  acceptDone.value = false
   standup.reset()
   localError.value = ''
 }
@@ -86,7 +120,6 @@ const SUMMARY_ROWS = [
   { key: 'modules', label: 'Modules' },
   { key: 'labs', label: 'Labs' },
   { key: 'learners', label: 'Learners' },
-  { key: 'instructors', label: 'Instructor contacts' },
 ] as const
 
 const STEP_ICON: Record<GateStatus, string> = {
@@ -102,6 +135,11 @@ const STEP_LABEL: Record<GateStatus, string> = {
   passed: 'Passed',
   failed: 'Failed',
   not_run: 'Not run',
+}
+const FILE_ICON: Record<FileGateStatus, string> = {
+  processing: 'loader',
+  passed: 'check-circle-2',
+  failed: 'x-circle',
 }
 
 function fmtError(e: LocatedError): string {
@@ -166,7 +204,7 @@ function fmtError(e: LocatedError): string {
       </div>
     </div>
 
-    <p v-if="polling.isPolling.value" class="polling-note">
+    <p v-if="isBusy" class="polling-note">
       <VIcon name="loader" :size="14" class="spin" /> Validating…
     </p>
 
@@ -199,6 +237,14 @@ function fmtError(e: LocatedError): string {
           <dd class="mono">{{ summary[row.key] }}</dd>
         </div>
       </dl>
+      <p v-if="summary" class="quiz-ref">
+        <VIcon
+          :name="summary.quizReferencePresent ? 'check-circle-2' : 'alert-circle'"
+          :size="14"
+          :class="summary.quizReferencePresent ? 'ic-success' : ''"
+        />
+        Quiz reference file {{ summary.quizReferencePresent ? 'found' : 'not found' }}
+      </p>
       <div class="card-actions">
         <VButton variant="ghost" @click="startOver">Cancel</VButton>
         <VButton variant="primary" icon="check" :disabled="standup.busy" @click="accept">
@@ -207,16 +253,59 @@ function fmtError(e: LocatedError): string {
       </div>
     </div>
 
-    <!-- Accepted, Gate 4 running -->
-    <div v-else-if="accepted && !polling.isPolling.value" class="panel panel--info">
-      <div class="panel-head">
-        <VIcon name="check-circle-2" :size="18" class="ic-success" />
-        <strong>Reference data accepted</strong>
+    <!-- Accepted: Gate 4 (empty score-sheet validation), streamed file by file -->
+    <template v-else-if="accepted">
+      <div v-if="gate4.overall.value === 'failed'" class="panel panel--error">
+        <div class="panel-head">
+          <VIcon name="alert-triangle" :size="18" />
+          <strong>Gate 4 failed</strong>
+        </div>
+        <ul class="file-list">
+          <li v-for="f in gate4.files.value" :key="f.file" :class="['file-item', `file-item--${f.status}`]">
+            <VIcon :name="FILE_ICON[f.status]" :size="16" />
+            <span class="file-name mono">{{ f.file }}</span>
+            <span v-if="f.status === 'passed'" class="file-meta">{{ f.rows }} rows</span>
+          </li>
+        </ul>
+        <ul class="err-list">
+          <li v-for="(e, i) in gate4.errors.value" :key="i" class="err-item mono">{{ fmtError(e) }}</li>
+        </ul>
+        <p class="panel-note">Fix the flagged score sheets in SharePoint, then retry.</p>
+        <div class="card-actions">
+          <VButton variant="ghost" icon="rotate-ccw" @click="discard">Discard / reset</VButton>
+          <VButton variant="primary" icon="rotate-ccw" :disabled="standup.busy" @click="retryGate4">Retry Gate 4</VButton>
+        </div>
       </div>
-      <div class="card-actions">
-        <VButton variant="ghost" icon="rotate-ccw" @click="discard">Discard / reset</VButton>
+
+      <div v-else-if="gate4.isPolling.value" class="panel panel--info">
+        <div class="panel-head">
+          <VIcon name="loader" :size="18" class="spin" />
+          <strong>Validating score sheets…</strong>
+        </div>
+        <ul class="file-list">
+          <li v-for="f in gate4.files.value" :key="f.file" :class="['file-item', `file-item--${f.status}`]">
+            <VIcon :name="FILE_ICON[f.status]" :size="16" :class="{ spin: f.status === 'processing' }" />
+            <span class="file-name mono">{{ f.file }}</span>
+            <span v-if="f.status === 'processing'" class="file-meta">{{ f.scenario }}</span>
+            <span v-else-if="f.status === 'passed'" class="file-meta">{{ f.rows }} rows</span>
+          </li>
+          <li v-if="gate4.files.value.length === 0" class="file-item">
+            <VIcon name="loader" :size="16" class="spin" />
+            <span class="file-meta">Starting…</span>
+          </li>
+        </ul>
       </div>
-    </div>
+
+      <div v-else class="panel panel--info">
+        <div class="panel-head">
+          <VIcon name="check-circle-2" :size="18" class="ic-success" />
+          <strong>Reference data accepted</strong>
+        </div>
+        <div class="card-actions">
+          <VButton variant="ghost" icon="rotate-ccw" @click="discard">Discard / reset</VButton>
+        </div>
+      </div>
+    </template>
   </section>
 </template>
 
@@ -387,6 +476,38 @@ function fmtError(e: LocatedError): string {
   border-radius: 3px;
 }
 
+.file-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+}
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--r-sm, 4px);
+  background: rgba(0, 0, 0, 0.02);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.file-item--passed {
+  color: var(--success);
+}
+.file-item--failed {
+  color: var(--danger);
+}
+.file-name {
+  flex: 1;
+  color: var(--text);
+}
+.file-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
 .summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -410,6 +531,15 @@ function fmtError(e: LocatedError): string {
   font-weight: 600;
   color: var(--text);
   margin-top: 2px;
+}
+
+.quiz-ref {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
 }
 
 .accepted-head {

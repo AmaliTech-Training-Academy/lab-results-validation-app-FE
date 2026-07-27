@@ -29,8 +29,8 @@ const cohortCounts = computed(() => {
     total: l.length,
     draft: l.filter((c) => c.lifecycleState === 'DRAFT').length,
     refAccepted: l.filter((c) => c.lifecycleState === 'REFERENCE_ACCEPTED').length,
-    stoodUp: l.filter((c) => c.lifecycleState === 'STOOD_UP' && !c.isLocked).length,
-    locked: l.filter((c) => c.lifecycleState === 'STOOD_UP' && c.isLocked).length,
+    stoodUp: l.filter((c) => c.lifecycleState === 'STOOD_UP' && !c.locked).length,
+    locked: l.filter((c) => c.lifecycleState === 'STOOD_UP' && c.locked).length,
   }
 })
 

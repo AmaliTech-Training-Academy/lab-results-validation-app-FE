@@ -53,7 +53,7 @@ onMounted(() => {
 
 async function toggleLock() {
   if (!cohort.value) return
-  const wasLocked = cohort.value.isLocked
+  const wasLocked = cohort.value.locked
   try {
     if (wasLocked) await cohorts.unlock(cohortId)
     else await cohorts.lock(cohortId)
@@ -78,11 +78,11 @@ async function toggleLock() {
     </div>
     <VButton
       v-if="cohort?.lifecycleState === 'STOOD_UP'"
-      :variant="cohort.isLocked ? 'ghost' : 'primary'"
-      :icon="cohort.isLocked ? 'lock-open' : 'lock'"
+      :variant="cohort.locked ? 'ghost' : 'primary'"
+      :icon="cohort.locked ? 'lock-open' : 'lock'"
       @click="toggleLock"
     >
-      {{ cohort.isLocked ? 'Unlock cohort' : 'Lock cohort' }}
+      {{ cohort.locked ? 'Unlock cohort' : 'Lock cohort' }}
     </VButton>
   </div>
 
