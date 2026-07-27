@@ -69,7 +69,7 @@ function summaryFor(cohortId: string): ReferenceBundleSummary {
     modules: modules.length,
     labs: modules.reduce((n, m) => n + m.labs.length, 0),
     learners: ref.learners.length,
-    instructors: ref.instructors.length,
+    quizReferencePresent: true,
   }
 }
 
