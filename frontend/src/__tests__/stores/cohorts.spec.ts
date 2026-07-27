@@ -19,8 +19,8 @@ function cohort(over: Partial<Cohort> = {}): Cohort {
     startDate: '2026-01-01',
     endDate: '2026-06-01',
     lifecycleState: 'DRAFT',
-    isLocked: false,
-    isActive: true,
+    locked: false,
+    active: true,
     sharepointFolderUrl: null,
     referenceAcceptedAt: null,
     createdAt: '2026-01-01T00:00:00Z',
@@ -79,8 +79,8 @@ describe('useCohortsStore', () => {
     const store = useCohortsStore()
     await store.fetchList()
     await store.lock('c1')
-    expect(store.list[0]!.isLocked).toBe(true)
+    expect(store.list[0]!.locked).toBe(true)
     await store.unlock('c1')
-    expect(store.list[0]!.isLocked).toBe(false)
+    expect(store.list[0]!.locked).toBe(false)
   })
 })
