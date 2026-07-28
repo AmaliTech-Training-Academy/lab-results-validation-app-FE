@@ -33,17 +33,12 @@ export interface StandupStatus {
   acceptSummary?: ReferenceBundleSummary
 }
 
-/** Payload to start a stand-up job (submit the SharePoint folder link, A2). */
-export interface StartStandupPayload {
-  sharepointFolderUrl: string
-}
-
-/** 202 response body from POST /cohorts/{id}/standup (§9b). */
-export interface StandupJob {
-  id: string
-  cohortId: string
-  status: string
-  startedAt: string
+/**
+ * Payload for POST /cohorts/{id}/sharepoint-link (A2) — persisting it is what
+ * kicks off Gates 1-3 on the backend; the FE just opens the SSE stream after.
+ */
+export interface AttachSharePointLinkPayload {
+  folderUrl: string
 }
 
 /** Gate numbering as sent over the SSE stream — 1:1 with gate1/gate2/gate3. */

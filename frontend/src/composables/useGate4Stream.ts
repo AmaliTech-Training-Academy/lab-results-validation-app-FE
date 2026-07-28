@@ -30,7 +30,7 @@ export interface Gate4Stream {
 /**
  * Drives Gate 4 (empty score-sheet validation) over the backend's own SSE
  * stream (§9d) — separate from the Gate 1-3 stream: after
- * `startCohortStandup` triggers POST /gate4, this opens GET /gate4/stream and
+ * `triggerGate4` triggers POST /gate4, this opens GET /gate4/stream and
  * turns file.processing / file.passed / file.failed / gate4.done events into
  * a per-file result list. There's no fake SSE server for local dev and no
  * status endpoint is called on accept, so mock mode just simulates a couple

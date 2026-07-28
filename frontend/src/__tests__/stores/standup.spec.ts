@@ -4,7 +4,7 @@ import { useStandupStore } from '@/stores/standup'
 import type { StandupStatus } from '@/types/standup.types'
 
 vi.mock('@/services/cohorts.service', () => ({
-  startCohortStandup: vi.fn<() => Promise<unknown>>(),
+  attachSharePointLink: vi.fn<() => Promise<unknown>>(),
   fetchStandupStatus: vi.fn<() => Promise<unknown>>(),
   acceptCohortReference: vi.fn<() => Promise<unknown>>(),
   discardCohortReference: vi.fn<() => Promise<unknown>>(),
@@ -23,10 +23,10 @@ beforeEach(() => {
 
 describe('useStandupStore', () => {
   it('start() forwards the link to the service', async () => {
-    vi.mocked(svc.startCohortStandup).mockResolvedValue(undefined)
+    vi.mocked(svc.attachSharePointLink).mockResolvedValue(undefined)
     const store = useStandupStore()
     await store.start('c1', 'https://sp/Cohort1')
-    expect(svc.startCohortStandup).toHaveBeenCalledWith('c1', { sharepointFolderUrl: 'https://sp/Cohort1' })
+    expect(svc.attachSharePointLink).toHaveBeenCalledWith('c1', { folderUrl: 'https://sp/Cohort1' })
   })
 
   it('refresh() stores and returns the latest status', async () => {
@@ -56,7 +56,7 @@ describe('useStandupStore', () => {
   })
 
   it('start() surfaces and rethrows a failure', async () => {
-    vi.mocked(svc.startCohortStandup).mockRejectedValue(new Error('no access'))
+    vi.mocked(svc.attachSharePointLink).mockRejectedValue(new Error('no access'))
     const store = useStandupStore()
     await expect(store.start('c1', 'bad')).rejects.toThrow('no access')
     expect(store.error).toBe('no access')

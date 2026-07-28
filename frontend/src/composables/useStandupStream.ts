@@ -15,8 +15,9 @@ import { USE_MOCKS } from '@/services/mock/fixtures'
 
 /**
  * Drives Gates 1-3 of the stand-up pipeline over the backend SSE stream
- * (§9b): after `startCohortStandup` kicks the job off, this opens
- * GET /standup/stream and turns gate.passed / gate.failed / pipeline.done
+ * (§9b): after `attachSharePointLink` persists the link (which kicks the job
+ * off on the backend), this opens GET /standup/stream and turns
+ * gate.passed / gate.failed / pipeline.done
  * events into the same `StandupStatus` shape the view already renders — the
  * stream closes itself after `pipeline.done`, at which point Gate 4 takes
  * over via the existing `useJobPolling` + `fetchStandupStatus` poll (the
