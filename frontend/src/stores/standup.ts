@@ -3,7 +3,6 @@ import { ref } from 'vue'
 import type { StandupStatus } from '@/types/standup.types'
 import {
   attachSharePointLink,
-  startCohortStandup,
   fetchStandupStatus,
   acceptCohortReference,
   discardCohortReference,
@@ -20,12 +19,12 @@ export const useStandupStore = defineStore('standup', () => {
   const error = ref<string | null>(null)
   const busy = ref(false)
 
+  /** Persists the folder link; the backend kicks off Gates 1-3 itself once it's attached. */
   async function start(cohortId: string, sharepointFolderUrl: string) {
     busy.value = true
     error.value = null
     try {
       await attachSharePointLink(cohortId, { folderUrl: sharepointFolderUrl })
-      // await startCohortStandup(cohortId, { sharepointFolderUrl })
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to start stand-up'
       throw e
