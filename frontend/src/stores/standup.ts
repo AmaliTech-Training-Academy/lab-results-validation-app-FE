@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { StandupStatus } from '@/types/standup.types'
 import {
+  attachSharePointLink,
   startCohortStandup,
   fetchStandupStatus,
   acceptCohortReference,
@@ -23,7 +24,8 @@ export const useStandupStore = defineStore('standup', () => {
     busy.value = true
     error.value = null
     try {
-      await startCohortStandup(cohortId, { sharepointFolderUrl })
+      await attachSharePointLink(cohortId, { folderUrl: sharepointFolderUrl })
+      // await startCohortStandup(cohortId, { sharepointFolderUrl })
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to start stand-up'
       throw e

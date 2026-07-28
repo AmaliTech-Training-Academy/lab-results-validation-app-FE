@@ -38,6 +38,11 @@ export interface StartStandupPayload {
   sharepointFolderUrl: string
 }
 
+/** Payload for POST /cohorts/{id}/sharepoint-link — persists the folder link ahead of stand-up. */
+export interface AttachSharePointLinkPayload {
+  folderUrl: string
+}
+
 /** 202 response body from POST /cohorts/{id}/standup (§9b). */
 export interface StandupJob {
   id: string

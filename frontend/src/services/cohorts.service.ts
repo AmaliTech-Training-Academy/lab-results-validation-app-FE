@@ -1,7 +1,13 @@
 // Cohort lifecycle + stand-up (PRD Epic A, FE strategy §8). Base path /api/v1.
 import { http, BASE_URL, getToken } from './http'
 import type { Cohort, CohortReference, CreateCohortPayload } from '@/types/domain.types'
-import type { Gate4Job, StandupJob, StandupStatus, StartStandupPayload } from '@/types/standup.types'
+import type {
+  AttachSharePointLinkPayload,
+  Gate4Job,
+  StandupJob,
+  StandupStatus,
+  StartStandupPayload,
+} from '@/types/standup.types'
 import type { Paged } from '@/types/common.types'
 import { USE_MOCKS, mockDelay, genId, cohorts, referenceByCohort, buildReference } from './mock/fixtures'
 import {
@@ -56,6 +62,16 @@ export async function createCohort(payload: CreateCohortPayload): Promise<Cohort
     return mockDelay(cohort)
   }
   return http.post<Cohort>('/cohorts', payload)
+}
+
+/** Persists the SharePoint folder link (§9a) — called before the stand-up job starts. */
+export async function attachSharePointLink(id: string, payload: AttachSharePointLinkPayload): Promise<void> {
+  if (USE_MOCKS) {
+    const c = cohorts.find((x) => x.id === id)
+    if (c) c.sharepointFolderUrl = payload.folderUrl
+    return mockDelay(undefined)
+  }
+  await http.patch<void>(`/cohorts/${id}/sharepoint-link`, payload)
 }
 
 export async function startCohortStandup(id: string, payload: StartStandupPayload): Promise<void> {
