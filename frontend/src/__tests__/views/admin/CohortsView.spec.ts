@@ -17,7 +17,7 @@ import * as svc from '@/services/cohorts.service'
 function cohort(over: Partial<Cohort> = {}): Cohort {
   return {
     id: 'c1', name: 'Cohort 1', startDate: '2026-01-01', endDate: '2026-06-01',
-    lifecycleState: 'DRAFT', isLocked: false, isActive: true,
+    lifecycleState: 'DRAFT', locked: false, active: true,
     sharepointFolderUrl: null, referenceAcceptedAt: null,
     createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z', ...over,
   }
@@ -46,7 +46,7 @@ describe('CohortsView', () => {
     vi.mocked(svc.listCohorts).mockResolvedValue([
       cohort({ id: 'c1', lifecycleState: 'DRAFT' }),
       cohort({ id: 'c2', name: 'Cohort 2', lifecycleState: 'STOOD_UP' }),
-      cohort({ id: 'c3', name: 'Cohort 3', lifecycleState: 'STOOD_UP', isLocked: true }),
+      cohort({ id: 'c3', name: 'Cohort 3', lifecycleState: 'STOOD_UP', locked: true }),
     ])
     const wrapper = mountView()
     await flushPromises()

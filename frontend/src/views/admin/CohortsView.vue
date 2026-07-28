@@ -124,7 +124,7 @@ async function submit() {
           <td style="font-weight: 600">
             <span class="cohort-name">
               {{ c.name }}
-              <VIcon v-if="c.isLocked" name="lock" :size="13" class="lock-icon" aria-label="Locked" />
+              <VIcon v-if="c.locked" name="lock" :size="13" class="lock-icon" aria-label="Locked" />
             </span>
           </td>
           <td class="mono muted">{{ c.startDate }}</td>

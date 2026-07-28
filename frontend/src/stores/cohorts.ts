@@ -48,12 +48,12 @@ export const useCohortsStore = defineStore('cohorts', () => {
 
   async function lock(id: string) {
     await lockCohort(id)
-    patch(id, { isLocked: true })
+    patch(id, { locked: true })
   }
 
   async function unlock(id: string) {
     await unlockCohort(id)
-    patch(id, { isLocked: false })
+    patch(id, { locked: false })
   }
 
   function patch(id: string, changes: Partial<Cohort>) {

@@ -8,7 +8,7 @@
 
 /**
  * Cohort lifecycle (schema: cohorts.lifecycle_state CHECK).
- * LOCKED is NOT a lifecycle state — it is the orthogonal `isLocked` flag, only
+ * LOCKED is NOT a lifecycle state — it is the orthogonal `locked` flag, only
  * meaningful once STOOD_UP. Use `cohortDisplayState()` for the UI chip.
  */
 export type CohortLifecycleState = 'DRAFT' | 'REFERENCE_ACCEPTED' | 'STOOD_UP'
@@ -16,23 +16,25 @@ export type CohortLifecycleState = 'DRAFT' | 'REFERENCE_ACCEPTED' | 'STOOD_UP'
 /** What the UI renders as a state chip (§6.1) — lifecycle + the derived LOCKED. */
 export type CohortDisplayState = CohortLifecycleState | 'LOCKED'
 
+/** Field names confirmed against the live BE response (GET /cohorts). */
 export interface Cohort {
   id: string
   name: string
   startDate: string // ISO date
   endDate: string // ISO date
   lifecycleState: CohortLifecycleState
-  isLocked: boolean
-  isActive: boolean
+  locked: boolean
+  active: boolean
   sharepointFolderUrl: string | null
-  referenceAcceptedAt: string | null
   createdAt: string
-  updatedAt: string
+  /** Not present on the live BE's list response — may only appear once populated. */
+  referenceAcceptedAt?: string | null
+  updatedAt?: string
 }
 
 /** Derives the display chip: LOCKED wins over the lifecycle state once applied. */
-export function cohortDisplayState(c: Pick<Cohort, 'lifecycleState' | 'isLocked'>): CohortDisplayState {
-  return c.isLocked && c.lifecycleState === 'STOOD_UP' ? 'LOCKED' : c.lifecycleState
+export function cohortDisplayState(c: Pick<Cohort, 'lifecycleState' | 'locked'>): CohortDisplayState {
+  return c.locked && c.lifecycleState === 'STOOD_UP' ? 'LOCKED' : c.lifecycleState
 }
 
 export interface CreateCohortPayload {
@@ -104,11 +106,13 @@ export interface CohortReference {
   instructors: InstructorContact[]
 }
 
-/** Counts shown on the Accept summary before commit (PRD A6 AC1). */
+/** Counts shown on the Accept summary before commit (PRD A6 AC1). Mirrors the
+ * Gate 3 stream payload (§9b), which reports quiz-reference presence rather
+ * than an instructor count. */
 export interface ReferenceBundleSummary {
   specializations: number
   modules: number
   labs: number
   learners: number
-  instructors: number
+  quizReferencePresent: boolean
 }

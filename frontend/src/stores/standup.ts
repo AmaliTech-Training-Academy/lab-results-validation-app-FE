@@ -6,6 +6,7 @@ import {
   fetchStandupStatus,
   acceptCohortReference,
   discardCohortReference,
+  triggerGate4,
 } from '@/services/cohorts.service'
 
 /**
@@ -50,6 +51,20 @@ export const useStandupStore = defineStore('standup', () => {
     }
   }
 
+  /** Triggers Gate 4 (empty score-sheet validation) — call once after accept() resolves. */
+  async function runGate4(cohortId: string) {
+    busy.value = true
+    error.value = null
+    try {
+      await triggerGate4(cohortId)
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to start Gate 4 validation'
+      throw e
+    } finally {
+      busy.value = false
+    }
+  }
+
   async function discard(cohortId: string) {
     busy.value = true
     error.value = null
@@ -69,5 +84,5 @@ export const useStandupStore = defineStore('standup', () => {
     error.value = null
   }
 
-  return { status, error, busy, start, refresh, accept, discard, reset }
+  return { status, error, busy, start, refresh, accept, runGate4, discard, reset }
 })

@@ -1,9 +1,9 @@
 // Shared shapes used across the v2 domain types.
 
-/** Spring-style paged response envelope. */
+/** Spring-style paged response envelope (field names confirmed live against GET /cohorts). */
 export interface Paged<T> {
   content: T[]
-  page: number
+  number: number
   size: number
   totalElements: number
   totalPages: number

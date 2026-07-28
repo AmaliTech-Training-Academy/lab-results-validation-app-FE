@@ -1,7 +1,8 @@
 // Cohort lifecycle + stand-up (PRD Epic A, FE strategy §8). Base path /api/v1.
-import { http } from './http'
+import { http, BASE_URL, getToken } from './http'
 import type { Cohort, CohortReference, CreateCohortPayload } from '@/types/domain.types'
-import type { StandupStatus, StartStandupPayload } from '@/types/standup.types'
+import type { Gate4Job, StandupJob, StandupStatus, StartStandupPayload } from '@/types/standup.types'
+import type { Paged } from '@/types/common.types'
 import { USE_MOCKS, mockDelay, genId, cohorts, referenceByCohort, buildReference } from './mock/fixtures'
 import {
   startStandup,
@@ -12,7 +13,8 @@ import {
 
 export async function listCohorts(): Promise<Cohort[]> {
   if (USE_MOCKS) return mockDelay(cohorts)
-  return http.get<Cohort[]>('/cohorts')
+  const page = await http.get<Paged<Cohort>>('/cohorts')
+  return page.content
 }
 
 export async function getCohort(id: string): Promise<Cohort> {
@@ -43,8 +45,8 @@ export async function createCohort(payload: CreateCohortPayload): Promise<Cohort
       startDate: payload.startDate,
       endDate: payload.endDate,
       lifecycleState: 'DRAFT',
-      isLocked: false,
-      isActive: true,
+      locked: false,
+      active: true,
       sharepointFolderUrl: null,
       referenceAcceptedAt: null,
       createdAt: now,
@@ -61,13 +63,37 @@ export async function startCohortStandup(id: string, payload: StartStandupPayloa
     startStandup(id, payload.sharepointFolderUrl)
     return mockDelay(undefined)
   }
-  return http.post<void>(`/cohorts/${id}/standup`, payload)
+  await http.post<StandupJob>(`/cohorts/${id}/standup`, payload)
 }
 
-/** Polled status endpoint (§9). Kept snappy in mocks so gates progress visibly. */
+/**
+ * URL for the Gate 1-3 SSE stream (§9b). Browser `EventSource` can't set an
+ * `Authorization` header, so the JWT rides in the query string instead.
+ */
+export function standupStreamUrl(id: string): string {
+  const token = getToken() ?? ''
+  return `${BASE_URL}/cohorts/${id}/standup/stream?token=${encodeURIComponent(token)}`
+}
+
+/** Polled status endpoint (§9). Kept snappy in mocks so gates progress visibly; used as the mock-mode fallback for Gate 4 (no fake SSE server locally). */
 export async function fetchStandupStatus(id: string): Promise<StandupStatus> {
   if (USE_MOCKS) return mockDelay(getStandupStatus(id), 150)
   return http.get<StandupStatus>(`/cohorts/${id}/standup/status`)
+}
+
+/** Triggers Gate 4 (empty score-sheet validation) after Accept (§9d). */
+export async function triggerGate4(id: string): Promise<void> {
+  if (USE_MOCKS) return mockDelay(undefined)
+  await http.post<Gate4Job>(`/cohorts/${id}/gate4`)
+}
+
+/**
+ * URL for the Gate 4 SSE stream (§9d). Browser `EventSource` can't set an
+ * `Authorization` header, so the JWT rides in the query string instead.
+ */
+export function gate4StreamUrl(id: string): string {
+  const token = getToken() ?? ''
+  return `${BASE_URL}/cohorts/${id}/gate4/stream?token=${encodeURIComponent(token)}`
 }
 
 export async function acceptCohortReference(id: string): Promise<void> {
@@ -83,13 +109,13 @@ export async function discardCohortReference(id: string): Promise<void> {
     discardReference(id)
     return mockDelay(undefined)
   }
-  return http.post<void>(`/cohorts/${id}/discard`)
+  return http.delete<void>(`/cohorts/${id}/accept`)
 }
 
 export async function lockCohort(id: string): Promise<void> {
   if (USE_MOCKS) {
     const c = cohorts.find((x) => x.id === id)
-    if (c) c.isLocked = true
+    if (c) c.locked = true
     return mockDelay(undefined)
   }
   return http.post<void>(`/cohorts/${id}/lock`)
@@ -98,7 +124,7 @@ export async function lockCohort(id: string): Promise<void> {
 export async function unlockCohort(id: string): Promise<void> {
   if (USE_MOCKS) {
     const c = cohorts.find((x) => x.id === id)
-    if (c) c.isLocked = false
+    if (c) c.locked = false
     return mockDelay(undefined)
   }
   return http.post<void>(`/cohorts/${id}/unlock`)
