@@ -129,10 +129,10 @@ export function useStandupStream(cohortId: string): StandupStream {
     }
   }
 
-  function bindEvent(name: string, handler: (data: never) => void) {
+  function bindEvent<T>(name: string, handler: (data: T) => void) {
     source?.addEventListener(name, (e) => {
       try {
-        handler(JSON.parse((e as MessageEvent).data))
+        handler(JSON.parse((e as MessageEvent).data) as T)
       } catch {
         error.value = 'Received a malformed message from the validation stream.'
       }
@@ -142,9 +142,9 @@ export function useStandupStream(cohortId: string): StandupStream {
   function openRealStream() {
     closeSource()
     source = new EventSource(standupStreamUrl(cohortId))
-    bindEvent('gate.passed', handlePassed)
-    bindEvent('gate.failed', handleFailed)
-    bindEvent('pipeline.done', handleDone)
+    bindEvent<GatePassedData>('gate.passed', handlePassed)
+    bindEvent<GateFailedData>('gate.failed', handleFailed)
+    bindEvent<PipelineDoneData>('pipeline.done', handleDone)
     source.onerror = () => {
       // EventSource reconnects on its own (Last-Event-ID replay) — just surface a soft warning.
       if (!disposed) error.value = 'Connection to the validation stream was interrupted — reconnecting…'

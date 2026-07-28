@@ -91,10 +91,10 @@ export function useGate4Stream(cohortId: string, options: UseGate4StreamOptions 
     options.onDone?.(overall.value)
   }
 
-  function bindEvent(name: string, handler: (data: never) => void) {
+  function bindEvent<T>(name: string, handler: (data: T) => void) {
     source?.addEventListener(name, (e) => {
       try {
-        handler(JSON.parse((e as MessageEvent).data))
+        handler(JSON.parse((e as MessageEvent).data) as T)
       } catch {
         error.value = 'Received a malformed message from the validation stream.'
       }
@@ -104,10 +104,10 @@ export function useGate4Stream(cohortId: string, options: UseGate4StreamOptions 
   function openRealStream() {
     closeSource()
     source = new EventSource(gate4StreamUrl(cohortId))
-    bindEvent('file.processing', handleProcessing)
-    bindEvent('file.passed', handlePassed)
-    bindEvent('file.failed', handleFailed)
-    bindEvent('gate4.done', handleDone)
+    bindEvent<FileProcessingData>('file.processing', handleProcessing)
+    bindEvent<FilePassedData>('file.passed', handlePassed)
+    bindEvent<FileFailedData>('file.failed', handleFailed)
+    bindEvent<Gate4DoneData>('gate4.done', handleDone)
     source.onerror = () => {
       // EventSource reconnects on its own (Last-Event-ID replay) — just surface a soft warning.
       if (!disposed) error.value = 'Connection to the validation stream was interrupted — reconnecting…'
