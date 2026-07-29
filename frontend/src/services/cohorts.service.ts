@@ -123,7 +123,7 @@ export async function lockCohort(id: string): Promise<void> {
     if (c) c.locked = true
     return mockDelay(undefined)
   }
-  return http.post<void>(`/cohorts/${id}/lock`)
+  return http.patch<void>(`/cohorts/${id}/lock`)
 }
 
 export async function unlockCohort(id: string): Promise<void> {
@@ -132,5 +132,5 @@ export async function unlockCohort(id: string): Promise<void> {
     if (c) c.locked = false
     return mockDelay(undefined)
   }
-  return http.post<void>(`/cohorts/${id}/unlock`)
+  return http.patch<void>(`/cohorts/${id}/unlock`)
 }

@@ -55,6 +55,7 @@ export interface StandupStream {
   error: Ref<string | null>
   start: () => void
   stop: () => void
+  reset: () => void
 }
 
 export function useStandupStream(cohortId: string): StandupStream {
@@ -82,6 +83,13 @@ export function useStandupStream(cohortId: string): StandupStream {
     isPolling.value = false
     closeSource()
     clearMockTimer()
+  }
+
+  /** Stops the stream and clears status so `started` goes back to false (Cancel / Discard). */
+  function reset() {
+    stop()
+    status.value = null
+    error.value = null
   }
 
   function setGate(id: GateId, patch: Partial<Gate>) {
@@ -193,5 +201,5 @@ export function useStandupStream(cohortId: string): StandupStream {
     clearMockTimer()
   })
 
-  return { status, gates, errors, isPolling, error, start, stop }
+  return { status, gates, errors, isPolling, error, start, stop, reset }
 }

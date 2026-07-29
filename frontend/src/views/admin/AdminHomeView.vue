@@ -39,17 +39,18 @@ const recentRuns = computed(() => runs.list.slice(0, 5))
 const attentionRuns = computed(() =>
   runs.list.filter((r) => r.highFailure || r.status === 'partial' || r.status === 'failed'),
 )
-const openConflicts = computed(() => runs.list.reduce((n, r) => n + r.counts.conflicts, 0))
+const openConflicts = computed(() => runs.list.reduce((n, r) => n + (r.counts?.conflicts ?? 0), 0))
 
 const RUN_TONE: Record<RunStatus, 'success' | 'warning' | 'danger' | 'info'> = {
   completed: 'success', partial: 'warning', failed: 'danger', skipped: 'info', processing: 'info',
 }
 
 function rejectPct(r: IngestionRun): number {
-  return r.counts.rowsRead > 0 ? Math.round((r.counts.skippedInvalid / r.counts.rowsRead) * 100) : 0
+  const rowsRead = r.counts?.rowsRead ?? 0
+  return rowsRead > 0 ? Math.round(((r.counts?.skippedInvalid ?? 0) / rowsRead) * 100) : 0
 }
-function fmt(iso: string): string {
-  return iso.replace('T', ' ').slice(0, 16)
+function fmt(iso?: string): string {
+  return iso ? iso.replace('T', ' ').slice(0, 16) : '—'
 }
 function openRun(r: IngestionRun) {
   router.push({ name: 'admin-run-review', params: { id: r.id } })
@@ -121,10 +122,10 @@ function openRun(r: IngestionRun) {
               </tbody>
               <tbody v-else>
                 <tr v-for="r in recentRuns" :key="r.id" style="cursor: pointer" @click="openRun(r)">
-                  <td class="mono col-file" style="font-weight: 500">{{ r.workbookFilename }}</td>
+                  <td class="mono col-file" style="font-weight: 500">{{ r.workbookFilename ?? '—' }}</td>
                   <td class="col-cohort">{{ r.cohortName ?? '—' }}</td>
                   <td class="col-status"><VPill :tone="RUN_TONE[r.status]">{{ r.status }}</VPill></td>
-                  <td class="col-when mono" style="color: var(--text-secondary)">{{ fmt(r.runAt) }}</td>
+                  <td class="col-when mono" style="color: var(--text-secondary)">{{ fmt(r.runAt ?? r.startedAt) }}</td>
                 </tr>
                 <tr v-if="recentRuns.length === 0"><td colspan="4" style="text-align: center; color: var(--text-secondary); padding: 24px">No runs yet.</td></tr>
               </tbody>
@@ -151,9 +152,9 @@ function openRun(r: IngestionRun) {
                 {{ r.highFailure ? `${rejectPct(r)}% rejected` : r.status }}
               </VPill>
             </div>
-            <div class="mono att-file">{{ r.workbookFilename }}</div>
+            <div class="mono att-file">{{ r.workbookFilename ?? '—' }}</div>
             <div class="att-foot">
-              <span>{{ r.counts.committedNew }} new · {{ r.counts.skippedInvalid }} invalid · {{ r.counts.conflicts }} conflicts</span>
+              <span>{{ r.counts?.committedNew ?? 0 }} new · {{ r.counts?.skippedInvalid ?? 0 }} invalid · {{ r.counts?.conflicts ?? 0 }} conflicts</span>
               <button class="link" @click="openRun(r)">Review →</button>
             </div>
           </div>

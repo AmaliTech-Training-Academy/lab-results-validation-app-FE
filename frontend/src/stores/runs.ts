@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { IngestionRun, SyncTriggerPayload } from '@/types/run.types'
-import { listRuns, getRun, triggerSync } from '@/services/runs.service'
+import { listRuns, getRun, triggerSync, triggerSyncAll } from '@/services/runs.service'
 import { useCohortsStore } from '@/stores/cohorts'
 
 export const useRunsStore = defineStore('runs', () => {
@@ -27,7 +27,9 @@ export const useRunsStore = defineStore('runs', () => {
         if (cohorts.list.length === 0) await cohorts.fetchList()
         const eligible = cohorts.list.filter((c) => c.lifecycleState === 'STOOD_UP')
         const perCohort = await Promise.all(eligible.map((c) => listRuns(c.id)))
-        list.value = perCohort.flat().sort((a, b) => b.runAt.localeCompare(a.runAt))
+        list.value = perCohort
+          .flat()
+          .sort((a, b) => (b.runAt ?? b.startedAt ?? '').localeCompare(a.runAt ?? a.startedAt ?? ''))
       }
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load runs'
@@ -48,12 +50,15 @@ export const useRunsStore = defineStore('runs', () => {
     }
   }
 
-  /** Trigger a manual sync, then prepend the new run(s) to the list. */
-  async function sync(payload: SyncTriggerPayload = {}) {
+  /**
+   * Trigger a manual sync, then prepend the new run(s) to the list. With no
+   * `cohortId`, fans out to every eligible cohort via the all-cohorts endpoint.
+   */
+  async function sync(cohortId?: string, payload: SyncTriggerPayload = {}) {
     syncing.value = true
     error.value = null
     try {
-      const started = await triggerSync(payload)
+      const started = cohortId ? await triggerSync(cohortId, payload) : await triggerSyncAll()
       list.value = [...started, ...list.value]
       return started
     } catch (e) {

@@ -44,17 +44,18 @@ const STATUS_LABEL: Record<RunStatus, string> = {
 }
 
 function triggerLabel(r: IngestionRun): string {
-  const who = r.triggerType === 'SCHEDULED' ? 'System' : r.triggeredByEmail ?? 'Admin'
+  if (!r.triggerType) return '—'
+  const who = r.triggerType === 'SCHEDULED' ? 'System' : r.triggeredByEmail ?? r.triggeredBy ?? 'Admin'
   return `${r.triggerType === 'SCHEDULED' ? 'Scheduled' : 'Manual'} · ${who}`
 }
 
-function fmtWhen(iso: string): string {
-  return iso.replace('T', ' ').slice(0, 16)
+function fmtWhen(iso?: string): string {
+  return iso ? iso.replace('T', ' ').slice(0, 16) : '—'
 }
 
 async function runSync() {
   try {
-    await runs.sync(selectedCohortId.value ? { cohortId: selectedCohortId.value } : {})
+    await runs.sync(selectedCohortId.value || undefined)
     toast.show({ tone: 'success', title: 'Sync triggered', body: 'A new run has started.' })
   } catch {
     toast.show({ tone: 'warning', title: 'Sync failed', body: runs.error ?? 'Please try again.' })
@@ -119,7 +120,7 @@ function openRun(r: IngestionRun) {
       <tbody v-else>
         <tr v-for="r in displayed" :key="r.id" class="row-click" @click="openRun(r)">
           <td class="mono file-cell">
-            {{ r.workbookFilename }}
+            {{ r.workbookFilename ?? '—' }}
             <VIcon v-if="r.highFailure" name="alert-triangle" :size="14" class="hi-fail" aria-label="High failure rate" />
           </td>
           <td>{{ r.cohortName ?? '—' }}</td>
@@ -127,16 +128,16 @@ function openRun(r: IngestionRun) {
           <td style="text-align: center"><VPill :tone="STATUS_TONE[r.status]">{{ STATUS_LABEL[r.status] }}</VPill></td>
           <td>
             <span class="counts mono">
-              <span class="c-new">{{ r.counts.committedNew }} new</span>
+              <span class="c-new">{{ r.counts?.committedNew ?? 0 }} new</span>
               <span class="sep">·</span>
-              <span>{{ r.counts.updated }} upd</span>
+              <span>{{ r.counts?.updated ?? 0 }} upd</span>
               <span class="sep">·</span>
-              <span :class="{ 'c-bad': r.counts.skippedInvalid > 0 }">{{ r.counts.skippedInvalid }} invalid</span>
+              <span :class="{ 'c-bad': (r.counts?.skippedInvalid ?? 0) > 0 }">{{ r.counts?.skippedInvalid ?? 0 }} invalid</span>
               <span class="sep">·</span>
-              <span :class="{ 'c-conflict': r.counts.conflicts > 0 }">{{ r.counts.conflicts }} conflict</span>
+              <span :class="{ 'c-conflict': (r.counts?.conflicts ?? 0) > 0 }">{{ r.counts?.conflicts ?? 0 }} conflict</span>
             </span>
           </td>
-          <td class="mono muted">{{ fmtWhen(r.runAt) }}</td>
+          <td class="mono muted">{{ fmtWhen(r.runAt ?? r.startedAt) }}</td>
           <td style="text-align: right; width: 44px"><VIcon name="chevron-right" :size="18" class="muted" /></td>
         </tr>
 
