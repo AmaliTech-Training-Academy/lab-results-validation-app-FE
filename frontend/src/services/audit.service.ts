@@ -5,7 +5,8 @@ import type { AuditEvent, AuditFilters } from '@/types/audit.types'
 import type { Paged } from '@/types/common.types'
 import { USE_MOCKS, mockDelay, runs, auditEvents } from './mock/fixtures'
 
-function inDateRange(iso: string, from?: string, to?: string): boolean {
+function inDateRange(iso: string | undefined, from?: string, to?: string): boolean {
+  if (!iso) return !from && !to
   if (from && iso < from) return false
   if (to && iso > `${to}T23:59:59Z`) return false
   return true
