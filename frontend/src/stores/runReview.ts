@@ -15,11 +15,11 @@ export const useRunReviewStore = defineStore('runReview', () => {
   const loading = ref(false)
   const error = ref<string | null>(null)
 
-  async function fetchReview(runId: string) {
+  async function fetchReview(cohortId: string, runId: string) {
     loading.value = true
     error.value = null
     try {
-      review.value = await getRunReview(runId)
+      review.value = await getRunReview(cohortId, runId)
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load run review'
     } finally {

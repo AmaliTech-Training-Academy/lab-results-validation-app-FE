@@ -1,6 +1,6 @@
 // Run-Review screen: results + conflict queue + staged notifications
 // (PRD Epic B B10, Epic C, FE strategy §6.5). Schema: ingestion_conflicts, notifications.
-import type { IngestionRun } from './run.types'
+import type { FileIngestionSummary, IngestionRun } from './run.types'
 
 /** A single graded-row value, used for the GitHub-merge-style conflict view. */
 export interface LabResultValue {
@@ -72,6 +72,8 @@ export interface Notification {
 /** The unified Run-Review payload (§6.5): results + conflicts + notifications. */
 export interface RunReview {
   run: IngestionRun
+  /** Per-workbook breakdown from the overview endpoint — absent for mock data. */
+  files?: FileIngestionSummary[]
   conflicts: IngestionConflict[]
   notifications: Notification[]
 }

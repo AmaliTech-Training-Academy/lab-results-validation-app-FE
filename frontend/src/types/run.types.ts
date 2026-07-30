@@ -91,6 +91,37 @@ export interface SyncRunResponse {
   targetItemId: string | null
 }
 
+/** One workbook's grading tallies within a sync run's overview — backend: FileIngestionSummary record. */
+export interface FileIngestionSummary {
+  workbookFilename: string
+  status: string
+  rowsRead: number
+  committedNew: number
+  updatedCount: number
+  skippedInvalid: number
+  skippedUnchanged: number
+  conflictsCount: number
+  runAt: string
+}
+
+/** GET /cohorts/{cohortId}/sync/runs/{jobId}/overview response — backend: GradingSyncOverviewResponse record. */
+export interface GradingSyncOverviewResponse {
+  jobId: string
+  cohortId: string
+  jobStatus: CohortSyncJobStatus
+  startedAt: string | null
+  completedAt: string | null
+  filesProcessed: number
+  rowsRead: number
+  committedNew: number
+  updatedCount: number
+  skippedInvalid: number
+  skippedUnchanged: number
+  conflictsCount: number
+  files: FileIngestionSummary[]
+  issues: LocatedError[]
+}
+
 /**
  * Sync-run SSE stream (GET /{id}/sync/stream), emitted in order by the
  * backend's CohortSyncJobRunner: `file.discovered` for every workbook found,

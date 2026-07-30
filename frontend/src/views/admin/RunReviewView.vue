@@ -23,7 +23,7 @@ const cohortId = route.query.cohortId as string
 // (§9c) — this stream drives the processing panel, then fetches the full
 // review once the backend's sync.done event lands.
 const stream = useSyncRunStream(cohortId, runId, {
-  onDone: () => store.fetchReview(runId),
+  onDone: () => store.fetchReview(cohortId, runId),
 })
 
 const FILE_ICON: Record<SyncFileStatus, string> = {
@@ -48,12 +48,13 @@ onMounted(async () => {
   if (runsStore.current?.status === 'processing') {
     stream.start()
   } else {
-    // await store.fetchReview(runId)
+    await store.fetchReview(cohortId, runId)
   }
 })
 
 const review = computed(() => store.review)
 const run = computed(() => store.review?.run ?? null)
+const files = computed(() => store.review?.files ?? [])
 /** Falls back to the lightweight run stub while the full review hasn't loaded yet. */
 const headerRun = computed(() => review.value?.run ?? runsStore.current)
 const conflicts = computed(() => store.review?.conflicts ?? [])
@@ -72,6 +73,19 @@ const SUMMARY = [
   { key: 'skippedUnchanged', label: 'Skipped — unchanged' },
   { key: 'conflicts', label: 'Conflicts' },
 ] as const
+
+const FILE_SUMMARY = [
+  { key: 'rowsRead', label: 'Rows read' },
+  { key: 'committedNew', label: 'New' },
+  { key: 'updatedCount', label: 'Updated' },
+  { key: 'skippedInvalid', label: 'Invalid' },
+  { key: 'skippedUnchanged', label: 'Unchanged' },
+  { key: 'conflictsCount', label: 'Conflicts' },
+] as const
+
+function formatRunAt(iso: string): string {
+  return iso.slice(0, 16).replace('T', ' ')
+}
 
 const NOTIF_TONE: Record<NotificationStatus, 'success' | 'warning' | 'danger' | 'info'> = {
   PENDING: 'warning', SENT: 'success', SKIPPED: 'info', FAILED: 'danger',
@@ -165,6 +179,8 @@ async function sendAll() {
 
   <div v-else-if="store.loading" class="muted">Loading run…</div>
 
+  <p v-else-if="store.error" class="inline-error"><VIcon name="alert-circle" :size="14" /> {{ store.error }}</p>
+
   <template v-else-if="review">
     <!-- Panel 1 — Results summary -->
     <section class="block">
@@ -183,10 +199,32 @@ async function sendAll() {
         <summary>{{ run.errorReport.length }} rejected row{{ run.errorReport.length === 1 ? '' : 's' }}</summary>
         <ul class="err-list">
           <li v-for="(e, i) in run.errorReport ?? []" :key="i" class="mono err-item">
-            {{ [e.sheet, e.row != null ? `row ${e.row}` : '', e.rule].filter(Boolean).join(' · ') }} — {{ e.message }}
+            {{ [e.location ?? [e.sheet, e.row != null ? `row ${e.row}` : ''].filter(Boolean).join(' '), e.rule].filter(Boolean).join(' · ') }} — {{ e.message }}
           </li>
         </ul>
       </details>
+
+      <h3 v-if="files.length" class="subsection-title">Per-workbook breakdown</h3>
+      <div v-if="files.length" class="tbl-wrap file-breakdown">
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th>Workbook</th>
+              <th>Status</th>
+              <th v-for="s in FILE_SUMMARY" :key="s.key" style="text-align: center">{{ s.label }}</th>
+              <th>Run at</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="f in files" :key="f.workbookFilename">
+              <td class="mono" style="font-weight: 500">{{ f.workbookFilename }}</td>
+              <td class="muted">{{ f.status }}</td>
+              <td v-for="s in FILE_SUMMARY" :key="s.key" class="mono" style="text-align: center">{{ f[s.key] }}</td>
+              <td class="mono muted">{{ formatRunAt(f.runAt) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <!-- Panel 2 — Conflict queue -->
@@ -306,6 +344,8 @@ async function sendAll() {
 
 .hi-fail-banner { display: flex; align-items: center; gap: 8px; background: var(--danger-bg); color: var(--danger); border-radius: var(--r-sm, 4px); padding: 10px 14px; font-size: 14px; margin-bottom: 14px; }
 
+.subsection-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); margin: 20px 0 10px; }
+.file-breakdown { margin-top: 4px; }
 .err-details { margin-top: 14px; }
 .err-details summary { cursor: pointer; font-size: 13px; color: var(--text-secondary); font-weight: 500; }
 .err-list { list-style: none; display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
