@@ -51,8 +51,8 @@ const EVENT_ICON: Record<string, string> = {
 function eventLabel(t: AuditEvent['eventType']): string {
   return t.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
-function fmt(iso: string): string {
-  return iso.replace('T', ' ').slice(0, 16)
+function fmt(iso?: string): string {
+  return iso ? iso.replace('T', ' ').slice(0, 16) : '—'
 }
 function payloadPairs(p?: Record<string, unknown>): [string, string][] {
   return p ? Object.entries(p).map(([k, v]) => [k, String(v)]) : []
@@ -125,25 +125,25 @@ function toggleRun(id: string) {
       <tbody>
         <template v-for="r in audit.runs" :key="r.id">
           <tr class="row-click" @click="toggleRun(r.id)">
-            <td class="mono" style="font-weight: 500">{{ r.workbookFilename }}</td>
+            <td class="mono" style="font-weight: 500">{{ r.workbookFilename ?? '—' }}</td>
             <td>{{ r.cohortName ?? '—' }}</td>
-            <td class="muted">{{ r.triggerType === 'SCHEDULED' ? 'Scheduled · System' : `Manual · ${r.triggeredByEmail ?? 'Admin'}` }}</td>
+            <td class="muted">{{ !r.triggerType ? '—' : r.triggerType === 'SCHEDULED' ? 'Scheduled · System' : `Manual · ${r.triggeredByEmail ?? r.triggeredBy ?? 'Admin'}` }}</td>
             <td style="text-align: center"><VPill :tone="RUN_TONE[r.status]">{{ r.status }}</VPill></td>
-            <td class="mono muted">{{ fmt(r.runAt) }}</td>
+            <td class="mono muted">{{ fmt(r.runAt ?? r.startedAt) }}</td>
             <td style="text-align: right; width: 44px"><VIcon :name="expandedRun === r.id ? 'chevron-down' : 'chevron-right'" :size="18" class="muted" /></td>
           </tr>
           <tr v-if="expandedRun === r.id" class="detail-row">
             <td colspan="6">
               <div class="run-detail">
                 <div class="rd-counts mono">
-                  {{ r.counts.rowsRead }} read · {{ r.counts.committedNew }} new · {{ r.counts.updated }} updated ·
-                  {{ r.counts.skippedInvalid }} invalid · {{ r.counts.skippedUnchanged }} unchanged · {{ r.counts.conflicts }} conflicts
+                  {{ r.counts?.rowsRead ?? 0 }} read · {{ r.counts?.committedNew ?? 0 }} new · {{ r.counts?.updated ?? 0 }} updated ·
+                  {{ r.counts?.skippedInvalid ?? 0 }} invalid · {{ r.counts?.skippedUnchanged ?? 0 }} unchanged · {{ r.counts?.conflicts ?? 0 }} conflicts
                 </div>
                 <div v-if="r.sharepointVersionId" class="rd-meta mono muted">version {{ r.sharepointVersionId }} · hash {{ r.quickXorHash }}</div>
-                <div v-if="r.errorReport.length" class="rd-errors">
+                <div v-if="r.errorReport?.length" class="rd-errors">
                   <p class="rd-errors-title">Rejected rows</p>
                   <ul class="err-list">
-                    <li v-for="(e, i) in r.errorReport" :key="i" class="mono err-item">
+                    <li v-for="(e, i) in r.errorReport ?? []" :key="i" class="mono err-item">
                       {{ [e.sheet, e.row != null ? `row ${e.row}` : '', e.rule].filter(Boolean).join(' · ') }} — {{ e.message }}
                     </li>
                   </ul>

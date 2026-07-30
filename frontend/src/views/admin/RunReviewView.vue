@@ -115,15 +115,15 @@ async function sendAll() {
         High failure rate — more than 50% of rows were rejected in this file.
       </div>
       <dl class="summary">
-        <div v-for="s in SUMMARY" :key="s.key" class="summary-cell" :class="{ bad: s.key === 'skippedInvalid' && run && run.counts.skippedInvalid > 0, warn: s.key === 'conflicts' && run && run.counts.conflicts > 0 }">
+        <div v-for="s in SUMMARY" :key="s.key" class="summary-cell" :class="{ bad: s.key === 'skippedInvalid' && (run?.counts?.skippedInvalid ?? 0) > 0, warn: s.key === 'conflicts' && (run?.counts?.conflicts ?? 0) > 0 }">
           <dt>{{ s.label }}</dt>
-          <dd class="mono">{{ run?.counts[s.key] ?? 0 }}</dd>
+          <dd class="mono">{{ run?.counts?.[s.key] ?? 0 }}</dd>
         </div>
       </dl>
-      <details v-if="run && run.errorReport.length" class="err-details">
+      <details v-if="run?.errorReport?.length" class="err-details">
         <summary>{{ run.errorReport.length }} rejected row{{ run.errorReport.length === 1 ? '' : 's' }}</summary>
         <ul class="err-list">
-          <li v-for="(e, i) in run.errorReport" :key="i" class="mono err-item">
+          <li v-for="(e, i) in run.errorReport ?? []" :key="i" class="mono err-item">
             {{ [e.sheet, e.row != null ? `row ${e.row}` : '', e.rule].filter(Boolean).join(' · ') }} — {{ e.message }}
           </li>
         </ul>

@@ -21,24 +21,47 @@ export interface IngestionRun {
   id: string
   cohortId: string
   cohortName?: string
-  workbookFilename: string
-  sharepointFileUrl: string | null
-  sharepointVersionId: string | null
-  quickXorHash: string | null
+  workbookFilename?: string
+  sharepointFileUrl?: string | null
+  sharepointVersionId?: string | null
+  quickXorHash?: string | null
   /** null = SYSTEM (scheduled run). */
-  triggeredByEmail: string | null
-  triggerType: TriggerType
+  triggeredByEmail?: string | null
+  /** Raw user id — some backend endpoints don't resolve this to an email yet. */
+  triggeredBy?: string | null
+  triggerType?: TriggerType
   status: RunStatus
-  counts: RunCounts
+  /** Grading tallies — not yet populated by every endpoint. */
+  counts?: RunCounts
   /** Derived flag: rejected > 50% of a sheet's rows (§4.5, B7 AC3). */
-  highFailure: boolean
-  runAt: string
+  highFailure?: boolean
+  runAt?: string
+  /** Some endpoints report these instead of a combined `runAt`. */
+  startedAt?: string
+  completedAt?: string
   /** Row-level detail from error_report_json (D5 AC2). */
-  errorReport: LocatedError[]
+  errorReport?: LocatedError[]
 }
 
-/** Manual sync trigger (B1 AC2) — optional narrowing to a cohort/file. */
+/** Manual sync trigger (B1 AC2) — optional narrowing to a specific file within the cohort. */
 export interface SyncTriggerPayload {
-  cohortId?: string
   fileId?: string
+}
+
+/** schema: uppercase job status as returned by POST /cohorts/{id}/sync/runs. */
+export type SyncRunStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED'
+
+/**
+ * One row of the paged response from POST /cohorts/{id}/sync/runs (B1 AC2) —
+ * a thin "job just started" stub, not the full ingestion-run detail returned
+ * by GET /cohorts/{id}/standup/runs or GET /runs/{id}.
+ */
+export interface SyncRun {
+  id: string
+  cohortId: string
+  status: SyncRunStatus
+  startedAt?: string | null
+  completedAt?: string | null
+  triggeredBy?: string | null
+  targetItemId?: string | null
 }

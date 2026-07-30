@@ -25,6 +25,7 @@ export interface Gate4Stream {
   error: Ref<string | null>
   start: () => void
   stop: () => void
+  reset: () => void
 }
 
 /**
@@ -62,6 +63,14 @@ export function useGate4Stream(cohortId: string, options: UseGate4StreamOptions 
     isPolling.value = false
     closeSource()
     clearMockTimer()
+  }
+
+  /** Stops the stream and clears file/overall state (Cancel / Discard). */
+  function reset() {
+    stop()
+    overall.value = 'idle'
+    files.value = []
+    error.value = null
   }
 
   function upsertFile(file: string, patch: Partial<FileGateResult>) {
@@ -157,5 +166,5 @@ export function useGate4Stream(cohortId: string, options: UseGate4StreamOptions 
     clearMockTimer()
   })
 
-  return { files, overall, errors, isPolling, error, start, stop }
+  return { files, overall, errors, isPolling, error, start, stop, reset }
 }
