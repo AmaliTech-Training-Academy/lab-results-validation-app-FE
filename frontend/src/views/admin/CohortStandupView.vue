@@ -80,7 +80,12 @@ async function runValidation() {
     localError.value = 'Enter the SharePoint folder link.'
     return
   }
-  await standup.start(cohortId, linkInput.value.trim())
+  try {
+    await standup.start(cohortId, linkInput.value.trim())
+  } catch {
+    localError.value = standup.error ?? 'Failed to start stand-up'
+    return
+  }
   stream.start() // drives Gates 1-3 over SSE
 }
 
