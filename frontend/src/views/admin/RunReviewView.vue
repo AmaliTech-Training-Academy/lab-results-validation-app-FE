@@ -5,20 +5,57 @@ import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import VPill from '@/components/base/VPill.vue'
 import { useRunReviewStore } from '@/stores/runReview'
+import { useRunsStore } from '@/stores/runs'
 import { useToastStore } from '@/stores/toast'
-import type { RunStatus } from '@/types/run.types'
+import { useSyncRunStream } from '@/composables/useSyncRunStream'
+import type { RunStatus, SyncFileStatus } from '@/types/run.types'
 import type { Notification, NotificationStatus } from '@/types/runReview.types'
 
 const route = useRoute()
 const store = useRunReviewStore()
+const runsStore = useRunsStore()
 const toast = useToastStore()
 
 const runId = route.params.id as string
+const cohortId = route.query.cohortId as string
 
-onMounted(() => store.fetchReview(runId))
+// The run-review REST payload isn't ready while the sync job is still running
+// (§9c) — this stream drives the processing panel, then fetches the full
+// review once the backend's sync.done event lands.
+const stream = useSyncRunStream(cohortId, runId, {
+  onDone: () => store.fetchReview(runId),
+})
+
+const FILE_ICON: Record<SyncFileStatus, string> = {
+  discovered: 'loader',
+  unchanged: 'check-circle-2',
+  changed: 'loader',
+  archived: 'check-circle-2',
+  failed: 'x-circle',
+  archive_failed: 'x-circle',
+}
+const FILE_META: Record<SyncFileStatus, string> = {
+  discovered: 'Scanning…',
+  unchanged: 'Unchanged',
+  changed: 'Archiving…',
+  archived: 'Archived',
+  failed: 'Failed',
+  archive_failed: 'Archive failed',
+}
+
+onMounted(async () => {
+  await runsStore.fetchRun(cohortId, runId)
+  if (runsStore.current?.status === 'processing') {
+    stream.start()
+  } else {
+    // await store.fetchReview(runId)
+  }
+})
 
 const review = computed(() => store.review)
 const run = computed(() => store.review?.run ?? null)
+/** Falls back to the lightweight run stub while the full review hasn't loaded yet. */
+const headerRun = computed(() => review.value?.run ?? runsStore.current)
 const conflicts = computed(() => store.review?.conflicts ?? [])
 const notifications = computed(() => store.review?.notifications ?? [])
 const pendingCount = computed(() => notifications.value.filter((n) => n.status === 'PENDING').length)
@@ -98,13 +135,35 @@ async function sendAll() {
       <RouterLink :to="{ name: 'admin-runs' }" class="back-link"><VIcon name="chevron-left" :size="15" /> Grading runs</RouterLink>
       <h1 class="page-title">
         Run review
-        <VPill v-if="run" :tone="RUN_TONE[run.status]">{{ run.status }}</VPill>
+        <VPill v-if="headerRun" :tone="RUN_TONE[headerRun.status]">{{ headerRun.status }}</VPill>
       </h1>
-      <p class="page-sub mono">{{ run?.workbookFilename ?? '…' }} · {{ run?.cohortName }}</p>
+      <p class="page-sub mono">{{ headerRun?.workbookFilename ?? '…' }} · {{ headerRun?.cohortName }}</p>
     </div>
   </div>
 
-  <div v-if="store.loading" class="muted">Loading run…</div>
+  <div v-if="stream.isPolling.value" class="panel panel--info">
+    <div class="panel-head">
+      <VIcon name="loader" :size="18" class="spin" />
+      <strong>Syncing grading data…</strong>
+    </div>
+    <ul class="file-list">
+      <li v-for="f in stream.files.value" :key="f.file" :class="['file-item', `file-item--${f.status}`]">
+        <VIcon :name="FILE_ICON[f.status]" :size="16" :class="{ spin: f.status === 'discovered' || f.status === 'changed' }" />
+        <span class="file-name mono">{{ f.file }}</span>
+        <span class="file-meta">{{ f.error ?? FILE_META[f.status] }}</span>
+      </li>
+      <li v-if="stream.files.value.length === 0" class="file-item">
+        <VIcon name="loader" :size="16" class="spin" />
+        <span class="file-meta">Scanning SharePoint folder…</span>
+      </li>
+    </ul>
+    <ul v-if="stream.folderErrors.value.length" class="err-list">
+      <li v-for="(e, i) in stream.folderErrors.value" :key="i" class="err-item mono">{{ e.folder }} — {{ e.error }}</li>
+    </ul>
+    <p v-if="stream.error.value" class="inline-error"><VIcon name="alert-circle" :size="14" /> {{ stream.error.value }}</p>
+  </div>
+
+  <div v-else-if="store.loading" class="muted">Loading run…</div>
 
   <template v-else-if="review">
     <!-- Panel 1 — Results summary -->
@@ -218,6 +277,20 @@ async function sendAll() {
 .back-link:hover { color: var(--navy); }
 .muted { color: var(--text-secondary); }
 .ic-success { color: var(--success); }
+
+.panel { margin-bottom: 32px; border: 1px solid var(--border); border-radius: var(--r-sm, 4px); padding: 16px; }
+.panel--info { border-left: 4px solid var(--success); }
+.panel-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.inline-error { display: flex; align-items: center; gap: 6px; color: var(--danger); font-size: 13px; margin-top: 8px; }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.file-list { list-style: none; display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.file-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: var(--r-sm, 4px); background: rgba(0, 0, 0, 0.02); font-size: 13px; color: var(--text-secondary); }
+.file-item--failed, .file-item--archive_failed { color: var(--danger); }
+.file-item--unchanged, .file-item--archived { color: var(--success); }
+.file-name { flex: 1; color: var(--text); }
+.file-meta { font-size: 12px; color: var(--text-secondary); }
 
 .block { margin-bottom: 32px; }
 .block-title { font-family: var(--font-display); font-weight: 600; font-size: 16px; color: var(--text); margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }

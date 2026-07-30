@@ -148,7 +148,7 @@ function toggleRun(id: string) {
                     </li>
                   </ul>
                 </div>
-                <VButton size="sm" variant="ghost" icon-right="arrow-right" @click.stop="router.push({ name: 'admin-run-review', params: { id: r.id } })">Open run review</VButton>
+                <VButton size="sm" variant="ghost" icon-right="arrow-right" @click.stop="router.push({ name: 'admin-run-review', params: { id: r.id }, query: { cohortId: r.cohortId } })">Open run review</VButton>
               </div>
             </td>
           </tr>

@@ -38,11 +38,11 @@ export const useRunsStore = defineStore('runs', () => {
     }
   }
 
-  async function fetchRun(id: string) {
+  async function fetchRun(cohortId: string, id: string) {
     loading.value = true
     error.value = null
     try {
-      current.value = await getRun(id)
+      current.value = await getRun(cohortId, id)
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load run'
     } finally {
@@ -51,16 +51,18 @@ export const useRunsStore = defineStore('runs', () => {
   }
 
   /**
-   * Trigger a manual sync, then prepend the new run(s) to the list. With no
-   * `cohortId`, fans out to every eligible cohort via the all-cohorts endpoint.
+   * Trigger a manual sync, then re-list to pick up the new run(s) — the
+   * trigger endpoints only return a summary (cohorts triggered/skipped), not
+   * the created run rows. With no `cohortId`, fans out to every eligible
+   * cohort via the all-cohorts endpoint.
    */
   async function sync(cohortId?: string, payload: SyncTriggerPayload = {}) {
     syncing.value = true
     error.value = null
     try {
-      const started = cohortId ? await triggerSync(cohortId, payload) : await triggerSyncAll()
-      list.value = [...started, ...list.value]
-      return started
+      const result = cohortId ? await triggerSync(cohortId, payload) : await triggerSyncAll()
+      await fetchList(cohortId)
+      return result
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to trigger sync'
       throw e

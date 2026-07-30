@@ -53,7 +53,7 @@ function fmt(iso?: string): string {
   return iso ? iso.replace('T', ' ').slice(0, 16) : '—'
 }
 function openRun(r: IngestionRun) {
-  router.push({ name: 'admin-run-review', params: { id: r.id } })
+  router.push({ name: 'admin-run-review', params: { id: r.id }, query: { cohortId: r.cohortId } })
 }
 </script>
 
