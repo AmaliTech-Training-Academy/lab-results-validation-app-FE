@@ -63,7 +63,7 @@ async function runSync() {
 }
 
 function openRun(r: IngestionRun) {
-  router.push({ name: 'admin-run-review', params: { id: r.id } })
+  router.push({ name: 'admin-run-review', params: { id: r.id }, query: { cohortId: r.cohortId } })
 }
 </script>
 

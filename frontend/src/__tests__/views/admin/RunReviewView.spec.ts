@@ -14,7 +14,30 @@ vi.mock('@/services/runReview.service', () => ({
   sendAllNotifications: vi.fn<() => Promise<unknown>>(),
   dismissNotification: vi.fn<() => Promise<unknown>>(),
 }))
-import * as svc from '@/services/runReview.service'
+// The review panels only render once the sync-run stream reports sync.done
+// (store.fetchReview is invoked from that callback, not unconditionally on
+// mount) — so runs.service.getRun has to report the job as still RUNNING/
+// processing, and the stream then has to be driven to completion.
+vi.mock('@/services/runs.service', () => ({
+  getRun: vi.fn<() => Promise<unknown>>(),
+  listRuns: vi.fn<() => Promise<unknown>>(),
+  triggerSync: vi.fn<() => Promise<unknown>>(),
+  triggerSyncAll: vi.fn<() => Promise<unknown>>(),
+  syncRunStreamUrl: vi.fn<() => string>(() => 'http://mock/stream'),
+}))
+// useSyncRunStream branches on USE_MOCKS (true by default without a local
+// .env.local override, e.g. in CI) — force the real EventSource branch so
+// this test is deterministic regardless of where it runs.
+vi.mock('@/services/mock/fixtures', () => ({
+  USE_MOCKS: false,
+  runs: [],
+}))
+import * as reviewSvc from '@/services/runReview.service'
+import * as runsSvc from '@/services/runs.service'
+
+const processingRun: IngestionRun = {
+  id: 'run-1', cohortId: 'c1', cohortName: 'Cohort 7', status: 'processing', runAt: '2026-07-21T08:00:00Z',
+}
 
 const run: IngestionRun = {
   id: 'run-1', cohortId: 'c1', cohortName: 'Cohort 7', workbookFilename: 'FE.xlsx',
@@ -44,9 +67,29 @@ function review(): RunReview {
   }
 }
 
+class FakeEventSource {
+  listeners = new Map<string, ((e: MessageEvent) => void)[]>()
+  onerror: (() => void) | null = null
+  constructor(public url: string) {
+    FakeEventSource.instances.push(this)
+  }
+  addEventListener(name: string, cb: (e: MessageEvent) => void) {
+    const list = this.listeners.get(name) ?? []
+    list.push(cb)
+    this.listeners.set(name, list)
+  }
+  emit(name: string, data: unknown) {
+    for (const cb of this.listeners.get(name) ?? []) cb({ data: JSON.stringify(data) } as MessageEvent)
+  }
+  close() {}
+  static instances: FakeEventSource[] = []
+}
+
 let router: Router
 beforeEach(async () => {
   vi.clearAllMocks()
+  FakeEventSource.instances = []
+  vi.stubGlobal('EventSource', FakeEventSource)
   router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -54,7 +97,7 @@ beforeEach(async () => {
       { path: '/admin/runs/:id', name: 'admin-run-review', component: { template: '<div/>' } },
     ],
   })
-  router.push({ name: 'admin-run-review', params: { id: 'run-1' } })
+  router.push({ name: 'admin-run-review', params: { id: 'run-1' }, query: { cohortId: 'c1' } })
   await router.isReady()
 })
 afterEach(() => vi.restoreAllMocks())
@@ -63,11 +106,23 @@ function mountView() {
   return mount(RunReviewView, { global: { plugins: [createPinia(), router] } })
 }
 
+/** Drives the sync-run stream to completion so `store.fetchReview` (fired from its onDone) actually runs. */
+async function completeSync() {
+  const es = FakeEventSource.instances[0]!
+  es.emit('sync.done', { cohortName: 'Cohort 7', filesSeen: 1, new: 0, changed: 1, unchanged: 0, failed: 0, status: 'COMPLETED' })
+  await flushPromises()
+}
+
 describe('RunReviewView', () => {
-  it('renders the three panels from the loaded review', async () => {
-    vi.mocked(svc.getRunReview).mockResolvedValue(review())
+  it('renders the three panels once the sync stream completes', async () => {
+    vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
+    vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
     const wrapper = mountView()
     await flushPromises()
+    expect(wrapper.text()).toContain('Syncing grading data')
+
+    await completeSync()
+
     const text = wrapper.text()
     expect(text).toContain('Results')
     expect(text).toContain('Conflict queue')
@@ -77,22 +132,26 @@ describe('RunReviewView', () => {
   })
 
   it('resolving a conflict calls the service with the chosen row', async () => {
-    vi.mocked(svc.getRunReview).mockResolvedValue(review())
-    vi.mocked(svc.resolveConflict).mockResolvedValue({ ...review().conflicts[0]!, status: 'RESOLVED' })
+    vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
+    vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
+    vi.mocked(reviewSvc.resolveConflict).mockResolvedValue({ ...review().conflicts[0]!, status: 'RESOLVED' })
     const wrapper = mountView()
     await flushPromises()
+    await completeSync()
     await wrapper.findAll('button').find((b) => b.text() === 'Use this')!.trigger('click')
     await flushPromises()
-    expect(svc.resolveConflict).toHaveBeenCalledWith('cf-1', { chosenRowIndex: 0 })
+    expect(reviewSvc.resolveConflict).toHaveBeenCalledWith('cf-1', { chosenRowIndex: 0 })
   })
 
   it('send-all dispatches held notifications', async () => {
-    vi.mocked(svc.getRunReview).mockResolvedValue(review())
-    vi.mocked(svc.sendAllNotifications).mockResolvedValue([{ ...review().notifications[0]!, status: 'SENT' }])
+    vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
+    vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
+    vi.mocked(reviewSvc.sendAllNotifications).mockResolvedValue([{ ...review().notifications[0]!, status: 'SENT' }])
     const wrapper = mountView()
     await flushPromises()
+    await completeSync()
     await wrapper.findAll('button').find((b) => b.text().includes('Send all held'))!.trigger('click')
     await flushPromises()
-    expect(svc.sendAllNotifications).toHaveBeenCalledWith('run-1')
+    expect(reviewSvc.sendAllNotifications).toHaveBeenCalledWith('run-1')
   })
 })
