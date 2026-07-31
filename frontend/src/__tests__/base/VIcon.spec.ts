@@ -32,8 +32,8 @@ describe('VIcon', () => {
     expect(svg.attributes('width')).toBe('18')
   })
 
-  it('resolves icon names with numeric segments (bar-chart-2 → BarChart2)', () => {
-    const wrapper = mount(VIcon, { props: { name: 'bar-chart-2' } })
+  it('resolves icon names with numeric segments (check-circle-2 → CheckCircle2)', () => {
+    const wrapper = mount(VIcon, { props: { name: 'check-circle-2' } })
     expect(wrapper.find('svg').exists()).toBe(true)
   })
 

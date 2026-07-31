@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { toErrorMessage } from '@/utils/errors'
 import type { RunReview, ResolveConflictPayload } from '@/types/runReview.types'
 import {
   getRunReview,
@@ -21,7 +22,7 @@ export const useRunReviewStore = defineStore('runReview', () => {
     try {
       review.value = await getRunReview(cohortId, runId)
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to load run review'
+      error.value = toErrorMessage(e, 'Failed to load run review')
     } finally {
       loading.value = false
     }

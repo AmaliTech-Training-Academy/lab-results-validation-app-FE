@@ -7,7 +7,7 @@ import VIcon from '@/components/base/VIcon.vue'
 import VButton from '@/components/base/VButton.vue'
 import { useCohortsStore } from '@/stores/cohorts'
 import { useRunsStore } from '@/stores/runs'
-import type { IngestionRun, RunStatus } from '@/types/run.types'
+import { RUN_STATUS_TONE, type IngestionRun } from '@/types/run.types'
 import '@/assets/styles/dashboard.css'
 
 const router = useRouter()
@@ -40,10 +40,6 @@ const attentionRuns = computed(() =>
   runs.list.filter((r) => r.highFailure || r.status === 'partial' || r.status === 'failed'),
 )
 const openConflicts = computed(() => runs.list.reduce((n, r) => n + (r.counts?.conflicts ?? 0), 0))
-
-const RUN_TONE: Record<RunStatus, 'success' | 'warning' | 'danger' | 'info'> = {
-  completed: 'success', partial: 'warning', failed: 'danger', skipped: 'info', processing: 'info',
-}
 
 function rejectPct(r: IngestionRun): number {
   const rowsRead = r.counts?.rowsRead ?? 0
@@ -124,7 +120,7 @@ function openRun(r: IngestionRun) {
                 <tr v-for="r in recentRuns" :key="r.id" style="cursor: pointer" @click="openRun(r)">
                   <td class="mono col-file" style="font-weight: 500">{{ r.workbookFilename ?? '—' }}</td>
                   <td class="col-cohort">{{ r.cohortName ?? '—' }}</td>
-                  <td class="col-status"><VPill :tone="RUN_TONE[r.status]">{{ r.status }}</VPill></td>
+                  <td class="col-status"><VPill :tone="RUN_STATUS_TONE[r.status]">{{ r.status }}</VPill></td>
                   <td class="col-when mono" style="color: var(--text-secondary)">{{ fmt(r.runAt ?? r.startedAt) }}</td>
                 </tr>
                 <tr v-if="recentRuns.length === 0"><td colspan="4" style="text-align: center; color: var(--text-secondary); padding: 24px">No runs yet.</td></tr>

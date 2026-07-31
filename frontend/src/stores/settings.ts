@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { toErrorMessage } from '@/utils/errors'
 import type { Settings } from '@/types/settings.types'
 import { getSettings, updateSettings } from '@/services/settings.service'
 
@@ -15,7 +16,7 @@ export const useSettingsStore = defineStore('settings', () => {
     try {
       settings.value = await getSettings()
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to load settings'
+      error.value = toErrorMessage(e, 'Failed to load settings')
     } finally {
       loading.value = false
     }
@@ -27,7 +28,7 @@ export const useSettingsStore = defineStore('settings', () => {
     try {
       settings.value = await updateSettings(patch)
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to save settings'
+      error.value = toErrorMessage(e, 'Failed to save settings')
       throw e
     } finally {
       saving.value = false

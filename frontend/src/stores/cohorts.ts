@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { toErrorMessage } from '@/utils/errors'
 import type { Cohort, CreateCohortPayload } from '@/types/domain.types'
 import {
   listCohorts,
@@ -21,7 +22,7 @@ export const useCohortsStore = defineStore('cohorts', () => {
     try {
       list.value = await listCohorts()
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to load cohorts'
+      error.value = toErrorMessage(e, 'Failed to load cohorts')
     } finally {
       loading.value = false
     }
@@ -33,7 +34,7 @@ export const useCohortsStore = defineStore('cohorts', () => {
     try {
       current.value = await getCohort(id)
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to load cohort'
+      error.value = toErrorMessage(e, 'Failed to load cohort')
     } finally {
       loading.value = false
     }

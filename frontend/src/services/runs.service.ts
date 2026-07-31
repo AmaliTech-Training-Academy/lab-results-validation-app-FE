@@ -2,7 +2,7 @@
 import { http, BASE_URL, getToken } from './http'
 import type { IngestionRun, RunStatus, SyncRun, SyncRunResponse, SyncRunStatus, SyncTriggerPayload, SyncTriggerResponse } from '@/types/run.types'
 import type { Paged } from '@/types/common.types'
-import { USE_MOCKS, mockDelay, genId, runs, cohorts } from './mock/fixtures'
+import { USE_MOCKS } from './mock/useMocks'
 
 const SYNC_STATUS_MAP: Record<SyncRunStatus, RunStatus> = {
   PENDING: 'processing',
@@ -27,6 +27,7 @@ function mapSyncRun(r: SyncRun): IngestionRun {
 /** Runs are scoped to a single cohort (§9c) — there's no cross-cohort listing endpoint. */
 export async function listRuns(cohortId: string): Promise<IngestionRun[]> {
   if (USE_MOCKS) {
+    const { mockDelay, runs } = await import('./mock/fixtures')
     const list = runs.filter((r) => r.cohortId === cohortId)
     return mockDelay([...list].sort((a, b) => (b.runAt ?? '').localeCompare(a.runAt ?? '')))
   }
@@ -36,6 +37,7 @@ export async function listRuns(cohortId: string): Promise<IngestionRun[]> {
 
 export async function getRun(cohortId: string, id: string): Promise<IngestionRun> {
   if (USE_MOCKS) {
+    const { mockDelay, runs } = await import('./mock/fixtures')
     const run = runs.find((r) => r.id === id && r.cohortId === cohortId)
     if (!run) throw new Error('Run not found')
     return mockDelay(run)
@@ -45,7 +47,8 @@ export async function getRun(cohortId: string, id: string): Promise<IngestionRun
 }
 
 /** Mock trigger starts a run as `processing` — no counts yet — so useSyncRunStream has something to stream progress into. */
-function mockSyncRun(cohortId: string): IngestionRun {
+function mockSyncRun(cohortId: string, mocks: typeof import('./mock/fixtures')): IngestionRun {
+  const { genId, cohorts, runs } = mocks
   const cohort = cohorts.find((c) => c.id === cohortId)
   const run: IngestionRun = {
     id: genId('run'),
@@ -68,8 +71,9 @@ function mockSyncRun(cohortId: string): IngestionRun {
 /** Manual sync for a single cohort (B1 AC2) — a trigger summary, not the created run; re-list to see the new row. */
 export async function triggerSync(cohortId: string, payload: SyncTriggerPayload = {}): Promise<SyncTriggerResponse> {
   if (USE_MOCKS) {
-    mockSyncRun(cohortId)
-    return mockDelay({ triggered: 1, skipped: 0, triggeredCohortIds: [cohortId] })
+    const mocks = await import('./mock/fixtures')
+    mockSyncRun(cohortId, mocks)
+    return mocks.mockDelay({ triggered: 1, skipped: 0, triggeredCohortIds: [cohortId] })
   }
   return http.post<SyncTriggerResponse>(`/cohorts/${cohortId}/sync`, payload)
 }
@@ -77,9 +81,10 @@ export async function triggerSync(cohortId: string, payload: SyncTriggerPayload 
 /** Manual sync fanned out across every eligible cohort (B1 AC2) — no request body, no created runs in the response either. */
 export async function triggerSyncAll(): Promise<SyncTriggerResponse> {
   if (USE_MOCKS) {
-    const eligible = cohorts.filter((c) => c.lifecycleState === 'STOOD_UP')
-    eligible.forEach((c) => mockSyncRun(c.id))
-    return mockDelay({ triggered: eligible.length, skipped: 0, triggeredCohortIds: eligible.map((c) => c.id) })
+    const mocks = await import('./mock/fixtures')
+    const eligible = mocks.cohorts.filter((c) => c.lifecycleState === 'STOOD_UP')
+    eligible.forEach((c) => mockSyncRun(c.id, mocks))
+    return mocks.mockDelay({ triggered: eligible.length, skipped: 0, triggeredCohortIds: eligible.map((c) => c.id) })
   }
   return http.post<SyncTriggerResponse>('/cohorts/sync')
 }

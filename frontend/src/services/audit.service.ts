@@ -3,7 +3,7 @@ import { http } from './http'
 import type { IngestionRun } from '@/types/run.types'
 import type { AuditEvent, AuditFilters } from '@/types/audit.types'
 import type { Paged } from '@/types/common.types'
-import { USE_MOCKS, mockDelay, runs, auditEvents } from './mock/fixtures'
+import { USE_MOCKS } from './mock/useMocks'
 
 function inDateRange(iso: string | undefined, from?: string, to?: string): boolean {
   if (!iso) return !from && !to
@@ -14,6 +14,7 @@ function inDateRange(iso: string | undefined, from?: string, to?: string): boole
 
 export async function listAuditRuns(filters: AuditFilters = {}): Promise<IngestionRun[]> {
   if (USE_MOCKS) {
+    const { mockDelay, runs } = await import('./mock/fixtures')
     const list = runs.filter(
       (r) =>
         (!filters.cohortId || r.cohortId === filters.cohortId) &&
@@ -28,6 +29,7 @@ export async function listAuditRuns(filters: AuditFilters = {}): Promise<Ingesti
 
 export async function listAuditEvents(filters: AuditFilters = {}): Promise<AuditEvent[]> {
   if (USE_MOCKS) {
+    const { mockDelay, auditEvents } = await import('./mock/fixtures')
     const list = auditEvents.filter(
       (e) =>
         (!filters.cohortId || e.cohortId === filters.cohortId) &&

@@ -28,9 +28,8 @@ vi.mock('@/services/runs.service', () => ({
 // useSyncRunStream branches on USE_MOCKS (true by default without a local
 // .env.local override, e.g. in CI) — force the real EventSource branch so
 // this test is deterministic regardless of where it runs.
-vi.mock('@/services/mock/fixtures', () => ({
+vi.mock('@/services/mock/useMocks', () => ({
   USE_MOCKS: false,
-  runs: [],
 }))
 import * as reviewSvc from '@/services/runReview.service'
 import * as runsSvc from '@/services/runs.service'

@@ -9,11 +9,12 @@ const router = useRouter()
 const route = useRoute()
 
 const NAV_TO_ROUTE: Record<string, string> = {
-  'a-dashboard': 'admin-dashboard',
-  'a-cohorts':   'admin-cohorts',
-  'a-runs':      'admin-runs',
-  'a-audit':     'admin-audit',
-  'a-settings':  'admin-settings',
+  'a-dashboard':      'admin-dashboard',
+  'a-cohorts':        'admin-cohorts',
+  'a-runs':           'admin-runs',
+  'a-sync-schedules': 'admin-sync-schedules',
+  'a-audit':          'admin-audit',
+  'a-settings':       'admin-settings',
 }
 
 // Route → active nav id. Child routes alias to their parent nav item.
@@ -25,14 +26,15 @@ const ROUTE_TO_NAV: Record<string, string> = {
 }
 
 const CRUMBS: Record<string, string> = {
-  'admin-dashboard':      'Dashboard',
-  'admin-cohorts':        'Cohorts',
-  'admin-cohort-standup': 'Cohort stand-up',
-  'admin-cohort-detail':  'Cohort detail',
-  'admin-runs':           'Grading runs',
-  'admin-run-review':     'Run review',
-  'admin-audit':          'Audit',
-  'admin-settings':       'Settings',
+  'admin-dashboard':       'Dashboard',
+  'admin-cohorts':         'Cohorts',
+  'admin-cohort-standup':  'Cohort stand-up',
+  'admin-cohort-detail':   'Cohort detail',
+  'admin-runs':            'Grading runs',
+  'admin-run-review':      'Run review',
+  'admin-sync-schedules':  'Sync schedules',
+  'admin-audit':           'Audit',
+  'admin-settings':        'Settings',
 }
 
 const activeId = computed(() => ROUTE_TO_NAV[route.name as string] ?? 'a-dashboard')

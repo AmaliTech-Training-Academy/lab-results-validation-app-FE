@@ -3,22 +3,20 @@ import { http, BASE_URL, getToken } from './http'
 import type { Cohort, CohortReference, CreateCohortPayload } from '@/types/domain.types'
 import type { AttachSharePointLinkPayload, Gate4Job, StandupStatus } from '@/types/standup.types'
 import type { Paged } from '@/types/common.types'
-import { USE_MOCKS, mockDelay, genId, cohorts, referenceByCohort, buildReference } from './mock/fixtures'
-import {
-  startStandup,
-  getStandupStatus,
-  acceptReference,
-  discardReference,
-} from './mock/standupEngine'
+import { USE_MOCKS } from './mock/useMocks'
 
 export async function listCohorts(): Promise<Cohort[]> {
-  if (USE_MOCKS) return mockDelay(cohorts)
+  if (USE_MOCKS) {
+    const { mockDelay, cohorts } = await import('./mock/fixtures')
+    return mockDelay(cohorts)
+  }
   const page = await http.get<Paged<Cohort>>('/cohorts')
   return page.content
 }
 
 export async function getCohort(id: string): Promise<Cohort> {
   if (USE_MOCKS) {
+    const { mockDelay, cohorts } = await import('./mock/fixtures')
     const c = cohorts.find((x) => x.id === id)
     if (!c) throw new Error('Cohort not found')
     return mockDelay(c)
@@ -28,12 +26,16 @@ export async function getCohort(id: string): Promise<Cohort> {
 
 /** The committed, frozen reference hierarchy for a stood-up cohort (§6.3). */
 export async function getCohortReference(id: string): Promise<CohortReference> {
-  if (USE_MOCKS) return mockDelay(referenceByCohort[id] ?? buildReference(id))
+  if (USE_MOCKS) {
+    const { mockDelay, referenceByCohort, buildReference } = await import('./mock/fixtures')
+    return mockDelay(referenceByCohort[id] ?? buildReference(id))
+  }
   return http.get<CohortReference>(`/cohorts/${id}/reference`)
 }
 
 export async function createCohort(payload: CreateCohortPayload): Promise<Cohort> {
   if (USE_MOCKS) {
+    const { mockDelay, genId, cohorts } = await import('./mock/fixtures')
     const name = payload.name.trim()
     if (cohorts.some((c) => c.name.toLowerCase() === name.toLowerCase())) {
       throw new Error('Cohort name must be unique')
@@ -65,6 +67,8 @@ export async function createCohort(payload: CreateCohortPayload): Promise<Cohort
  */
 export async function attachSharePointLink(id: string, payload: AttachSharePointLinkPayload): Promise<void> {
   if (USE_MOCKS) {
+    const { mockDelay } = await import('./mock/fixtures')
+    const { startStandup } = await import('./mock/standupEngine')
     startStandup(id, payload.folderUrl)
     return mockDelay(undefined)
   }
@@ -82,13 +86,20 @@ export function standupStreamUrl(id: string): string {
 
 /** Polled status endpoint (§9). Kept snappy in mocks so gates progress visibly; used as the mock-mode fallback for Gate 4 (no fake SSE server locally). */
 export async function fetchStandupStatus(id: string): Promise<StandupStatus> {
-  if (USE_MOCKS) return mockDelay(getStandupStatus(id), 150)
+  if (USE_MOCKS) {
+    const { mockDelay } = await import('./mock/fixtures')
+    const { getStandupStatus } = await import('./mock/standupEngine')
+    return mockDelay(getStandupStatus(id), 150)
+  }
   return http.get<StandupStatus>(`/cohorts/${id}/standup/status`)
 }
 
 /** Triggers Gate 4 (empty score-sheet validation) after Accept (§9d). */
 export async function triggerGate4(id: string): Promise<void> {
-  if (USE_MOCKS) return mockDelay(undefined)
+  if (USE_MOCKS) {
+    const { mockDelay } = await import('./mock/fixtures')
+    return mockDelay(undefined)
+  }
   await http.post<Gate4Job>(`/cohorts/${id}/gate4`)
 }
 
@@ -103,6 +114,8 @@ export function gate4StreamUrl(id: string): string {
 
 export async function acceptCohortReference(id: string): Promise<void> {
   if (USE_MOCKS) {
+    const { mockDelay } = await import('./mock/fixtures')
+    const { acceptReference } = await import('./mock/standupEngine')
     acceptReference(id)
     return mockDelay(undefined)
   }
@@ -111,6 +124,8 @@ export async function acceptCohortReference(id: string): Promise<void> {
 
 export async function discardCohortReference(id: string): Promise<void> {
   if (USE_MOCKS) {
+    const { mockDelay } = await import('./mock/fixtures')
+    const { discardReference } = await import('./mock/standupEngine')
     discardReference(id)
     return mockDelay(undefined)
   }
@@ -119,6 +134,7 @@ export async function discardCohortReference(id: string): Promise<void> {
 
 export async function lockCohort(id: string): Promise<void> {
   if (USE_MOCKS) {
+    const { mockDelay, cohorts } = await import('./mock/fixtures')
     const c = cohorts.find((x) => x.id === id)
     if (c) c.locked = true
     return mockDelay(undefined)
@@ -128,6 +144,7 @@ export async function lockCohort(id: string): Promise<void> {
 
 export async function unlockCohort(id: string): Promise<void> {
   if (USE_MOCKS) {
+    const { mockDelay, cohorts } = await import('./mock/fixtures')
     const c = cohorts.find((x) => x.id === id)
     if (c) c.locked = false
     return mockDelay(undefined)

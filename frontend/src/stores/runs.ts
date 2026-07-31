@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { toErrorMessage } from '@/utils/errors'
 import type { IngestionRun, SyncTriggerPayload } from '@/types/run.types'
 import { listRuns, getRun, triggerSync, triggerSyncAll } from '@/services/runs.service'
 import { useCohortsStore } from '@/stores/cohorts'
@@ -32,7 +33,7 @@ export const useRunsStore = defineStore('runs', () => {
           .sort((a, b) => (b.runAt ?? b.startedAt ?? '').localeCompare(a.runAt ?? a.startedAt ?? ''))
       }
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to load runs'
+      error.value = toErrorMessage(e, 'Failed to load runs')
     } finally {
       loading.value = false
     }
@@ -44,7 +45,7 @@ export const useRunsStore = defineStore('runs', () => {
     try {
       current.value = await getRun(cohortId, id)
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to load run'
+      error.value = toErrorMessage(e, 'Failed to load run')
     } finally {
       loading.value = false
     }
@@ -64,7 +65,7 @@ export const useRunsStore = defineStore('runs', () => {
       await fetchList(cohortId)
       return result
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to trigger sync'
+      error.value = toErrorMessage(e, 'Failed to trigger sync')
       throw e
     } finally {
       syncing.value = false
