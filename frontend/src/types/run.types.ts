@@ -4,6 +4,15 @@ import type { LocatedError } from './common.types'
 /** schema: ingestion_runs.status CHECK. SKIPPED = hash short-circuit (B3/D1 AC2). */
 export type RunStatus = 'processing' | 'completed' | 'partial' | 'failed' | 'skipped'
 
+/** Pill tone for a run's status, shared across every view that renders it. */
+export const RUN_STATUS_TONE: Record<RunStatus, 'success' | 'warning' | 'danger' | 'info'> = {
+  completed: 'success',
+  partial: 'warning',
+  failed: 'danger',
+  skipped: 'info',
+  processing: 'info',
+}
+
 /** schema: ingestion_runs.trigger_type CHECK. */
 export type TriggerType = 'SCHEDULED' | 'MANUAL'
 

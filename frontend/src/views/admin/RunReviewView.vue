@@ -6,15 +6,15 @@ import VIcon from '@/components/base/VIcon.vue'
 import VPill from '@/components/base/VPill.vue'
 import { useRunReviewStore } from '@/stores/runReview'
 import { useRunsStore } from '@/stores/runs'
-import { useToastStore } from '@/stores/toast'
 import { useSyncRunStream } from '@/composables/useSyncRunStream'
-import type { RunStatus, SyncFileStatus } from '@/types/run.types'
+import { useToastAction } from '@/composables/useToastAction'
+import { RUN_STATUS_TONE, type SyncFileStatus } from '@/types/run.types'
 import type { Notification, NotificationStatus } from '@/types/runReview.types'
 
 const route = useRoute()
 const store = useRunReviewStore()
 const runsStore = useRunsStore()
-const toast = useToastStore()
+const { run: withToast } = useToastAction()
 
 const runId = route.params.id as string
 const cohortId = route.query.cohortId as string
@@ -61,10 +61,6 @@ const conflicts = computed(() => store.review?.conflicts ?? [])
 const notifications = computed(() => store.review?.notifications ?? [])
 const pendingCount = computed(() => notifications.value.filter((n) => n.status === 'PENDING').length)
 
-const RUN_TONE: Record<RunStatus, 'success' | 'warning' | 'danger' | 'info'> = {
-  completed: 'success', partial: 'warning', failed: 'danger', skipped: 'info', processing: 'info',
-}
-
 const SUMMARY = [
   { key: 'rowsRead', label: 'Rows read' },
   { key: 'committedNew', label: 'New' },
@@ -99,47 +95,37 @@ function notifTypeLabel(t: Notification['type']): string {
 }
 
 async function resolveConflict(id: string, chosenRowIndex: number | null) {
-  try {
-    await store.resolveConflict(id, { chosenRowIndex })
-    toast.show({ tone: 'success', title: chosenRowIndex === null ? 'Conflict rejected' : 'Conflict resolved' })
-  } catch {
-    toast.show({ tone: 'warning', title: 'Could not resolve conflict' })
-  }
+  await withToast(() => store.resolveConflict(id, { chosenRowIndex }), {
+    success: { tone: 'success', title: chosenRowIndex === null ? 'Conflict rejected' : 'Conflict resolved' },
+    error: { tone: 'warning', title: 'Could not resolve conflict' },
+  })
 }
 
 async function dismissConflict(id: string) {
-  try {
-    await store.dismissConflict(id)
-    toast.show({ tone: 'info', title: 'Conflict dismissed' })
-  } catch {
-    toast.show({ tone: 'warning', title: 'Could not dismiss conflict' })
-  }
+  await withToast(() => store.dismissConflict(id), {
+    success: { tone: 'info', title: 'Conflict dismissed' },
+    error: { tone: 'warning', title: 'Could not dismiss conflict' },
+  })
 }
 
 async function sendOne(n: Notification) {
-  try {
-    await store.sendNotification(n.id)
-    toast.show({ tone: 'success', title: 'Notification sent', body: n.recipientEmail })
-  } catch {
-    toast.show({ tone: 'warning', title: 'Send failed' })
-  }
+  await withToast(() => store.sendNotification(n.id), {
+    success: { tone: 'success', title: 'Notification sent', body: n.recipientEmail },
+    error: { tone: 'warning', title: 'Send failed' },
+  })
 }
 
 async function dismissNotif(n: Notification) {
-  try {
-    await store.dismissNotification(n.id)
-  } catch {
-    toast.show({ tone: 'warning', title: 'Could not dismiss' })
-  }
+  await withToast(() => store.dismissNotification(n.id), {
+    error: { tone: 'warning', title: 'Could not dismiss' },
+  })
 }
 
 async function sendAll() {
-  try {
-    await store.sendAll(runId)
-    toast.show({ tone: 'success', title: 'Held notifications sent' })
-  } catch {
-    toast.show({ tone: 'warning', title: 'Send-all failed' })
-  }
+  await withToast(() => store.sendAll(runId), {
+    success: { tone: 'success', title: 'Held notifications sent' },
+    error: { tone: 'warning', title: 'Send-all failed' },
+  })
 }
 </script>
 
@@ -149,7 +135,7 @@ async function sendAll() {
       <RouterLink :to="{ name: 'admin-runs' }" class="back-link"><VIcon name="chevron-left" :size="15" /> Grading runs</RouterLink>
       <h1 class="page-title">
         Run review
-        <VPill v-if="headerRun" :tone="RUN_TONE[headerRun.status]">{{ headerRun.status }}</VPill>
+        <VPill v-if="headerRun" :tone="RUN_STATUS_TONE[headerRun.status]">{{ headerRun.status }}</VPill>
       </h1>
       <p class="page-sub mono">{{ headerRun?.workbookFilename ?? '…' }} · {{ headerRun?.cohortName }}</p>
     </div>

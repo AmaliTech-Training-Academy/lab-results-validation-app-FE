@@ -8,6 +8,7 @@ import { useRunsStore } from '@/stores/runs'
 import { useCohortsStore } from '@/stores/cohorts'
 import { useToastStore } from '@/stores/toast'
 import type { IngestionRun, RunStatus } from '@/types/run.types'
+import { RUN_STATUS_TONE } from '@/types/run.types'
 
 const router = useRouter()
 const runs = useRunsStore()
@@ -28,13 +29,6 @@ const displayed = computed(() =>
   selectedCohortId.value ? runs.list.filter((r) => r.cohortId === selectedCohortId.value) : runs.list,
 )
 
-const STATUS_TONE: Record<RunStatus, 'success' | 'warning' | 'danger' | 'info'> = {
-  completed: 'success',
-  partial: 'warning',
-  failed: 'danger',
-  skipped: 'info',
-  processing: 'info',
-}
 const STATUS_LABEL: Record<RunStatus, string> = {
   completed: 'Completed',
   partial: 'Partial',
@@ -125,7 +119,7 @@ function openRun(r: IngestionRun) {
           </td>
           <td>{{ r.cohortName ?? '—' }}</td>
           <td class="muted">{{ triggerLabel(r) }}</td>
-          <td style="text-align: center"><VPill :tone="STATUS_TONE[r.status]">{{ STATUS_LABEL[r.status] }}</VPill></td>
+          <td style="text-align: center"><VPill :tone="RUN_STATUS_TONE[r.status]">{{ STATUS_LABEL[r.status] }}</VPill></td>
           <td>
             <span class="counts mono">
               <span class="c-new">{{ r.counts?.committedNew ?? 0 }} new</span>

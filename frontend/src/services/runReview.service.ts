@@ -3,7 +3,7 @@
 import { http } from './http'
 import type { IngestionConflict, Notification, ResolveConflictPayload, RunReview } from '@/types/runReview.types'
 import type { CohortSyncJobStatus, GradingSyncOverviewResponse, RunCounts, RunStatus } from '@/types/run.types'
-import { USE_MOCKS, mockDelay, runs, conflicts, notifications } from './mock/fixtures'
+import { USE_MOCKS } from './mock/useMocks'
 
 const OVERVIEW_STATUS_MAP: Record<CohortSyncJobStatus, RunStatus> = {
   RUNNING: 'processing',
@@ -45,6 +45,7 @@ function mapOverview(dto: GradingSyncOverviewResponse): RunReview {
 
 export async function getRunReview(cohortId: string, runId: string): Promise<RunReview> {
   if (USE_MOCKS) {
+    const { mockDelay, runs, conflicts, notifications } = await import('./mock/fixtures')
     const run = runs.find((r) => r.id === runId)
     if (!run) throw new Error('Run not found')
     return mockDelay({
@@ -59,6 +60,7 @@ export async function getRunReview(cohortId: string, runId: string): Promise<Run
 
 export async function resolveConflict(id: string, payload: ResolveConflictPayload): Promise<IngestionConflict> {
   if (USE_MOCKS) {
+    const { mockDelay, conflicts } = await import('./mock/fixtures')
     const c = conflicts.find((x) => x.id === id)
     if (!c) throw new Error('Conflict not found')
     c.status = 'RESOLVED'
@@ -70,6 +72,7 @@ export async function resolveConflict(id: string, payload: ResolveConflictPayloa
 
 export async function dismissConflict(id: string): Promise<IngestionConflict> {
   if (USE_MOCKS) {
+    const { mockDelay, conflicts } = await import('./mock/fixtures')
     const c = conflicts.find((x) => x.id === id)
     if (!c) throw new Error('Conflict not found')
     c.status = 'DISMISSED'
@@ -80,6 +83,7 @@ export async function dismissConflict(id: string): Promise<IngestionConflict> {
 
 export async function sendNotification(id: string): Promise<Notification> {
   if (USE_MOCKS) {
+    const { mockDelay, notifications } = await import('./mock/fixtures')
     const n = notifications.find((x) => x.id === id)
     if (!n) throw new Error('Notification not found')
     if (n.status === 'PENDING' || n.status === 'FAILED') {
@@ -94,6 +98,7 @@ export async function sendNotification(id: string): Promise<Notification> {
 /** Send-all touches only PENDING items — SENT/SKIPPED are untouched (C7 AC2, idempotent). */
 export async function sendAllNotifications(runId: string): Promise<Notification[]> {
   if (USE_MOCKS) {
+    const { mockDelay, notifications } = await import('./mock/fixtures')
     const now = new Date().toISOString()
     const affected = notifications.filter((n) => n.ingestionRunId === runId && n.status === 'PENDING')
     affected.forEach((n) => {
@@ -107,6 +112,7 @@ export async function sendAllNotifications(runId: string): Promise<Notification[
 
 export async function dismissNotification(id: string): Promise<Notification> {
   if (USE_MOCKS) {
+    const { mockDelay, notifications } = await import('./mock/fixtures')
     const n = notifications.find((x) => x.id === id)
     if (!n) throw new Error('Notification not found')
     if (n.status === 'PENDING') n.status = 'SKIPPED'
