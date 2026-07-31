@@ -18,7 +18,7 @@ export interface Gate {
   errors: LocatedError[]
 }
 
-/** Overall async-job status (terminal: passed | failed). Drives useJobPolling. */
+/** Overall async-job status (terminal: passed | failed). */
 export type StandupOverall = 'pending' | 'running' | 'passed' | 'failed'
 
 /**

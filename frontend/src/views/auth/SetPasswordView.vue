@@ -3,7 +3,9 @@ import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { changePasswordApi, resetPasswordApi } from '@/services/auth.service'
+import { toErrorMessage } from '@/utils/errors'
 import { useToastStore } from '@/stores/toast'
+import { usePasswordVisibility } from '@/composables/usePasswordVisibility'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import logoUrl from '@/assets/validata-logo.png'
@@ -19,8 +21,18 @@ const isResetFlow = computed(() => !!resetToken.value)
 
 const password = ref('')
 const confirmPassword = ref('')
-const showPassword = ref(false)
-const showConfirm = ref(false)
+const {
+  inputType: passwordInputType,
+  icon: passwordIcon,
+  ariaLabel: passwordAriaLabel,
+  toggle: togglePassword,
+} = usePasswordVisibility()
+const {
+  inputType: confirmInputType,
+  icon: confirmIcon,
+  ariaLabel: confirmAriaLabel,
+  toggle: toggleConfirm,
+} = usePasswordVisibility()
 const passwordTouched = ref(false)
 const confirmTouched = ref(false)
 const isLoading = ref(false)
@@ -72,7 +84,7 @@ async function submit() {
       router.push({ name: 'admin-dashboard' })
     }
   } catch (err) {
-    const msg = err instanceof Error ? err.message : ''
+    const msg = toErrorMessage(err, '')
     error.value = msg || 'Failed to set password. Please try again.'
   } finally {
     isLoading.value = false
@@ -104,7 +116,7 @@ async function submit() {
             <input
               id="setpw-new"
               v-model="password"
-              :type="showPassword ? 'text' : 'password'"
+              :type="passwordInputType"
               placeholder="Enter your new password"
               autocomplete="new-password"
               :aria-describedby="`setpw-strength${passwordError ? ' setpw-new-error' : ''}`"
@@ -114,10 +126,10 @@ async function submit() {
             <button
               type="button"
               class="trail"
-              :aria-label="showPassword ? 'Hide password' : 'Show password'"
-              @click="showPassword = !showPassword"
+              :aria-label="passwordAriaLabel"
+              @click="togglePassword"
             >
-              <VIcon :name="showPassword ? 'eye-off' : 'eye'" :size="18" />
+              <VIcon :name="passwordIcon" :size="18" />
             </button>
           </div>
           <span
@@ -165,7 +177,7 @@ async function submit() {
             <input
               id="setpw-confirm"
               v-model="confirmPassword"
-              :type="showConfirm ? 'text' : 'password'"
+              :type="confirmInputType"
               placeholder="Re-enter your password"
               autocomplete="new-password"
               :aria-describedby="confirmError ? 'setpw-confirm-error' : undefined"
@@ -175,10 +187,10 @@ async function submit() {
             <button
               type="button"
               class="trail"
-              :aria-label="showConfirm ? 'Hide password' : 'Show password'"
-              @click="showConfirm = !showConfirm"
+              :aria-label="confirmAriaLabel"
+              @click="toggleConfirm"
             >
-              <VIcon :name="showConfirm ? 'eye-off' : 'eye'" :size="18" />
+              <VIcon :name="confirmIcon" :size="18" />
             </button>
           </div>
           <span
