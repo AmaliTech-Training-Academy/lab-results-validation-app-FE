@@ -8,7 +8,8 @@ import VDrawer from '@/components/base/VDrawer.vue'
 import VDatePicker from '@/components/base/VDatePicker.vue'
 import { useCohortsStore } from '@/stores/cohorts'
 import { useToastStore } from '@/stores/toast'
-import { cohortDisplayState, type Cohort, type CohortDisplayState } from '@/types/domain.types'
+import { toErrorMessage } from '@/utils/errors'
+import { cohortDisplayState, COHORT_STATE_CHIP, type Cohort } from '@/types/domain.types'
 
 const router = useRouter()
 const store = useCohortsStore()
@@ -17,13 +18,7 @@ const toast = useToastStore()
 onMounted(() => store.fetchList())
 
 // ── State chip ────────────────────────────────────────────────────────────────
-const CHIP: Record<CohortDisplayState, { tone: 'info' | 'warning' | 'success'; label: string }> = {
-  DRAFT: { tone: 'info', label: 'Draft' },
-  REFERENCE_ACCEPTED: { tone: 'warning', label: 'Reference accepted' },
-  STOOD_UP: { tone: 'success', label: 'Stood up' },
-  LOCKED: { tone: 'success', label: 'Locked' },
-}
-const chipFor = (c: Cohort) => CHIP[cohortDisplayState(c)]
+const chipFor = (c: Cohort) => COHORT_STATE_CHIP[cohortDisplayState(c)]
 
 // ── Row navigation: DRAFT/REFERENCE_ACCEPTED → stand-up; STOOD_UP → detail ──────
 function openCohort(c: Cohort) {
@@ -73,7 +68,7 @@ async function submit() {
     showDrawer.value = false
     router.push({ name: 'admin-cohort-standup', params: { id: cohort.id } })
   } catch (e) {
-    formError.value = e instanceof Error ? e.message : 'Failed to create cohort. Please try again.'
+    formError.value = toErrorMessage(e, 'Failed to create cohort. Please try again.')
   } finally {
     submitting.value = false
   }

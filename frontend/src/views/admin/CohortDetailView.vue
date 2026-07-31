@@ -7,7 +7,7 @@ import VPill from '@/components/base/VPill.vue'
 import { useCohortsStore } from '@/stores/cohorts'
 import { useReferenceStore } from '@/stores/reference'
 import { useToastStore } from '@/stores/toast'
-import { cohortDisplayState, type CohortDisplayState } from '@/types/domain.types'
+import { cohortDisplayState, COHORT_STATE_CHIP } from '@/types/domain.types'
 
 const route = useRoute()
 const cohorts = useCohortsStore()
@@ -18,13 +18,7 @@ const cohortId = route.params.id as string
 const cohort = computed(() => cohorts.current)
 const ref_ = computed(() => reference.reference)
 
-const CHIP: Record<CohortDisplayState, { tone: 'info' | 'warning' | 'success'; label: string }> = {
-  DRAFT: { tone: 'info', label: 'Draft' },
-  REFERENCE_ACCEPTED: { tone: 'warning', label: 'Reference accepted' },
-  STOOD_UP: { tone: 'success', label: 'Stood up' },
-  LOCKED: { tone: 'success', label: 'Locked' },
-}
-const chip = computed(() => (cohort.value ? CHIP[cohortDisplayState(cohort.value)] : null))
+const chip = computed(() => (cohort.value ? COHORT_STATE_CHIP[cohortDisplayState(cohort.value)] : null))
 
 /** learner.specializationId → specialization name, for the roster table. */
 const specName = computed<Record<string, string>>(() => {
