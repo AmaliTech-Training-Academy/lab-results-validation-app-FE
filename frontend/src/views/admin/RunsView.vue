@@ -39,8 +39,12 @@ const STATUS_LABEL: Record<RunStatus, string> = {
 
 function triggerLabel(r: IngestionRun): string {
   if (!r.triggerType) return '—'
-  const who = r.triggerType === 'SCHEDULED' ? 'System' : r.triggeredByEmail ?? r.triggeredBy ?? 'Admin'
-  return `${r.triggerType === 'SCHEDULED' ? 'Scheduled' : 'Manual'} · ${who}`
+  if (r.triggerType === 'SCHEDULED') return 'Automatic'
+  return `Manual · ${r.triggeredByEmail ?? r.triggeredBy ?? 'Admin'}`
+}
+
+function cohortLabel(r: IngestionRun): string {
+  return r.cohortName ?? cohorts.list.find((c) => c.id === r.cohortId)?.name ?? r.cohortId
 }
 
 function fmtWhen(iso?: string): string {
@@ -89,7 +93,6 @@ function openRun(r: IngestionRun) {
     <table class="tbl">
       <thead>
         <tr>
-          <th>File</th>
           <th>Cohort</th>
           <th>Trigger</th>
           <th style="text-align: center">Status</th>
@@ -101,7 +104,6 @@ function openRun(r: IngestionRun) {
 
       <tbody v-if="runs.loading">
         <tr v-for="i in 4" :key="i">
-          <td><span class="skel" style="width: 70%" /></td>
           <td><span class="skel" style="width: 60%" /></td>
           <td><span class="skel" style="width: 50%" /></td>
           <td style="text-align: center"><span class="skel" style="width: 64px; border-radius: 999px" /></td>
@@ -113,11 +115,7 @@ function openRun(r: IngestionRun) {
 
       <tbody v-else>
         <tr v-for="r in displayed" :key="r.id" class="row-click" @click="openRun(r)">
-          <td class="mono file-cell">
-            {{ r.workbookFilename ?? '—' }}
-            <VIcon v-if="r.highFailure" name="alert-triangle" :size="14" class="hi-fail" aria-label="High failure rate" />
-          </td>
-          <td>{{ r.cohortName ?? '—' }}</td>
+          <td>{{ cohortLabel(r) }}</td>
           <td class="muted">{{ triggerLabel(r) }}</td>
           <td style="text-align: center"><VPill :tone="RUN_STATUS_TONE[r.status]">{{ STATUS_LABEL[r.status] }}</VPill></td>
           <td>
@@ -136,7 +134,7 @@ function openRun(r: IngestionRun) {
         </tr>
 
         <tr v-if="displayed.length === 0">
-          <td colspan="7">
+          <td colspan="6">
             <div class="empty-inline">
               <VIcon name="refresh-cw" :size="26" class="muted" />
               <p class="empty-title">No runs yet</p>
@@ -181,16 +179,6 @@ function openRun(r: IngestionRun) {
 }
 .muted {
   color: var(--text-secondary);
-}
-.file-cell {
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.hi-fail {
-  color: var(--warning, #b45309);
-  flex-shrink: 0;
 }
 .counts {
   font-size: 12.5px;

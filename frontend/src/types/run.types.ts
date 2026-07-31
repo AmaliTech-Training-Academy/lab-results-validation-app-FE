@@ -100,6 +100,12 @@ export interface SyncRunResponse {
   targetItemId: string | null
 }
 
+/** How many rejected rows in a file carried a given rule code — backend: RejectionReasonSummary record. */
+export interface RejectionReasonSummary {
+  rule: string
+  count: number
+}
+
 /** One workbook's grading tallies within a sync run's overview — backend: FileIngestionSummary record. */
 export interface FileIngestionSummary {
   workbookFilename: string
@@ -110,7 +116,14 @@ export interface FileIngestionSummary {
   skippedInvalid: number
   skippedUnchanged: number
   conflictsCount: number
+  /** Derived flag: rejected > 50% of this file's rows (§4.5, B7 AC3). */
+  highFailureRate: boolean
+  failureRatePercent: number
   runAt: string
+  /** Per-row rejection detail from this file's errorReportJson. */
+  issues: LocatedError[]
+  /** `issues` rolled up by rule code, sorted by count desc. */
+  rejectionReasons: RejectionReasonSummary[]
 }
 
 /** GET /cohorts/{cohortId}/sync/runs/{jobId}/overview response — backend: GradingSyncOverviewResponse record. */

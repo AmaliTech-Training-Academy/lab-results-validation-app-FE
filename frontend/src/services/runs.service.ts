@@ -3,6 +3,7 @@ import { http, BASE_URL, getToken } from './http'
 import type { IngestionRun, RunStatus, SyncRun, SyncRunResponse, SyncRunStatus, SyncTriggerPayload, SyncTriggerResponse } from '@/types/run.types'
 import type { Paged } from '@/types/common.types'
 import { USE_MOCKS } from './mock/useMocks'
+import { getUser } from './users.service'
 
 const SYNC_STATUS_MAP: Record<SyncRunStatus, RunStatus> = {
   PENDING: 'processing',
@@ -11,14 +12,24 @@ const SYNC_STATUS_MAP: Record<SyncRunStatus, RunStatus> = {
   FAILED: 'failed',
 }
 
-/** /cohorts/{id}/sync/runs returns a thin job stub, not a full ingestion run — patch it into the shape the runs list renders. */
-function mapSyncRun(r: SyncRun): IngestionRun {
+/**
+ * /cohorts/{id}/sync/runs returns a thin job stub, not a full ingestion run — patch it into the
+ * shape the runs list renders. A null triggeredBy means the run was kicked off by the scheduler,
+ * not a person; otherwise resolve the raw id to an email for display.
+ */
+async function mapSyncRun(r: SyncRun): Promise<IngestionRun> {
+  const triggeredByEmail = r.triggeredBy
+    ? await getUser(r.triggeredBy)
+        .then((u) => u.email)
+        .catch(() => null)
+    : null
   return {
     id: r.id,
     cohortId: r.cohortId,
     status: SYNC_STATUS_MAP[r.status] ?? 'processing',
     triggeredBy: r.triggeredBy,
-    triggerType: 'MANUAL',
+    triggeredByEmail,
+    triggerType: r.triggeredBy ? 'MANUAL' : 'SCHEDULED',
     startedAt: r.startedAt ?? undefined,
     completedAt: r.completedAt ?? undefined,
   }
@@ -32,7 +43,7 @@ export async function listRuns(cohortId: string): Promise<IngestionRun[]> {
     return mockDelay([...list].sort((a, b) => (b.runAt ?? '').localeCompare(a.runAt ?? '')))
   }
   const page = await http.get<Paged<SyncRun>>(`/cohorts/${cohortId}/sync/runs`)
-  return page.content.map(mapSyncRun)
+  return Promise.all(page.content.map(mapSyncRun))
 }
 
 export async function getRun(cohortId: string, id: string): Promise<IngestionRun> {
