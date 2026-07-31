@@ -3,6 +3,9 @@ import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { loginApi } from '@/services/auth.service'
+import { toErrorMessage } from '@/utils/errors'
+import { useAllowedEmailDomain } from '@/composables/useAllowedEmailDomain'
+import { usePasswordVisibility } from '@/composables/usePasswordVisibility'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import logoUrl from '@/assets/validata-logo.png'
@@ -15,27 +18,13 @@ const route = useRoute()
 
 const email = ref('')
 const password = ref('')
-const showPassword = ref(false)
+const { inputType: passwordInputType, icon: passwordIcon, ariaLabel: passwordAriaLabel, toggle: togglePassword } = usePasswordVisibility()
 const emailTouched = ref(false)
 const passwordTouched = ref(false)
 const isLoading = ref(false)
 const error = ref<string | null>(null)
 
-const ALLOWED_DOMAINS = new Set(['amalitech.com', 'amalitechtraining.com', 'amalitechtraining.org'])
-
-const emailError = computed(() => {
-  if (!emailTouched.value || !email.value) return ''
-  const domain = email.value.split('@')[1]?.toLowerCase()
-  if (!domain || !ALLOWED_DOMAINS.has(domain)) {
-    return 'Email must be from @amalitech.com, @amalitechtraining.com, or @amalitechtraining.org'
-  }
-  return ''
-})
-
-const isEmailValid = computed(() => {
-  const domain = email.value.split('@')[1]?.toLowerCase()
-  return !!domain && ALLOWED_DOMAINS.has(domain)
-})
+const { emailError, isEmailValid } = useAllowedEmailDomain(email, emailTouched)
 
 const passwordError = computed(() => {
   if (!passwordTouched.value) return ''
@@ -70,7 +59,7 @@ async function submit() {
 
     router.push('/admin/dashboard')
   } catch (err) {
-    const msg = err instanceof Error ? err.message : ''
+    const msg = toErrorMessage(err, '')
     error.value = msg === 'Account is disabled'
       ? 'Your account has been disabled. Please contact your administrator.'
       : 'Invalid email or password.'
@@ -126,7 +115,7 @@ async function submit() {
           <input
             id="login-password"
             v-model="password"
-            :type="showPassword ? 'text' : 'password'"
+            :type="passwordInputType"
             placeholder="••••••••••"
             autocomplete="current-password"
             :aria-describedby="passwordError ? 'login-password-error' : undefined"
@@ -136,10 +125,10 @@ async function submit() {
           <button
             type="button"
             class="trail"
-            :aria-label="showPassword ? 'Hide password' : 'Show password'"
-            @click="showPassword = !showPassword"
+            :aria-label="passwordAriaLabel"
+            @click="togglePassword"
           >
-            <VIcon :name="showPassword ? 'eye-off' : 'eye'" :size="18" />
+            <VIcon :name="passwordIcon" :size="18" />
           </button>
         </div>
         <span v-if="passwordError" id="login-password-error" class="field-error" role="alert">

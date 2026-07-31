@@ -17,9 +17,7 @@ import type { IngestionRun } from '@/types/run.types'
 import type { IngestionConflict, Notification } from '@/types/runReview.types'
 import type { AuditEvent } from '@/types/audit.types'
 import type { Settings } from '@/types/settings.types'
-
-const env = import.meta.env as unknown as Record<string, string | undefined>
-export const USE_MOCKS = (env.VITE_USE_MOCKS ?? 'true') !== 'false'
+import type { SyncScheduleResponse } from '@/types/syncSchedule.types'
 
 /** Simulated network latency so loading states are exercised. */
 export function mockDelay<T>(value: T, ms = 300): Promise<T> {
@@ -283,5 +281,46 @@ export const auditEvents: AuditEvent[] = [
 // ---------------------------------------------------------------------------
 export const settings: Settings = {
   autoSendInstructorEmails: false,
-  syncSchedule: { enabled: true, day: 'MONDAY', time: '08:00', timezone: 'GMT' },
 }
+
+// ---------------------------------------------------------------------------
+// Sync schedules.
+// ---------------------------------------------------------------------------
+export const syncSchedules: SyncScheduleResponse[] = [
+  {
+    id: 'sched-daily-all',
+    name: 'Nightly sync — all cohorts',
+    cohortId: null,
+    frequency: 'DAILY',
+    timeOfDay: '02:00',
+    dayOfWeek: null,
+    timezone: 'Africa/Accra',
+    enabled: true,
+    createdAt: '2026-06-01T00:00:00Z',
+    updatedAt: '2026-06-01T00:00:00Z',
+  },
+  {
+    id: 'sched-weekly-coh',
+    name: 'Weekly sync — Cohort 7',
+    cohortId: 'coh-stood',
+    frequency: 'WEEKLY',
+    timeOfDay: '08:00',
+    dayOfWeek: 'MONDAY',
+    timezone: 'GMT',
+    enabled: true,
+    createdAt: '2026-06-05T00:00:00Z',
+    updatedAt: '2026-06-05T00:00:00Z',
+  },
+  {
+    id: 'sched-weekly-disabled',
+    name: 'Weekly sync — Cohort 6 (paused)',
+    cohortId: 'coh-locked',
+    frequency: 'WEEKLY',
+    timeOfDay: '18:30',
+    dayOfWeek: 'FRIDAY',
+    timezone: 'UTC',
+    enabled: false,
+    createdAt: '2026-05-01T00:00:00Z',
+    updatedAt: '2026-07-10T00:00:00Z',
+  },
+]

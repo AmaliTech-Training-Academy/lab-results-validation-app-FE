@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { forgotPasswordApi } from '@/services/auth.service'
+import { toErrorMessage } from '@/utils/errors'
+import { useAllowedEmailDomain } from '@/composables/useAllowedEmailDomain'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import logoUrl from '@/assets/validata-logo.png'
@@ -12,21 +14,7 @@ const isLoading = ref(false)
 const submitted = ref(false)
 const error = ref<string | null>(null)
 
-const ALLOWED_DOMAINS = ['amalitech.com', 'amalitechtraining.com', 'amalitechtraining.org']
-
-const emailError = computed(() => {
-  if (!emailTouched.value || !email.value) return ''
-  const domain = email.value.split('@')[1]?.toLowerCase()
-  if (!domain || !ALLOWED_DOMAINS.includes(domain)) {
-    return 'Email must be from @amalitech.com, @amalitechtraining.com, or @amalitechtraining.org'
-  }
-  return ''
-})
-
-const isEmailValid = computed(() => {
-  const domain = email.value.split('@')[1]?.toLowerCase()
-  return !!domain && ALLOWED_DOMAINS.includes(domain)
-})
+const { emailError, isEmailValid } = useAllowedEmailDomain(email, emailTouched)
 
 async function submit() {
   emailTouched.value = true
@@ -38,7 +26,7 @@ async function submit() {
     await forgotPasswordApi(email.value.trim())
     submitted.value = true
   } catch (err) {
-    const msg = err instanceof Error ? err.message : ''
+    const msg = toErrorMessage(err, '')
     error.value = msg || 'Something went wrong. Please try again.'
   } finally {
     isLoading.value = false
