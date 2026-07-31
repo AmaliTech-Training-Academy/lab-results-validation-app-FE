@@ -1,4 +1,4 @@
-import { ref, onScopeDispose, type Ref } from 'vue'
+import { ref, type Ref } from 'vue'
 import type {
   SyncDoneData,
   SyncFileArchivedData,
@@ -11,7 +11,8 @@ import type {
   SyncFolderFailedData,
 } from '@/types/run.types'
 import { syncRunStreamUrl } from '@/services/runs.service'
-import { USE_MOCKS, runs as mockRuns } from '@/services/mock/fixtures'
+import { USE_MOCKS } from '@/services/mock/useMocks'
+import { useEventSourceStream } from '@/composables/useEventSourceStream'
 
 export type SyncRunOverall = 'idle' | 'running' | 'passed' | 'failed'
 
@@ -56,26 +57,11 @@ export function useSyncRunStream(cohortId: string, runId: string, options: UseSy
   const isPolling = ref(false)
   const error = ref<string | null>(null)
 
-  let source: EventSource | null = null
-  let mockTimer: ReturnType<typeof setTimeout> | null = null
-  let disposed = false
-
-  function closeSource() {
-    source?.close()
-    source = null
-  }
-
-  function clearMockTimer() {
-    if (mockTimer) {
-      clearTimeout(mockTimer)
-      mockTimer = null
-    }
-  }
+  const eventSource = useEventSourceStream()
 
   function stop() {
     isPolling.value = false
-    closeSource()
-    clearMockTimer()
+    eventSource.stop()
   }
 
   /** Stops the stream and clears file/summary state. */
@@ -141,34 +127,26 @@ export function useSyncRunStream(cohortId: string, runId: string, options: UseSy
     options.onDone?.(overall.value)
   }
 
-  function bindEvent<T>(name: string, handler: (data: T) => void) {
-    source?.addEventListener(name, (e) => {
-      try {
-        handler(JSON.parse((e as MessageEvent).data) as T)
-      } catch {
-        error.value = 'Received a malformed message from the sync stream.'
-      }
-    })
-  }
-
   function openRealStream() {
-    closeSource()
-    source = new EventSource(syncRunStreamUrl(cohortId))
-    bindEvent<SyncFileDiscoveredData>('file.discovered', handleDiscovered)
-    bindEvent<SyncFileUnchangedData>('file.unchanged', handleUnchanged)
-    bindEvent<SyncFileChangedData>('file.changed', handleChanged)
-    bindEvent<SyncFileArchivedData>('file.archived', handleArchived)
-    bindEvent<SyncFileFailedData>('file.failed', handleFailed)
-    bindEvent<SyncFileArchiveFailedData>('file.archive_failed', handleArchiveFailed)
-    bindEvent<SyncFolderFailedData>('folder.failed', handleFolderFailed)
-    bindEvent<SyncDoneData>('sync.done', handleDone)
+    const onMalformed = () => {
+      error.value = 'Received a malformed message from the sync stream.'
+    }
+    const source = eventSource.open(syncRunStreamUrl(cohortId))
+    eventSource.bindEvent<SyncFileDiscoveredData>('file.discovered', handleDiscovered, onMalformed)
+    eventSource.bindEvent<SyncFileUnchangedData>('file.unchanged', handleUnchanged, onMalformed)
+    eventSource.bindEvent<SyncFileChangedData>('file.changed', handleChanged, onMalformed)
+    eventSource.bindEvent<SyncFileArchivedData>('file.archived', handleArchived, onMalformed)
+    eventSource.bindEvent<SyncFileFailedData>('file.failed', handleFailed, onMalformed)
+    eventSource.bindEvent<SyncFileArchiveFailedData>('file.archive_failed', handleArchiveFailed, onMalformed)
+    eventSource.bindEvent<SyncFolderFailedData>('folder.failed', handleFolderFailed, onMalformed)
+    eventSource.bindEvent<SyncDoneData>('sync.done', handleDone, onMalformed)
     source.onerror = () => {
       // EventSource reconnects on its own (Last-Event-ID replay) — just surface a soft warning.
-      if (!disposed) error.value = 'Connection to the sync stream was interrupted — reconnecting…'
+      if (!eventSource.isDisposed()) error.value = 'Connection to the sync stream was interrupted — reconnecting…'
     }
   }
 
-  function finishMock() {
+  function finishMock(mockRuns: (typeof import('@/services/mock/fixtures'))['runs']) {
     const changed = files.value.filter((f) => f.status === 'archived').length
     const unchanged = files.value.filter((f) => f.status === 'unchanged').length
     const failed = files.value.filter((f) => f.status === 'failed' || f.status === 'archive_failed').length
@@ -196,7 +174,8 @@ export function useSyncRunStream(cohortId: string, runId: string, options: UseSy
     handleDone(data)
   }
 
-  function runMock() {
+  async function runMock() {
+    const { runs: mockRuns } = await import('@/services/mock/fixtures')
     const steps: Array<() => void> = [
       () => handleDiscovered({ file: 'BE_Lab_Grading.xlsx', itemId: 'item-1', versionId: '1.0', quickXorHash: 'hash-1' }),
       () => handleUnchanged({ file: 'BE_Lab_Grading.xlsx' }),
@@ -206,21 +185,21 @@ export function useSyncRunStream(cohortId: string, runId: string, options: UseSy
     ]
     let i = 0
     const next = () => {
-      if (disposed) return
+      if (eventSource.isDisposed()) return
       const step = steps[i]
       if (!step) {
-        finishMock()
+        finishMock(mockRuns)
         return
       }
       step()
       i += 1
-      mockTimer = setTimeout(next, 350)
+      eventSource.scheduleMock(next, 350)
     }
     next()
   }
 
   function start() {
-    if (isPolling.value || disposed) return
+    if (isPolling.value || eventSource.isDisposed()) return
     isPolling.value = true
     error.value = null
     overall.value = 'running'
@@ -228,17 +207,11 @@ export function useSyncRunStream(cohortId: string, runId: string, options: UseSy
     folderErrors.value = []
     summary.value = null
     if (USE_MOCKS) {
-      runMock()
+      void runMock()
     } else {
       openRealStream()
     }
   }
-
-  onScopeDispose(() => {
-    disposed = true
-    closeSource()
-    clearMockTimer()
-  })
 
   return { files, folderErrors, summary, overall, isPolling, error, start, stop, reset }
 }

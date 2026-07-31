@@ -68,7 +68,7 @@ describe('VButton', () => {
   })
 
   it('renders a leading icon svg when icon prop is set', () => {
-    const wrapper = mount(VButton, { props: { icon: 'upload-cloud' } })
+    const wrapper = mount(VButton, { props: { icon: 'plus' } })
     expect(wrapper.find('svg').exists()).toBe(true)
   })
 
