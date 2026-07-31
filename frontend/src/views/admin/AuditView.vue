@@ -6,7 +6,7 @@ import VIcon from '@/components/base/VIcon.vue'
 import VPill from '@/components/base/VPill.vue'
 import { useAuditStore } from '@/stores/audit'
 import { useCohortsStore } from '@/stores/cohorts'
-import type { RunStatus } from '@/types/run.types'
+import { RUN_STATUS_TONE, type RunStatus } from '@/types/run.types'
 import type { AuditEvent } from '@/types/audit.types'
 
 const router = useRouter()
@@ -38,10 +38,6 @@ onMounted(() => {
   cohorts.fetchList()
   applyFilters()
 })
-
-const RUN_TONE: Record<RunStatus, 'success' | 'warning' | 'danger' | 'info'> = {
-  completed: 'success', partial: 'warning', failed: 'danger', skipped: 'info', processing: 'info',
-}
 
 const EVENT_ICON: Record<string, string> = {
   LINK_SUBMITTED: 'link', GATE_FAILED: 'x-circle', GATE_PASSED: 'check-circle-2',
@@ -128,7 +124,7 @@ function toggleRun(id: string) {
             <td class="mono" style="font-weight: 500">{{ r.workbookFilename ?? '—' }}</td>
             <td>{{ r.cohortName ?? '—' }}</td>
             <td class="muted">{{ !r.triggerType ? '—' : r.triggerType === 'SCHEDULED' ? 'Scheduled · System' : `Manual · ${r.triggeredByEmail ?? r.triggeredBy ?? 'Admin'}` }}</td>
-            <td style="text-align: center"><VPill :tone="RUN_TONE[r.status]">{{ r.status }}</VPill></td>
+            <td style="text-align: center"><VPill :tone="RUN_STATUS_TONE[r.status]">{{ r.status }}</VPill></td>
             <td class="mono muted">{{ fmt(r.runAt ?? r.startedAt) }}</td>
             <td style="text-align: right; width: 44px"><VIcon :name="expandedRun === r.id ? 'chevron-down' : 'chevron-right'" :size="18" class="muted" /></td>
           </tr>

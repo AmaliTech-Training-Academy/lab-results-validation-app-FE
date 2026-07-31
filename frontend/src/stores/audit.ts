@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { toErrorMessage } from '@/utils/errors'
 import type { IngestionRun } from '@/types/run.types'
 import type { AuditEvent, AuditFilters } from '@/types/audit.types'
 import { listAuditRuns, listAuditEvents } from '@/services/audit.service'
@@ -23,7 +24,7 @@ export const useAuditStore = defineStore('audit', () => {
       runs.value = r
       events.value = e
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to load audit log'
+      error.value = toErrorMessage(err, 'Failed to load audit log')
     } finally {
       loading.value = false
     }
