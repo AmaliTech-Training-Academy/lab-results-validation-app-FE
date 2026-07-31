@@ -197,6 +197,7 @@ async function sendAll() {
             <tr>
               <th>Workbook</th>
               <th>Status</th>
+              <th style="text-align: center">Failure rate</th>
               <th v-for="s in FILE_SUMMARY" :key="s.key" style="text-align: center">{{ s.label }}</th>
               <th>Run at</th>
             </tr>
@@ -205,12 +206,25 @@ async function sendAll() {
             <tr v-for="f in files" :key="f.workbookFilename">
               <td class="mono" style="font-weight: 500">{{ f.workbookFilename }}</td>
               <td class="muted">{{ f.status }}</td>
+              <td style="text-align: center">
+                <VPill :tone="f.highFailureRate ? 'danger' : 'info'">{{ f.failureRatePercent.toFixed(1) }}%</VPill>
+              </td>
               <td v-for="s in FILE_SUMMARY" :key="s.key" class="mono" style="text-align: center">{{ f[s.key] }}</td>
               <td class="mono muted">{{ formatRunAt(f.runAt) }}</td>
             </tr>
           </tbody>
         </table>
       </div>
+
+      <details v-for="f in files.filter((f) => f.highFailureRate)" :key="f.workbookFilename + '-reasons'" class="err-details">
+        <summary>
+          <VIcon name="alert-triangle" :size="14" />
+          {{ f.workbookFilename }} — {{ f.failureRatePercent.toFixed(1) }}% rejected, by rule
+        </summary>
+        <ul class="err-list">
+          <li v-for="r in f.rejectionReasons" :key="r.rule" class="mono err-item">{{ r.rule }} — {{ r.count }} row{{ r.count === 1 ? '' : 's' }}</li>
+        </ul>
+      </details>
     </section>
 
     <!-- Panel 2 — Conflict queue -->
