@@ -46,7 +46,7 @@ export const CONFLICT_STATUS_TONE: Record<ConflictStatus, 'success' | 'warning' 
 }
 
 /**
- * GET /runs/{id}/conflicts response row — backend: IngestionConflictResponse
+ * GET /cohorts/{id}/sync/runs/{jobId}/conflicts response row — backend: IngestionConflictResponse
  * record (B10). This is the raw/normalized shape straight off the
  * ingestion_conflicts table — unlike `IngestionConflict` above, it has no
  * denormalized row values (`existingResultId` is just an id, `incomingPayload`
@@ -69,7 +69,7 @@ export interface IngestionConflictResponse {
   updatedAt: string
 }
 
-/** Filters for GET /runs/{id}/conflicts. */
+/** Filters for GET /cohorts/{id}/sync/runs/{jobId}/conflicts. */
 export interface ConflictListFilters {
   status?: ConflictStatus
   page?: number

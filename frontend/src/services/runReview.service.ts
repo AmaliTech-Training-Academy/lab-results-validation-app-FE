@@ -67,7 +67,11 @@ export async function getRunReview(cohortId: string, runId: string): Promise<Run
 }
 
 /** Newest-first, in-file duplicates held for manual resolution during grading ingestion (B10). */
-export async function listConflicts(runId: string, filters: ConflictListFilters = {}): Promise<Paged<IngestionConflictResponse>> {
+export async function listConflicts(
+  cohortId: string,
+  runId: string,
+  filters: ConflictListFilters = {},
+): Promise<Paged<IngestionConflictResponse>> {
   if (USE_MOCKS) {
     const { mockDelay, ingestionConflictResponses } = await import('./mock/fixtures')
     const list = ingestionConflictResponses
@@ -86,7 +90,9 @@ export async function listConflicts(runId: string, filters: ConflictListFilters 
       last: start + size >= list.length,
     })
   }
-  return http.get<Paged<IngestionConflictResponse>>(`/runs/${runId}/conflicts${buildConflictsQuery(filters)}`)
+  return http.get<Paged<IngestionConflictResponse>>(
+    `/cohorts/${cohortId}/sync/runs/${runId}/conflicts${buildConflictsQuery(filters)}`,
+  )
 }
 
 function buildConflictsQuery(filters: ConflictListFilters): string {

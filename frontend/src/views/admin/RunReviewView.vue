@@ -23,7 +23,7 @@ const cohortId = route.query.cohortId as string
 // (§9c) — this stream drives the processing panel, then fetches the full
 // review once the backend's sync.done event lands.
 const stream = useSyncRunStream(cohortId, runId, {
-  onDone: () => Promise.all([store.fetchReview(cohortId, runId), store.fetchConflicts(runId)]),
+  onDone: () => Promise.all([store.fetchReview(cohortId, runId), store.fetchConflicts(cohortId, runId)]),
 })
 
 const FILE_ICON: Record<SyncFileStatus, string> = {
@@ -48,7 +48,7 @@ onMounted(async () => {
   if (runsStore.current?.status === 'processing') {
     stream.start()
   } else {
-    await Promise.all([store.fetchReview(cohortId, runId), store.fetchConflicts(runId)])
+    await Promise.all([store.fetchReview(cohortId, runId), store.fetchConflicts(cohortId, runId)])
   }
 })
 
@@ -95,11 +95,11 @@ function notifTypeLabel(t: Notification['type']): string {
 }
 
 function onConflictStatusChange(status: ConflictStatus | '') {
-  store.setConflictsStatusFilter(runId, status)
+  store.setConflictsStatusFilter(cohortId, runId, status)
 }
 
 function changeConflictsPage(page: number) {
-  store.fetchConflicts(runId, page)
+  store.fetchConflicts(cohortId, runId, page)
 }
 
 async function sendOne(n: Notification) {
@@ -274,7 +274,7 @@ async function sendAll() {
           </table>
         </div>
 
-        <div v-if="store.conflictsPage" class="pager">
+        <div v-if="store.conflictsPage && conflictRows.length > 0" class="pager">
           <VButton size="sm" variant="ghost" :disabled="store.conflictsPage.number === 0" @click="changeConflictsPage(store.conflictsPage.number - 1)">Prev</VButton>
           <span class="mono muted">Page {{ store.conflictsPage.number + 1 }} of {{ Math.max(store.conflictsPage.totalPages, 1) }}</span>
           <VButton size="sm" variant="ghost" :disabled="store.conflictsPage.last" @click="changeConflictsPage(store.conflictsPage.number + 1)">Next</VButton>
