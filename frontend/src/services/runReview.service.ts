@@ -104,16 +104,23 @@ function buildConflictsQuery(filters: ConflictListFilters): string {
   return qs ? `?${qs}` : ''
 }
 
-export async function resolveConflict(id: string, payload: ResolveConflictPayload): Promise<IngestionConflict> {
+/** Resolves a held in-file duplicate conflict (B10): keep the existing row, keep the incoming row, or reject both. */
+export async function resolveConflict(
+  cohortId: string,
+  conflictId: string,
+  payload: ResolveConflictPayload,
+): Promise<IngestionConflictResponse> {
   if (USE_MOCKS) {
-    const { mockDelay, conflicts } = await import('./mock/fixtures')
-    const c = conflicts.find((x) => x.id === id)
+    const { mockDelay, ingestionConflictResponses } = await import('./mock/fixtures')
+    const c = ingestionConflictResponses.find((x) => x.id === conflictId)
     if (!c) throw new Error('Conflict not found')
-    c.status = 'RESOLVED'
-    c.resolutionNote = payload.note
+    c.status = payload.action === 'REJECT' ? 'DISMISSED' : 'RESOLVED'
+    c.resolutionNote = payload.note ?? null
+    c.resolvedBy = 'you@amalitech.com'
+    c.resolvedAt = new Date().toISOString()
     return mockDelay(c)
   }
-  return http.post<IngestionConflict>(`/conflicts/${id}/resolve`, payload)
+  return http.patch<IngestionConflictResponse>(`/cohorts/${cohortId}/conflicts/${conflictId}/resolve`, payload)
 }
 
 export async function dismissConflict(id: string): Promise<IngestionConflict> {

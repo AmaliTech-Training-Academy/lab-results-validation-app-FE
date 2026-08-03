@@ -31,10 +31,12 @@ export interface IngestionConflict {
   resolutionNote?: string
 }
 
-/** Admin picks which incoming row wins, or rejects all. */
+/** Mirrors backend enum ConflictResolutionAction. */
+export type ConflictResolutionAction = 'KEEP_EXISTING' | 'KEEP_INCOMING' | 'REJECT'
+
+/** Body for PATCH /cohorts/{id}/conflicts/{conflictId}/resolve. */
 export interface ResolveConflictPayload {
-  /** Index into incomingRows; omit / null to reject all. */
-  chosenRowIndex?: number | null
+  action: ConflictResolutionAction
   note?: string
 }
 

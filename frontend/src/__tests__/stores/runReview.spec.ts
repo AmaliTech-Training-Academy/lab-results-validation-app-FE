@@ -74,13 +74,17 @@ describe('useRunReviewStore', () => {
     expect(store.review?.notifications).toHaveLength(2)
   })
 
-  it('resolveConflict replaces the conflict in place', async () => {
-    vi.mocked(svc.getRunReview).mockResolvedValue(review())
-    vi.mocked(svc.resolveConflict).mockResolvedValue(conflict({ status: 'RESOLVED', resolutionNote: 'kept row 1' }))
+  it('resolveConflict patches the matching row in the conflicts page', async () => {
+    vi.mocked(svc.listConflicts).mockResolvedValue(page())
+    vi.mocked(svc.resolveConflict).mockResolvedValue(
+      conflictResponse({ status: 'RESOLVED', resolutionNote: 'kept incoming' }),
+    )
     const store = useRunReviewStore()
-    await store.fetchReview('c1', 'run-1')
-    await store.resolveConflict('cf-1', { chosenRowIndex: 0 })
-    expect(store.review?.conflicts[0]!.status).toBe('RESOLVED')
+    await store.fetchConflicts('c1', 'run-1')
+    await store.resolveConflict('c1', 'cf-1', { action: 'KEEP_INCOMING' })
+    expect(svc.resolveConflict).toHaveBeenCalledWith('c1', 'cf-1', { action: 'KEEP_INCOMING' })
+    expect(store.conflictsPage?.content[0]!.status).toBe('RESOLVED')
+    expect(store.conflictsPage?.content[0]!.resolutionNote).toBe('kept incoming')
   })
 
   it('sendNotification marks the item sent', async () => {

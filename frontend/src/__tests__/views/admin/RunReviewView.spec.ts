@@ -167,6 +167,37 @@ describe('RunReviewView', () => {
     expect(reviewSvc.listConflicts).toHaveBeenCalledWith('c1', 'run-1', { status: 'RESOLVED', page: 0, size: 20 })
   })
 
+  it('resolves a pending conflict via the Keep incoming button', async () => {
+    vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
+    vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
+    vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage())
+    vi.mocked(reviewSvc.resolveConflict).mockResolvedValue({
+      ...conflictsPage().content[0]!,
+      status: 'RESOLVED',
+      resolutionNote: null,
+    })
+    const wrapper = mountView()
+    await flushPromises()
+    await completeSync()
+
+    await wrapper.findAll('button').find((b) => b.text() === 'Keep incoming')!.trigger('click')
+    await flushPromises()
+
+    expect(reviewSvc.resolveConflict).toHaveBeenCalledWith('c1', 'cf-1', { action: 'KEEP_INCOMING' })
+    expect(wrapper.text()).toContain('RESOLVED')
+  })
+
+  it('hides the Keep existing button when there is no existing result to keep', async () => {
+    vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
+    vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
+    vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage())
+    const wrapper = mountView()
+    await flushPromises()
+    await completeSync()
+
+    expect(wrapper.findAll('button').some((b) => b.text() === 'Keep existing')).toBe(false)
+  })
+
   it('send-all dispatches held notifications', async () => {
     vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
     vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
