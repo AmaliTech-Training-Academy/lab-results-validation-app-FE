@@ -4,10 +4,12 @@ import { createRouter, createMemoryHistory, type Router } from 'vue-router'
 import { createPinia } from 'pinia'
 import RunReviewView from '@/views/admin/RunReviewView.vue'
 import type { IngestionRun } from '@/types/run.types'
-import type { RunReview } from '@/types/runReview.types'
+import type { IngestionConflictResponse, RunReview } from '@/types/runReview.types'
+import type { Paged } from '@/types/common.types'
 
 vi.mock('@/services/runReview.service', () => ({
   getRunReview: vi.fn<() => Promise<unknown>>(),
+  listConflicts: vi.fn<() => Promise<unknown>>(),
   resolveConflict: vi.fn<() => Promise<unknown>>(),
   dismissConflict: vi.fn<() => Promise<unknown>>(),
   sendNotification: vi.fn<() => Promise<unknown>>(),
@@ -49,20 +51,26 @@ const run: IngestionRun = {
 function review(): RunReview {
   return {
     run,
-    conflicts: [{
-      id: 'cf-1', ingestionRunId: 'run-1', cohortId: 'c1', learnerId: 'DEG-1', labId: 'lab-1',
-      conflictKind: 'in_file_duplicate', existingResult: null,
-      incomingRows: [
-        { learnerId: 'DEG-1', labTitle: 'Lab 2', score: 90, submittedOn: '2026-07-19', sourceRef: 'r12' },
-        { learnerId: 'DEG-1', labTitle: 'Lab 2', score: 85, submittedOn: '2026-07-19', sourceRef: 'r21' },
-      ],
-      status: 'PENDING',
-    }],
+    conflicts: [],
     notifications: [{
       id: 'nt-1', ingestionRunId: 'run-1', cohortId: 'c1', type: 'instructor_digest',
       recipientKind: 'instructor', recipientName: 'Sarah', recipientEmail: 's@x.com',
       dispatchPolicy: 'HELD', status: 'PENDING',
     }],
+  }
+}
+
+function conflictsPage(overrides: Partial<Paged<IngestionConflictResponse>> = {}): Paged<IngestionConflictResponse> {
+  return {
+    content: [{
+      id: 'cf-1', ingestionRunId: 'run-1', cohortId: 'c1', learnerId: 'DEG-1', labId: 'lab-1',
+      conflictKind: 'in_file_duplicate', existingResultId: null,
+      incomingPayload: { score: [90, 85] },
+      status: 'PENDING', resolvedBy: null, resolvedAt: null, resolutionNote: null,
+      createdAt: '2026-07-21T08:01:00Z', updatedAt: '2026-07-21T08:01:00Z',
+    }],
+    number: 0, size: 20, totalElements: 1, totalPages: 1, last: true,
+    ...overrides,
   }
 }
 
@@ -116,6 +124,7 @@ describe('RunReviewView', () => {
   it('renders the three panels once the sync stream completes', async () => {
     vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
     vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
+    vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage())
     const wrapper = mountView()
     await flushPromises()
     expect(wrapper.text()).toContain('Syncing grading data')
@@ -130,21 +139,38 @@ describe('RunReviewView', () => {
     expect(text).toContain('DEG-1')
   })
 
-  it('resolving a conflict calls the service with the chosen row', async () => {
+  it('fetches conflicts for the run and paginates via the Next button', async () => {
     vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
     vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
-    vi.mocked(reviewSvc.resolveConflict).mockResolvedValue({ ...review().conflicts[0]!, status: 'RESOLVED' })
+    vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage({ last: false, totalPages: 2 }))
     const wrapper = mountView()
     await flushPromises()
     await completeSync()
-    await wrapper.findAll('button').find((b) => b.text() === 'Use this')!.trigger('click')
+
+    expect(reviewSvc.listConflicts).toHaveBeenCalledWith('run-1', { status: undefined, page: 0, size: 20 })
+
+    await wrapper.findAll('button').find((b) => b.text() === 'Next')!.trigger('click')
     await flushPromises()
-    expect(reviewSvc.resolveConflict).toHaveBeenCalledWith('cf-1', { chosenRowIndex: 0 })
+    expect(reviewSvc.listConflicts).toHaveBeenCalledWith('run-1', { status: undefined, page: 1, size: 20 })
+  })
+
+  it('re-fetches conflicts when the status filter changes', async () => {
+    vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
+    vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
+    vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage())
+    const wrapper = mountView()
+    await flushPromises()
+    await completeSync()
+
+    await wrapper.find('select').setValue('RESOLVED')
+    await flushPromises()
+    expect(reviewSvc.listConflicts).toHaveBeenCalledWith('run-1', { status: 'RESOLVED', page: 0, size: 20 })
   })
 
   it('send-all dispatches held notifications', async () => {
     vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
     vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
+    vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage())
     vi.mocked(reviewSvc.sendAllNotifications).mockResolvedValue([{ ...review().notifications[0]!, status: 'SENT' }])
     const wrapper = mountView()
     await flushPromises()

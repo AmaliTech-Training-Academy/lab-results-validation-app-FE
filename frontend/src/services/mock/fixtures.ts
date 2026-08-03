@@ -14,7 +14,7 @@ import type {
   SpecializationWithModules,
 } from '@/types/domain.types'
 import type { IngestionRun } from '@/types/run.types'
-import type { IngestionConflict, Notification } from '@/types/runReview.types'
+import type { IngestionConflict, IngestionConflictResponse, Notification } from '@/types/runReview.types'
 import type { AuditEvent } from '@/types/audit.types'
 import type { Settings } from '@/types/settings.types'
 import type { SyncScheduleResponse } from '@/types/syncSchedule.types'
@@ -218,6 +218,58 @@ export const conflicts: IngestionConflict[] = [
       { learnerId: 'DEG-2026-001', labTitle: 'Lab 2 — State', score: 85, submittedOn: '2026-07-19', instructorId: 'INS-001', sourceRef: 'FEM01!row 21' },
     ],
     status: 'PENDING',
+  },
+]
+
+/** Raw shape from GET /runs/{id}/conflicts (B10) — kept separate from `conflicts` above, which is the speculative merge-view shape the resolve/dismiss actions still target. */
+export const ingestionConflictResponses: IngestionConflictResponse[] = [
+  {
+    id: 'cf-001',
+    ingestionRunId: 'run-002',
+    cohortId: 'coh-stood',
+    learnerId: 'DEG-2026-001',
+    labId: 'lab-fe-state',
+    conflictKind: 'in_file_duplicate',
+    existingResultId: null,
+    incomingPayload: { score: [90, 85], submittedOn: '2026-07-19', sourceRef: ['FEM01!row 12', 'FEM01!row 21'] },
+    status: 'PENDING',
+    resolvedBy: null,
+    resolvedAt: null,
+    resolutionNote: null,
+    createdAt: '2026-07-21T08:01:00Z',
+    updatedAt: '2026-07-21T08:01:00Z',
+  },
+  {
+    id: 'cf-002',
+    ingestionRunId: 'run-002',
+    cohortId: 'coh-stood',
+    learnerId: 'DEG-2026-003',
+    labId: 'lab-fe-components',
+    conflictKind: 'in_file_duplicate',
+    existingResultId: 'res-778',
+    incomingPayload: { score: [72, 78], submittedOn: '2026-07-19', sourceRef: ['FEM01!row 30', 'FEM01!row 41'] },
+    status: 'RESOLVED',
+    resolvedBy: 'admin@amalitech.com',
+    resolvedAt: '2026-07-21T09:10:00Z',
+    resolutionNote: 'Kept row 41 (later submission).',
+    createdAt: '2026-07-21T08:02:00Z',
+    updatedAt: '2026-07-21T09:10:00Z',
+  },
+  {
+    id: 'cf-003',
+    ingestionRunId: 'run-002',
+    cohortId: 'coh-stood',
+    learnerId: 'DEG-2026-004',
+    labId: 'lab-fe-components',
+    conflictKind: 'in_file_duplicate',
+    existingResultId: null,
+    incomingPayload: { score: [60, 60], submittedOn: '2026-07-19', sourceRef: ['FEM01!row 33', 'FEM01!row 34'] },
+    status: 'DISMISSED',
+    resolvedBy: 'admin@amalitech.com',
+    resolvedAt: '2026-07-21T09:12:00Z',
+    resolutionNote: 'Duplicate export from instructor — no action needed.',
+    createdAt: '2026-07-21T08:03:00Z',
+    updatedAt: '2026-07-21T09:12:00Z',
   },
 ]
 
