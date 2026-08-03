@@ -147,11 +147,11 @@ describe('RunReviewView', () => {
     await flushPromises()
     await completeSync()
 
-    expect(reviewSvc.listConflicts).toHaveBeenCalledWith('run-1', { status: undefined, page: 0, size: 20 })
+    expect(reviewSvc.listConflicts).toHaveBeenCalledWith('c1', 'run-1', { status: undefined, page: 0, size: 20 })
 
     await wrapper.findAll('button').find((b) => b.text() === 'Next')!.trigger('click')
     await flushPromises()
-    expect(reviewSvc.listConflicts).toHaveBeenCalledWith('run-1', { status: undefined, page: 1, size: 20 })
+    expect(reviewSvc.listConflicts).toHaveBeenCalledWith('c1', 'run-1', { status: undefined, page: 1, size: 20 })
   })
 
   it('re-fetches conflicts when the status filter changes', async () => {
@@ -164,7 +164,7 @@ describe('RunReviewView', () => {
 
     await wrapper.find('select').setValue('RESOLVED')
     await flushPromises()
-    expect(reviewSvc.listConflicts).toHaveBeenCalledWith('run-1', { status: 'RESOLVED', page: 0, size: 20 })
+    expect(reviewSvc.listConflicts).toHaveBeenCalledWith('c1', 'run-1', { status: 'RESOLVED', page: 0, size: 20 })
   })
 
   it('send-all dispatches held notifications', async () => {

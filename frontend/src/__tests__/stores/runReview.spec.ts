@@ -107,23 +107,23 @@ describe('useRunReviewStore', () => {
   it('fetchConflicts loads a page for the run', async () => {
     vi.mocked(svc.listConflicts).mockResolvedValue(page())
     const store = useRunReviewStore()
-    await store.fetchConflicts('run-1')
-    expect(svc.listConflicts).toHaveBeenCalledWith('run-1', { status: undefined, page: 0, size: 20 })
+    await store.fetchConflicts('c1', 'run-1')
+    expect(svc.listConflicts).toHaveBeenCalledWith('c1', 'run-1', { status: undefined, page: 0, size: 20 })
     expect(store.conflictsPage?.content).toHaveLength(1)
   })
 
   it('fetchConflicts surfaces a load error', async () => {
     vi.mocked(svc.listConflicts).mockRejectedValue(new Error('boom'))
     const store = useRunReviewStore()
-    await store.fetchConflicts('run-1')
+    await store.fetchConflicts('c1', 'run-1')
     expect(store.conflictsError).toBe('boom')
   })
 
   it('setConflictsStatusFilter re-fetches page 0 with the new status', async () => {
     vi.mocked(svc.listConflicts).mockResolvedValue(page())
     const store = useRunReviewStore()
-    await store.fetchConflicts('run-1', 1)
-    await store.setConflictsStatusFilter('run-1', 'RESOLVED')
-    expect(svc.listConflicts).toHaveBeenLastCalledWith('run-1', { status: 'RESOLVED', page: 0, size: 20 })
+    await store.fetchConflicts('c1', 'run-1', 1)
+    await store.setConflictsStatusFilter('c1', 'run-1', 'RESOLVED')
+    expect(svc.listConflicts).toHaveBeenLastCalledWith('c1', 'run-1', { status: 'RESOLVED', page: 0, size: 20 })
   })
 })

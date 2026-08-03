@@ -221,7 +221,7 @@ export const conflicts: IngestionConflict[] = [
   },
 ]
 
-/** Raw shape from GET /runs/{id}/conflicts (B10) — kept separate from `conflicts` above, which is the speculative merge-view shape the resolve/dismiss actions still target. */
+/** Raw shape from GET /cohorts/{id}/sync/runs/{jobId}/conflicts (B10) — kept separate from `conflicts` above, which is the speculative merge-view shape the resolve/dismiss actions still target. */
 export const ingestionConflictResponses: IngestionConflictResponse[] = [
   {
     id: 'cf-001',

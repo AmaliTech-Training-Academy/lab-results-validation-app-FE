@@ -26,11 +26,11 @@ export const useRunReviewStore = defineStore('runReview', () => {
   const conflictsError = ref<string | null>(null)
 
   /** Fetches one page of the real conflict list (B10) — independent of `review`, which still carries the speculative merge-view `conflicts` array. */
-  async function fetchConflicts(runId: string, page = 0) {
+  async function fetchConflicts(cohortId: string, runId: string, page = 0) {
     conflictsLoading.value = true
     conflictsError.value = null
     try {
-      conflictsPage.value = await listConflictsApi(runId, {
+      conflictsPage.value = await listConflictsApi(cohortId, runId, {
         status: conflictsStatusFilter.value || undefined,
         page,
         size: CONFLICTS_PAGE_SIZE,
@@ -42,9 +42,9 @@ export const useRunReviewStore = defineStore('runReview', () => {
     }
   }
 
-  async function setConflictsStatusFilter(runId: string, status: ConflictStatus | '') {
+  async function setConflictsStatusFilter(cohortId: string, runId: string, status: ConflictStatus | '') {
     conflictsStatusFilter.value = status
-    await fetchConflicts(runId, 0)
+    await fetchConflicts(cohortId, runId, 0)
   }
 
   async function fetchReview(cohortId: string, runId: string) {
