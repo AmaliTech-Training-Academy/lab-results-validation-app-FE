@@ -1,9 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { toErrorMessage } from '@/utils/errors'
-import type { RunReview, ResolveConflictPayload } from '@/types/runReview.types'
+import type { ConflictStatus, IngestionConflictResponse, RunReview, ResolveConflictPayload } from '@/types/runReview.types'
+import type { Paged } from '@/types/common.types'
 import {
   getRunReview,
+  listConflicts as listConflictsApi,
   resolveConflict as resolveConflictApi,
   dismissConflict as dismissConflictApi,
   sendNotification as sendNotificationApi,
@@ -11,10 +13,39 @@ import {
   dismissNotification as dismissNotificationApi,
 } from '@/services/runReview.service'
 
+const CONFLICTS_PAGE_SIZE = 20
+
 export const useRunReviewStore = defineStore('runReview', () => {
   const review = ref<RunReview | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
+
+  const conflictsPage = ref<Paged<IngestionConflictResponse> | null>(null)
+  const conflictsStatusFilter = ref<ConflictStatus | ''>('')
+  const conflictsLoading = ref(false)
+  const conflictsError = ref<string | null>(null)
+
+  /** Fetches one page of the real conflict list (B10) — independent of `review`, which still carries the speculative merge-view `conflicts` array. */
+  async function fetchConflicts(runId: string, page = 0) {
+    conflictsLoading.value = true
+    conflictsError.value = null
+    try {
+      conflictsPage.value = await listConflictsApi(runId, {
+        status: conflictsStatusFilter.value || undefined,
+        page,
+        size: CONFLICTS_PAGE_SIZE,
+      })
+    } catch (e) {
+      conflictsError.value = toErrorMessage(e, 'Failed to load conflicts')
+    } finally {
+      conflictsLoading.value = false
+    }
+  }
+
+  async function setConflictsStatusFilter(runId: string, status: ConflictStatus | '') {
+    conflictsStatusFilter.value = status
+    await fetchConflicts(runId, 0)
+  }
 
   async function fetchReview(cohortId: string, runId: string) {
     loading.value = true
@@ -68,6 +99,12 @@ export const useRunReviewStore = defineStore('runReview', () => {
     loading,
     error,
     fetchReview,
+    conflictsPage,
+    conflictsStatusFilter,
+    conflictsLoading,
+    conflictsError,
+    fetchConflicts,
+    setConflictsStatusFilter,
     resolveConflict,
     dismissConflict,
     sendNotification,

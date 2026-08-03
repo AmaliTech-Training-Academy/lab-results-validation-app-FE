@@ -38,6 +38,44 @@ export interface ResolveConflictPayload {
   note?: string
 }
 
+/** Pill tone for a conflict's status, shared across every view that renders it. */
+export const CONFLICT_STATUS_TONE: Record<ConflictStatus, 'success' | 'warning' | 'danger' | 'info'> = {
+  PENDING: 'warning',
+  RESOLVED: 'success',
+  DISMISSED: 'info',
+}
+
+/**
+ * GET /runs/{id}/conflicts response row — backend: IngestionConflictResponse
+ * record (B10). This is the raw/normalized shape straight off the
+ * ingestion_conflicts table — unlike `IngestionConflict` above, it has no
+ * denormalized row values (`existingResultId` is just an id, `incomingPayload`
+ * is the raw column map), plus the resolution audit fields.
+ */
+export interface IngestionConflictResponse {
+  id: string
+  ingestionRunId: string
+  cohortId: string
+  learnerId: string | null
+  labId: string | null
+  conflictKind: ConflictKind
+  existingResultId: string | null
+  incomingPayload: Record<string, unknown>
+  status: ConflictStatus
+  resolvedBy: string | null
+  resolvedAt: string | null
+  resolutionNote: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+/** Filters for GET /runs/{id}/conflicts. */
+export interface ConflictListFilters {
+  status?: ConflictStatus
+  page?: number
+  size?: number
+}
+
 // --- Notifications (staged outbox + moderation, Epic C) -----------------------
 
 /** schema: notifications.type CHECK. */

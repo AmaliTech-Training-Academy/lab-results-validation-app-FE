@@ -1,8 +1,16 @@
 // Run-Review: conflict queue + staged-notification moderation
 // (PRD Epic B B10, Epic C C7, FE strategy §8).
 import { http } from './http'
-import type { IngestionConflict, Notification, ResolveConflictPayload, RunReview } from '@/types/runReview.types'
+import type {
+  ConflictListFilters,
+  IngestionConflict,
+  IngestionConflictResponse,
+  Notification,
+  ResolveConflictPayload,
+  RunReview,
+} from '@/types/runReview.types'
 import type { CohortSyncJobStatus, GradingSyncOverviewResponse, RunCounts, RunStatus } from '@/types/run.types'
+import type { Paged } from '@/types/common.types'
 import { USE_MOCKS } from './mock/useMocks'
 
 const OVERVIEW_STATUS_MAP: Record<CohortSyncJobStatus, RunStatus> = {
@@ -56,6 +64,38 @@ export async function getRunReview(cohortId: string, runId: string): Promise<Run
   }
   const dto = await http.get<GradingSyncOverviewResponse>(`/cohorts/${cohortId}/sync/runs/${runId}/overview`)
   return mapOverview(dto)
+}
+
+/** Newest-first, in-file duplicates held for manual resolution during grading ingestion (B10). */
+export async function listConflicts(runId: string, filters: ConflictListFilters = {}): Promise<Paged<IngestionConflictResponse>> {
+  if (USE_MOCKS) {
+    const { mockDelay, ingestionConflictResponses } = await import('./mock/fixtures')
+    const list = ingestionConflictResponses
+      .filter((c) => c.ingestionRunId === runId && (!filters.status || c.status === filters.status))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    const size = filters.size ?? 20
+    const page = filters.page ?? 0
+    const start = page * size
+    const content = list.slice(start, start + size)
+    return mockDelay({
+      content,
+      number: page,
+      size,
+      totalElements: list.length,
+      totalPages: Math.max(1, Math.ceil(list.length / size)),
+      last: start + size >= list.length,
+    })
+  }
+  return http.get<Paged<IngestionConflictResponse>>(`/runs/${runId}/conflicts${buildConflictsQuery(filters)}`)
+}
+
+function buildConflictsQuery(filters: ConflictListFilters): string {
+  const params = new URLSearchParams()
+  if (filters.status) params.set('status', filters.status)
+  if (filters.page !== undefined) params.set('page', String(filters.page))
+  if (filters.size !== undefined) params.set('size', String(filters.size))
+  const qs = params.toString()
+  return qs ? `?${qs}` : ''
 }
 
 export async function resolveConflict(id: string, payload: ResolveConflictPayload): Promise<IngestionConflict> {

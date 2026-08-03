@@ -9,7 +9,7 @@ import { useRunsStore } from '@/stores/runs'
 import { useSyncRunStream } from '@/composables/useSyncRunStream'
 import { useToastAction } from '@/composables/useToastAction'
 import { RUN_STATUS_TONE, type SyncFileStatus } from '@/types/run.types'
-import type { Notification, NotificationStatus } from '@/types/runReview.types'
+import { CONFLICT_STATUS_TONE, type ConflictStatus, type Notification, type NotificationStatus } from '@/types/runReview.types'
 
 const route = useRoute()
 const store = useRunReviewStore()
@@ -23,7 +23,7 @@ const cohortId = route.query.cohortId as string
 // (§9c) — this stream drives the processing panel, then fetches the full
 // review once the backend's sync.done event lands.
 const stream = useSyncRunStream(cohortId, runId, {
-  onDone: () => store.fetchReview(cohortId, runId),
+  onDone: () => Promise.all([store.fetchReview(cohortId, runId), store.fetchConflicts(runId)]),
 })
 
 const FILE_ICON: Record<SyncFileStatus, string> = {
@@ -48,7 +48,7 @@ onMounted(async () => {
   if (runsStore.current?.status === 'processing') {
     stream.start()
   } else {
-    await store.fetchReview(cohortId, runId)
+    await Promise.all([store.fetchReview(cohortId, runId), store.fetchConflicts(runId)])
   }
 })
 
@@ -57,7 +57,7 @@ const run = computed(() => store.review?.run ?? null)
 const files = computed(() => store.review?.files ?? [])
 /** Falls back to the lightweight run stub while the full review hasn't loaded yet. */
 const headerRun = computed(() => review.value?.run ?? runsStore.current)
-const conflicts = computed(() => store.review?.conflicts ?? [])
+const conflictRows = computed(() => store.conflictsPage?.content ?? [])
 const notifications = computed(() => store.review?.notifications ?? [])
 const pendingCount = computed(() => notifications.value.filter((n) => n.status === 'PENDING').length)
 
@@ -94,18 +94,12 @@ function notifTypeLabel(t: Notification['type']): string {
   return t.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-async function resolveConflict(id: string, chosenRowIndex: number | null) {
-  await withToast(() => store.resolveConflict(id, { chosenRowIndex }), {
-    success: { tone: 'success', title: chosenRowIndex === null ? 'Conflict rejected' : 'Conflict resolved' },
-    error: { tone: 'warning', title: 'Could not resolve conflict' },
-  })
+function onConflictStatusChange(status: ConflictStatus | '') {
+  store.setConflictsStatusFilter(runId, status)
 }
 
-async function dismissConflict(id: string) {
-  await withToast(() => store.dismissConflict(id), {
-    success: { tone: 'info', title: 'Conflict dismissed' },
-    error: { tone: 'warning', title: 'Could not dismiss conflict' },
-  })
+function changeConflictsPage(page: number) {
+  store.fetchConflicts(runId, page)
 }
 
 async function sendOne(n: Notification) {
@@ -229,43 +223,63 @@ async function sendAll() {
 
     <!-- Panel 2 — Conflict queue -->
     <section class="block">
-      <h2 class="block-title">Conflict queue <span class="count-badge mono">{{ conflicts.length }}</span></h2>
-      <p class="block-sub">In-file duplicates — same learner + lab appearing twice. Choose the authoritative row, or reject both.</p>
-
-      <p v-if="conflicts.length === 0" class="empty-note"><VIcon name="check-circle-2" :size="15" class="ic-success" /> No conflicts in this run.</p>
-
-      <div v-for="c in conflicts" :key="c.id" class="conflict-card">
-        <div class="conflict-head">
-          <span class="mono">{{ c.learnerId }}</span>
-          <span class="sep">·</span>
-          <span>{{ c.incomingRows[0]?.labTitle }}</span>
-          <VPill v-if="c.status !== 'PENDING'" :tone="c.status === 'RESOLVED' ? 'success' : 'info'" style="margin-left: auto">
-            {{ c.status === 'RESOLVED' ? 'Resolved' : 'Dismissed' }}
-          </VPill>
-        </div>
-
-        <div class="merge">
-          <div v-if="c.existingResult" class="merge-col existing">
-            <span class="merge-tag">Existing (committed)</span>
-            <div class="merge-row"><span class="mono score">{{ c.existingResult.score }}</span><span class="muted">{{ c.existingResult.submittedOn }}</span></div>
-          </div>
-          <div class="merge-col incoming">
-            <span class="merge-tag">Incoming ({{ c.incomingRows.length }})</span>
-            <div v-for="(row, idx) in c.incomingRows" :key="idx" class="merge-row incoming-row">
-              <span class="mono score">{{ row.score }}</span>
-              <span class="muted">{{ row.submittedOn }}</span>
-              <span class="muted mono src">{{ row.sourceRef }}</span>
-              <VButton v-if="c.status === 'PENDING'" size="sm" variant="ghost" @click="resolveConflict(c.id, idx)">Use this</VButton>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="c.status === 'PENDING'" class="conflict-actions">
-          <VButton size="sm" variant="ghost" @click="dismissConflict(c.id)">Dismiss</VButton>
-          <VButton size="sm" variant="danger" @click="resolveConflict(c.id, null)">Reject both</VButton>
-        </div>
-        <p v-else-if="c.resolutionNote" class="muted resolution-note">{{ c.resolutionNote }}</p>
+      <div class="conflicts-head">
+        <h2 class="block-title">Conflict queue <span class="count-badge mono">{{ store.conflictsPage?.totalElements ?? 0 }}</span></h2>
+        <label class="fld">
+          <span>Status</span>
+          <select :value="store.conflictsStatusFilter" @change="onConflictStatusChange(($event.target as HTMLSelectElement).value as ConflictStatus | '')">
+            <option value="">All</option>
+            <option value="PENDING">Pending</option>
+            <option value="RESOLVED">Resolved</option>
+            <option value="DISMISSED">Dismissed</option>
+          </select>
+        </label>
       </div>
+      <p class="block-sub">In-file duplicates — same learner + lab appearing twice, held for manual resolution.</p>
+
+      <div v-if="store.conflictsLoading" class="muted">Loading conflicts…</div>
+      <p v-else-if="store.conflictsError" class="inline-error"><VIcon name="alert-circle" :size="14" /> {{ store.conflictsError }}</p>
+      <template v-else>
+        <p v-if="conflictRows.length === 0" class="empty-note"><VIcon name="check-circle-2" :size="15" class="ic-success" /> No conflicts in this run.</p>
+
+        <div v-else class="tbl-wrap">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th>Learner</th>
+                <th>Lab</th>
+                <th>Existing result</th>
+                <th style="text-align: center">Status</th>
+                <th>Incoming payload</th>
+                <th>Resolution</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="c in conflictRows" :key="c.id">
+                <td class="mono">{{ c.learnerId ?? '—' }}</td>
+                <td class="mono">{{ c.labId ?? '—' }}</td>
+                <td class="mono muted">{{ c.existingResultId ?? '— (new row)' }}</td>
+                <td style="text-align: center"><VPill :tone="CONFLICT_STATUS_TONE[c.status]">{{ c.status }}</VPill></td>
+                <td>
+                  <details>
+                    <summary class="mono">payload</summary>
+                    <pre class="mono payload">{{ JSON.stringify(c.incomingPayload, null, 2) }}</pre>
+                  </details>
+                </td>
+                <td class="muted">{{ c.resolutionNote ?? '—' }}</td>
+                <td class="mono muted">{{ formatRunAt(c.createdAt) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div v-if="store.conflictsPage" class="pager">
+          <VButton size="sm" variant="ghost" :disabled="store.conflictsPage.number === 0" @click="changeConflictsPage(store.conflictsPage.number - 1)">Prev</VButton>
+          <span class="mono muted">Page {{ store.conflictsPage.number + 1 }} of {{ Math.max(store.conflictsPage.totalPages, 1) }}</span>
+          <VButton size="sm" variant="ghost" :disabled="store.conflictsPage.last" @click="changeConflictsPage(store.conflictsPage.number + 1)">Next</VButton>
+        </div>
+      </template>
     </section>
 
     <!-- Panel 3 — Notification moderation -->
@@ -353,21 +367,14 @@ async function sendAll() {
 
 .empty-note { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 14px; }
 
-.conflict-card { border: 1px solid var(--border); border-radius: var(--r-md, 6px); padding: 16px; margin-bottom: 12px; background: var(--surface); box-shadow: var(--shadow-card); }
-.conflict-head { display: flex; align-items: center; gap: 6px; font-weight: 600; margin-bottom: 12px; }
-.conflict-head .sep { opacity: 0.4; }
-.merge { display: grid; grid-template-columns: 1fr 1.4fr; gap: 12px; }
-.merge-col { border: 1px solid var(--border); border-radius: var(--r-sm, 4px); padding: 12px; }
-.merge-col.existing { background: var(--bg); }
-.merge-col.incoming { background: rgba(255, 90, 0, 0.04); }
-.merge-tag { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); display: block; margin-bottom: 8px; }
-.merge-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
-.merge-row .score { font-size: 16px; font-weight: 600; }
-.incoming-row { border-top: 1px solid var(--border-soft, var(--border)); }
-.incoming-row:first-of-type { border-top: none; }
-.src { font-size: 12px; margin-left: auto; }
-.conflict-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
-.resolution-note { margin-top: 10px; font-size: 13px; }
+.conflicts-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+.fld { display: flex; flex-direction: column; gap: 4px; }
+.fld > span { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); }
+.fld select { height: 34px; border: 1px solid var(--border); border-radius: var(--r-sm, 4px); background: #fff; padding: 0 10px; font-family: inherit; font-size: 13px; color: var(--text); }
+.fld select:focus-visible { outline: none; border-color: var(--orange); box-shadow: var(--ring-focus); }
+.payload { margin-top: 8px; font-size: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 3px; padding: 8px 10px; max-width: 360px; overflow-x: auto; }
+details summary { cursor: pointer; font-size: 12.5px; color: var(--text-secondary); }
+.pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 14px; }
 
 .notif-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
 .notif-actions { display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; }
