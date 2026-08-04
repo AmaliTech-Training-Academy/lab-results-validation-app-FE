@@ -131,8 +131,8 @@ export function buildReference(cohortId: string): CohortReference {
   ]
 
   const instructors: InstructorContact[] = [
-    { id: genId('ins'), instructorId: 'INS-001', email: 'sarah.jenkins@amalitech.com', fullName: 'Sarah Jenkins', isActive: true },
-    { id: genId('ins'), instructorId: 'INS-002', email: 'david.kim@amalitech.com',     fullName: 'David Kim',     isActive: true },
+    { id: genId('ins'), instructorId: 'INS-001', email: 'sarah.jenkins@amalitech.com', fullName: 'Sarah Jenkins', active: true },
+    { id: genId('ins'), instructorId: 'INS-002', email: 'david.kim@amalitech.com',     fullName: 'David Kim',     active: true },
   ]
 
   return { specializations: [specSwe, specDa], learners, instructors }
