@@ -8,6 +8,8 @@ import { useRunReviewStore } from '@/stores/runReview'
 import { useRunsStore } from '@/stores/runs'
 import { useSyncRunStream } from '@/composables/useSyncRunStream'
 import { useToastAction } from '@/composables/useToastAction'
+import { useToastStore } from '@/stores/toast'
+import { toErrorMessage } from '@/utils/errors'
 import { RUN_STATUS_TONE, type SyncFileStatus } from '@/types/run.types'
 import {
   CONFLICT_STATUS_TONE,
@@ -22,6 +24,7 @@ const route = useRoute()
 const store = useRunReviewStore()
 const runsStore = useRunsStore()
 const { run: withToast } = useToastAction()
+const toast = useToastStore()
 
 const runId = route.params.id as string
 const cohortId = route.query.cohortId as string
@@ -30,7 +33,8 @@ const cohortId = route.query.cohortId as string
 // (§9c) — this stream drives the processing panel, then fetches the full
 // review once the backend's sync.done event lands.
 const stream = useSyncRunStream(cohortId, runId, {
-  onDone: () => Promise.all([store.fetchReview(cohortId, runId), store.fetchConflicts(cohortId, runId)]),
+  onDone: () =>
+    Promise.all([store.fetchReview(cohortId, runId), store.fetchConflicts(cohortId, runId), store.fetchNotifications(cohortId, runId)]),
 })
 
 const FILE_ICON: Record<SyncFileStatus, string> = {
@@ -55,7 +59,7 @@ onMounted(async () => {
   if (runsStore.current?.status === 'processing') {
     stream.start()
   } else {
-    await Promise.all([store.fetchReview(cohortId, runId), store.fetchConflicts(cohortId, runId)])
+    await Promise.all([store.fetchReview(cohortId, runId), store.fetchConflicts(cohortId, runId), store.fetchNotifications(cohortId, runId)])
   }
 })
 
@@ -65,7 +69,8 @@ const files = computed(() => store.review?.files ?? [])
 /** Falls back to the lightweight run stub while the full review hasn't loaded yet. */
 const headerRun = computed(() => review.value?.run ?? runsStore.current)
 const conflictRows = computed(() => store.conflictsPage?.content ?? [])
-const notifications = computed(() => store.review?.notifications ?? [])
+const notifications = computed(() => store.notificationsPage?.content ?? [])
+/** Scoped to the current page — "Send all held" still touches every PENDING notification for the job, page or not. */
 const pendingCount = computed(() => notifications.value.filter((n) => n.status === 'PENDING').length)
 
 const SUMMARY = [
@@ -109,6 +114,14 @@ function changeConflictsPage(page: number) {
   store.fetchConflicts(cohortId, runId, page)
 }
 
+function onNotificationStatusChange(status: NotificationStatus | '') {
+  store.setNotificationsStatusFilter(cohortId, runId, status)
+}
+
+function changeNotificationsPage(page: number) {
+  store.fetchNotifications(cohortId, runId, page)
+}
+
 const RESOLVE_TOAST_TITLE: Record<ConflictResolutionAction, string> = {
   KEEP_EXISTING: 'Kept the existing row',
   KEEP_INCOMING: 'Kept the incoming row',
@@ -124,8 +137,8 @@ async function resolveConflictRow(c: IngestionConflictResponse, action: Conflict
 
 async function sendOne(n: Notification) {
   await withToast(() => store.sendNotification(n.id), {
-    success: { tone: 'success', title: 'Notification sent', body: n.recipientEmail },
-    error: { tone: 'warning', title: 'Send failed' },
+    success: { tone: 'success', title: 'Send queued', body: recipientLabel(n) },
+    error: { tone: 'warning', title: 'Could not queue send' },
   })
 }
 
@@ -135,11 +148,23 @@ async function dismissNotif(n: Notification) {
   })
 }
 
+/** Send-all just queues the work (202) and the actual sends happen off-thread — so the toast reports "queued", not "sent", and the caller has to re-check for the outcome. */
 async function sendAll() {
-  await withToast(() => store.sendAll(runId), {
-    success: { tone: 'success', title: 'Held notifications sent' },
-    error: { tone: 'warning', title: 'Send-all failed' },
-  })
+  try {
+    const queued = await store.sendAll(cohortId, runId)
+    toast.show({
+      tone: 'success',
+      title: 'Held notifications queued',
+      body: `${queued} notification${queued === 1 ? '' : 's'} queued — refresh shortly to see delivery status.`,
+    })
+  } catch (e) {
+    toast.show({ tone: 'warning', title: 'Send-all failed', body: toErrorMessage(e, 'Please try again.') })
+  }
+}
+
+/** Falls back to the raw id when the instructor lookup failed or the recipient is an admin user id. */
+function recipientLabel(n: Notification): string {
+  return n.recipientName ?? n.recipientEmail ?? n.recipientInstructorId ?? n.recipientUserId ?? '—'
 }
 </script>
 
@@ -230,13 +255,19 @@ async function sendAll() {
         </table>
       </div>
 
-      <details v-for="f in files.filter((f) => f.highFailureRate)" :key="f.workbookFilename + '-reasons'" class="err-details">
+      <details v-for="f in files.filter((f) => f.issues.length)" :key="f.workbookFilename + '-issues'" class="err-details">
         <summary>
-          <VIcon name="alert-triangle" :size="14" />
-          {{ f.workbookFilename }} — {{ f.failureRatePercent.toFixed(1) }}% rejected, by rule
+          <VIcon :name="f.highFailureRate ? 'alert-triangle' : 'alert-circle'" :size="14" />
+          {{ f.workbookFilename }} — {{ f.issues.length }} issue{{ f.issues.length === 1 ? '' : 's' }}
+          <template v-if="f.highFailureRate">({{ f.failureRatePercent.toFixed(1) }}% rejected)</template>
         </summary>
-        <ul class="err-list">
+        <ul class="err-list rejection-summary">
           <li v-for="r in f.rejectionReasons" :key="r.rule" class="mono err-item">{{ r.rule }} — {{ r.count }} row{{ r.count === 1 ? '' : 's' }}</li>
+        </ul>
+        <ul class="err-list">
+          <li v-for="(e, i) in f.issues" :key="i" class="mono err-item">
+            {{ [e.location ?? [e.sheet, e.row != null ? `row ${e.row}` : ''].filter(Boolean).join(' '), e.rule].filter(Boolean).join(' · ') }} — {{ e.message }}
+          </li>
         </ul>
       </details>
     </section>
@@ -314,38 +345,88 @@ async function sendAll() {
     <section class="block">
       <div class="notif-head">
         <div>
-          <h2 class="block-title" style="margin-bottom: 2px">Notifications <span class="count-badge mono">{{ pendingCount }} held</span></h2>
+          <h2 class="block-title" style="margin-bottom: 2px">Notifications <span class="count-badge mono">{{ pendingCount }} held on this page</span></h2>
           <p class="block-sub">Instructor digests are held for review. Auto alerts are already sent (shown for transparency).</p>
         </div>
-        <VButton variant="primary" icon="send" :disabled="pendingCount === 0" @click="sendAll">Send all held</VButton>
+        <div class="notif-head-actions">
+          <label class="fld">
+            <span>Status</span>
+            <select :value="store.notificationsStatusFilter" @change="onNotificationStatusChange(($event.target as HTMLSelectElement).value as NotificationStatus | '')">
+              <option value="">All</option>
+              <option value="PENDING">Pending</option>
+              <option value="SENT">Sent</option>
+              <option value="FAILED">Failed</option>
+            </select>
+          </label>
+          <VButton variant="primary" icon="send" :disabled="pendingCount === 0" @click="sendAll">Send all held</VButton>
+        </div>
       </div>
 
-      <div class="tbl-wrap">
-        <table class="tbl">
-          <thead>
-            <tr><th>Recipient</th><th>Type</th><th>Policy</th><th style="text-align: center">Status</th><th aria-hidden="true"></th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="n in notifications" :key="n.id">
-              <td>
-                <div style="font-weight: 500">{{ n.recipientName ?? n.recipientEmail }}</div>
-                <div class="muted mono sub">{{ n.recipientEmail }}</div>
-              </td>
-              <td>{{ notifTypeLabel(n.type) }}</td>
-              <td><span class="policy-tag" :class="n.dispatchPolicy === 'HELD' ? 'held' : 'auto'">{{ n.dispatchPolicy }}</span></td>
-              <td style="text-align: center"><VPill :tone="NOTIF_TONE[n.status]">{{ NOTIF_LABEL[n.status] }}</VPill></td>
-              <td style="text-align: right">
-                <div class="notif-actions">
-                  <VButton v-if="n.status === 'PENDING'" size="sm" variant="primary" icon="send" @click="sendOne(n)">Notify</VButton>
-                  <VButton v-if="n.status === 'FAILED'" size="sm" variant="ghost" icon="rotate-ccw" @click="sendOne(n)">Retry</VButton>
-                  <VButton v-if="n.status === 'PENDING'" size="sm" variant="ghost" @click="dismissNotif(n)">Dismiss</VButton>
-                  <span v-if="n.status === 'SENT' && n.sentAt" class="muted mono sub">{{ n.sentAt.slice(0, 16).replace('T', ' ') }}</span>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <div v-if="store.notificationsLoading" class="muted">Loading notifications…</div>
+      <p v-else-if="store.notificationsError" class="inline-error"><VIcon name="alert-circle" :size="14" /> {{ store.notificationsError }}</p>
+      <template v-else>
+        <p v-if="notifications.length === 0" class="empty-note"><VIcon name="check-circle-2" :size="15" class="ic-success" /> No notifications for this run.</p>
+
+        <div v-else class="tbl-wrap notif-tbl-wrap">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th>Recipient</th>
+                <th>Type</th>
+                <th>Policy</th>
+                <th style="text-align: center">Status</th>
+                <th>Issues</th>
+                <th>Created</th>
+                <th style="text-align: right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="n in notifications" :key="n.id">
+                <td>
+                  <div class="cell-title">{{ recipientLabel(n) }}</div>
+                  <div class="muted mono sub">{{ n.recipientKind }}</div>
+                </td>
+                <td>
+                  <div class="cell-title">{{ notifTypeLabel(n.type) }}</div>
+                  <div v-if="n.subject" class="muted sub subject" :title="n.subject">{{ n.subject }}</div>
+                </td>
+                <td><span class="policy-tag" :class="n.dispatchPolicy === 'HELD' ? 'held' : 'auto'">{{ n.dispatchPolicy }}</span></td>
+                <td style="text-align: center">
+                  <VPill :tone="NOTIF_TONE[n.status]">{{ NOTIF_LABEL[n.status] }}</VPill>
+                  <div v-if="n.status === 'SENT' && n.sentAt" class="muted mono sub">Sent {{ formatRunAt(n.sentAt) }}</div>
+                  <div v-if="n.status === 'FAILED' && n.errorDetail" class="danger-note mono" :title="n.errorDetail">{{ n.errorDetail }}</div>
+                </td>
+                <td>
+                  <details v-if="n.issues.length">
+                    <summary class="mono">{{ n.issues.length }} issue{{ n.issues.length === 1 ? '' : 's' }}</summary>
+                    <ul class="err-list">
+                      <li v-for="(e, i) in n.issues" :key="i" class="mono err-item">
+                        {{ [e.location ?? [e.sheet, e.row != null ? `row ${e.row}` : ''].filter(Boolean).join(' '), e.rule].filter(Boolean).join(' · ') }} — {{ e.message }}
+                      </li>
+                    </ul>
+                  </details>
+                  <span v-else class="muted">—</span>
+                </td>
+                <td class="mono muted">{{ n.createdAt ? formatRunAt(n.createdAt) : '—' }}</td>
+                <td style="text-align: right">
+                  <div v-if="n.status === 'PENDING' || n.status === 'FAILED'" class="notif-actions">
+                    <VButton v-if="n.status === 'PENDING'" size="sm" variant="primary" icon="send" @click="sendOne(n)">Notify</VButton>
+                    <VButton v-if="n.status === 'FAILED'" size="sm" variant="ghost" icon="rotate-ccw" @click="sendOne(n)">Retry</VButton>
+                    <VButton v-if="n.status === 'PENDING'" size="sm" variant="ghost" @click="dismissNotif(n)">Dismiss</VButton>
+                  </div>
+                  <span v-else class="muted">—</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div v-if="store.notificationsPage && notifications.length > 0" class="pager">
+          <VButton size="sm" variant="ghost" :disabled="store.notificationsPage.number === 0" @click="changeNotificationsPage(store.notificationsPage.number - 1)">Prev</VButton>
+          <span class="mono muted">Page {{ store.notificationsPage.number + 1 }} of {{ Math.max(store.notificationsPage.totalPages, 1) }}</span>
+          <VButton size="sm" variant="ghost" :disabled="store.notificationsPage.last" @click="changeNotificationsPage(store.notificationsPage.number + 1)">Next</VButton>
+        </div>
+      </template>
     </section>
   </template>
 </template>
@@ -391,6 +472,7 @@ async function sendAll() {
 .err-details { margin-top: 14px; }
 .err-details summary { cursor: pointer; font-size: 13px; color: var(--text-secondary); font-weight: 500; }
 .err-list { list-style: none; display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.err-list.rejection-summary { margin-bottom: 4px; }
 .err-item { font-size: 12.5px; color: var(--danger); background: var(--danger-bg); padding: 6px 10px; border-radius: 3px; }
 
 .empty-note { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 14px; }
@@ -405,8 +487,13 @@ details summary { cursor: pointer; font-size: 12.5px; color: var(--text-secondar
 .pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 14px; }
 
 .notif-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.notif-head-actions { display: flex; align-items: flex-end; gap: 12px; }
 .notif-actions { display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.notif-tbl-wrap { overflow-x: auto; }
+.cell-title { font-weight: 500; }
 .sub { font-size: 12px; }
+.subject { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.danger-note { font-size: 11px; color: var(--danger); margin-top: 4px; max-width: 220px; }
 .policy-tag { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; padding: 2px 8px; border-radius: 3px; }
 .policy-tag.held { background: rgba(255, 90, 0, 0.12); color: var(--orange-dark, #a83900); }
 .policy-tag.auto { background: var(--bg); color: var(--text-secondary); border: 1px solid var(--border); }

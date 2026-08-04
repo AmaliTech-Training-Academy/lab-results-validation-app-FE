@@ -6,12 +6,15 @@ import type {
   IngestionConflict,
   IngestionConflictResponse,
   Notification,
+  NotificationListFilters,
+  NotificationResponse,
   ResolveConflictPayload,
   RunReview,
 } from '@/types/runReview.types'
 import type { CohortSyncJobStatus, GradingSyncOverviewResponse, RunCounts, RunStatus } from '@/types/run.types'
-import type { Paged } from '@/types/common.types'
+import type { LocatedError, Paged } from '@/types/common.types'
 import { USE_MOCKS } from './mock/useMocks'
+import { getInstructor } from './instructors.service'
 
 const OVERVIEW_STATUS_MAP: Record<CohortSyncJobStatus, RunStatus> = {
   RUNNING: 'processing',
@@ -33,8 +36,16 @@ function overviewCounts(o: GradingSyncOverviewResponse): RunCounts {
   }
 }
 
+function isRealIssue(i: LocatedError): boolean {
+  return !NOT_AN_ERROR_RULES.has(i.rule ?? '')
+}
+
 /** The overview endpoint reports counts + per-workbook breakdown only — conflicts/notifications have no list endpoint yet. */
 function mapOverview(dto: GradingSyncOverviewResponse): RunReview {
+  // Multi-file jobs only report issues per file (not at the top level) — `dto.issues` is absent in that case.
+  const files = (dto.files ?? []).map((f) => ({ ...f, issues: (f.issues ?? []).filter(isRealIssue) }))
+  const errorReport = files.length ? files.flatMap((f) => f.issues) : (dto.issues ?? []).filter(isRealIssue)
+
   return {
     run: {
       id: dto.jobId,
@@ -43,9 +54,9 @@ function mapOverview(dto: GradingSyncOverviewResponse): RunReview {
       counts: overviewCounts(dto),
       startedAt: dto.startedAt ?? undefined,
       completedAt: dto.completedAt ?? undefined,
-      errorReport: (dto.issues ?? []).filter((i) => !NOT_AN_ERROR_RULES.has(i.rule ?? '')),
+      errorReport,
     },
-    files: dto.files ?? [],
+    files,
     conflicts: [],
     notifications: [],
   }
@@ -134,6 +145,88 @@ export async function dismissConflict(id: string): Promise<IngestionConflict> {
   return http.post<IngestionConflict>(`/conflicts/${id}/dismiss`)
 }
 
+/** The real endpoint reports recipients as ids only — `enrichRecipients` fills in `recipientName`/`recipientEmail` via GET /instructors/{id}. */
+function mapNotification(dto: NotificationResponse): Notification {
+  return {
+    id: dto.id,
+    ingestionRunId: dto.ingestionRunId,
+    cohortId: dto.cohortId,
+    syncJobId: dto.syncJobId,
+    type: dto.type as Notification['type'],
+    recipientKind: dto.recipientKind as Notification['recipientKind'],
+    recipientInstructorId: dto.recipientInstructorId,
+    recipientUserId: dto.recipientUserId,
+    dispatchPolicy: dto.dispatchPolicy as Notification['dispatchPolicy'],
+    subject: dto.subject ?? undefined,
+    status: dto.status as Notification['status'],
+    errorDetail: dto.errorDetail ?? undefined,
+    sentAt: dto.sentAt,
+    dismissedBy: dto.dismissedBy,
+    dismissedAt: dto.dismissedAt,
+    createdAt: dto.createdAt,
+    issues: dto.issues ?? [],
+  }
+}
+
+/** Resolves each instructor recipient's id to a display name/email via GET /instructors/{id} (deduped per unique id). */
+async function enrichRecipients(list: Notification[]): Promise<Notification[]> {
+  const ids = [...new Set(list.filter((n) => n.recipientKind === 'instructor' && n.recipientInstructorId).map((n) => n.recipientInstructorId as string))]
+  if (!ids.length) return list
+
+  const instructors = await Promise.all(ids.map((id) => getInstructor(id).catch(() => null)))
+  const byId = new Map(ids.map((id, i) => [id, instructors[i]]))
+
+  return list.map((n) => {
+    const instructor = n.recipientInstructorId ? byId.get(n.recipientInstructorId) : null
+    return instructor ? { ...n, recipientName: instructor.fullName, recipientEmail: instructor.email } : n
+  })
+}
+
+async function enrichRecipient(n: Notification): Promise<Notification> {
+  return (await enrichRecipients([n]))[0] ?? n
+}
+
+function buildNotificationsQuery(filters: NotificationListFilters): string {
+  const params = new URLSearchParams()
+  if (filters.cohortId) params.set('cohortId', filters.cohortId)
+  if (filters.syncJobId) params.set('syncJobId', filters.syncJobId)
+  if (filters.status) params.set('status', filters.status)
+  if (filters.type) params.set('type', filters.type)
+  if (filters.recipientKind) params.set('recipientKind', filters.recipientKind)
+  if (filters.page !== undefined) params.set('page', String(filters.page))
+  if (filters.size !== undefined) params.set('size', String(filters.size))
+  const qs = params.toString()
+  return qs ? `?${qs}` : ''
+}
+
+/** Newest-first staged notifications (Epic C) — GET /notifications, optionally narrowed to a cohort/sync job/status/type/recipient kind. */
+export async function listNotifications(filters: NotificationListFilters = {}): Promise<Paged<Notification>> {
+  if (USE_MOCKS) {
+    const { mockDelay, notifications } = await import('./mock/fixtures')
+    const list = notifications
+      .filter((n) => !filters.cohortId || n.cohortId === filters.cohortId)
+      .filter((n) => !filters.syncJobId || n.ingestionRunId === filters.syncJobId)
+      .filter((n) => !filters.status || n.status === filters.status)
+      .filter((n) => !filters.type || n.type === filters.type)
+      .filter((n) => !filters.recipientKind || n.recipientKind === filters.recipientKind)
+      .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
+    const size = filters.size ?? 20
+    const page = filters.page ?? 0
+    const start = page * size
+    const content = list.slice(start, start + size)
+    return mockDelay({
+      content,
+      number: page,
+      size,
+      totalElements: list.length,
+      totalPages: Math.max(1, Math.ceil(list.length / size)),
+      last: start + size >= list.length,
+    })
+  }
+  const page = await http.get<Paged<NotificationResponse>>(`/notifications${buildNotificationsQuery(filters)}`)
+  return { ...page, content: await enrichRecipients(page.content.map(mapNotification)) }
+}
+
 export async function sendNotification(id: string): Promise<Notification> {
   if (USE_MOCKS) {
     const { mockDelay, notifications } = await import('./mock/fixtures')
@@ -145,11 +238,15 @@ export async function sendNotification(id: string): Promise<Notification> {
     }
     return mockDelay(n)
   }
-  return http.post<Notification>(`/notifications/${id}/send`)
+  return enrichRecipient(mapNotification(await http.post<NotificationResponse>(`/notifications/${id}/send`)))
 }
 
-/** Send-all touches only PENDING items — SENT/SKIPPED are untouched (C7 AC2, idempotent). */
-export async function sendAllNotifications(runId: string): Promise<Notification[]> {
+/**
+ * Send-all only queues PENDING/HELD items (AUTO ones dispatch on their own) and returns 202 immediately with
+ * just the count queued — the actual sends happen off-thread, one after another, so the outcome isn't known
+ * yet when this resolves. Callers should re-poll `listNotifications` (filtered by syncJobId/status) to see it.
+ */
+export async function sendAllNotifications(runId: string): Promise<number> {
   if (USE_MOCKS) {
     const { mockDelay, notifications } = await import('./mock/fixtures')
     const now = new Date().toISOString()
@@ -158,9 +255,9 @@ export async function sendAllNotifications(runId: string): Promise<Notification[
       n.status = 'SENT'
       n.sentAt = now
     })
-    return mockDelay(affected)
+    return mockDelay(affected.length)
   }
-  return http.post<Notification[]>(`/runs/${runId}/notifications/send-all`)
+  return http.post<number>(`/notifications/send-all?syncJobId=${encodeURIComponent(runId)}`)
 }
 
 export async function dismissNotification(id: string): Promise<Notification> {
@@ -171,5 +268,5 @@ export async function dismissNotification(id: string): Promise<Notification> {
     if (n.status === 'PENDING') n.status = 'SKIPPED'
     return mockDelay(n)
   }
-  return http.post<Notification>(`/notifications/${id}/dismiss`)
+  return enrichRecipient(mapNotification(await http.post<NotificationResponse>(`/notifications/${id}/dismiss`)))
 }
