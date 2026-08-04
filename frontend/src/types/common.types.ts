@@ -24,4 +24,6 @@ export interface LocatedError {
   /** Rule id, e.g. "S2", "R1", "F2" (PRD §4.4) or a stand-up gate rule. */
   rule?: string
   message: string
+  /** Set on R5-UNKNOWN-REVIEWER-style issues once the reviewer is resolved to a known instructor. */
+  instructorContactId?: string | null
 }

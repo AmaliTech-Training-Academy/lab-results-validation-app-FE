@@ -91,10 +91,10 @@ export interface Learner {
 /** Passwordless notification contact (schema: instructor_contacts). Never a login user. */
 export interface InstructorContact {
   id: string
-  instructorId: string // e.g. "INS-001"
+  instructorId: string
   email: string
   fullName: string
-  isActive: boolean
+  active: boolean
 }
 
 // --- Committed reference hierarchy (read-only inspector, §6.3) -----------------

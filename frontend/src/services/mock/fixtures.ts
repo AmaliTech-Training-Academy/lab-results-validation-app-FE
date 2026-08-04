@@ -131,8 +131,8 @@ export function buildReference(cohortId: string): CohortReference {
   ]
 
   const instructors: InstructorContact[] = [
-    { id: genId('ins'), instructorId: 'INS-001', email: 'sarah.jenkins@amalitech.com', fullName: 'Sarah Jenkins', isActive: true },
-    { id: genId('ins'), instructorId: 'INS-002', email: 'david.kim@amalitech.com',     fullName: 'David Kim',     isActive: true },
+    { id: genId('ins'), instructorId: 'INS-001', email: 'sarah.jenkins@amalitech.com', fullName: 'Sarah Jenkins', active: true },
+    { id: genId('ins'), instructorId: 'INS-002', email: 'david.kim@amalitech.com',     fullName: 'David Kim',     active: true },
   ]
 
   return { specializations: [specSwe, specDa], learners, instructors }
@@ -278,6 +278,7 @@ export const notifications: Notification[] = [
     id: 'nt-001',
     ingestionRunId: 'run-002',
     cohortId: 'coh-stood',
+    syncJobId: 'run-002',
     type: 'instructor_digest',
     recipientKind: 'instructor',
     recipientName: 'Sarah Jenkins',
@@ -286,11 +287,16 @@ export const notifications: Notification[] = [
     subject: 'Lab Grading Sync Report — FEM01',
     body: 'Total rows processed: 18 | Accepted: 12 | Rejected: 6',
     status: 'PENDING',
+    createdAt: '2026-07-21T08:01:30Z',
+    issues: [
+      { file: 'BE Lab Grading.xlsx', location: 'sheet Module-5 row 5', rule: 'R5-UNKNOWN-REVIEWER', message: "Reviewer 'Eric Munyaneza' does not match any active instructor." },
+    ],
   },
   {
     id: 'nt-002',
     ingestionRunId: 'run-002',
     cohortId: 'coh-stood',
+    syncJobId: 'run-002',
     type: 'admin_run_digest',
     recipientKind: 'admin',
     recipientName: 'All admins',
@@ -300,11 +306,14 @@ export const notifications: Notification[] = [
     body: 'Run summary: 12 new, 2 updated, 14 skipped-invalid, 2 conflicts.',
     status: 'SENT',
     sentAt: '2026-07-21T08:02:00Z',
+    createdAt: '2026-07-21T08:01:45Z',
+    issues: [],
   },
   {
     id: 'nt-003',
     ingestionRunId: 'run-002',
     cohortId: 'coh-stood',
+    syncJobId: 'run-002',
     type: 'high_failure',
     recipientKind: 'admin',
     recipientName: 'All admins',
@@ -314,6 +323,8 @@ export const notifications: Notification[] = [
     body: 'Rejected 14 of 30 rows (>50%).',
     status: 'SENT',
     sentAt: '2026-07-21T08:02:00Z',
+    createdAt: '2026-07-21T08:02:00Z',
+    issues: [],
   },
 ]
 
