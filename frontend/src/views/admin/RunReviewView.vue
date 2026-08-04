@@ -9,7 +9,14 @@ import { useRunsStore } from '@/stores/runs'
 import { useSyncRunStream } from '@/composables/useSyncRunStream'
 import { useToastAction } from '@/composables/useToastAction'
 import { RUN_STATUS_TONE, type SyncFileStatus } from '@/types/run.types'
-import { CONFLICT_STATUS_TONE, type ConflictStatus, type Notification, type NotificationStatus } from '@/types/runReview.types'
+import {
+  CONFLICT_STATUS_TONE,
+  type ConflictResolutionAction,
+  type ConflictStatus,
+  type IngestionConflictResponse,
+  type Notification,
+  type NotificationStatus,
+} from '@/types/runReview.types'
 
 const route = useRoute()
 const store = useRunReviewStore()
@@ -100,6 +107,19 @@ function onConflictStatusChange(status: ConflictStatus | '') {
 
 function changeConflictsPage(page: number) {
   store.fetchConflicts(cohortId, runId, page)
+}
+
+const RESOLVE_TOAST_TITLE: Record<ConflictResolutionAction, string> = {
+  KEEP_EXISTING: 'Kept the existing row',
+  KEEP_INCOMING: 'Kept the incoming row',
+  REJECT: 'Conflict rejected',
+}
+
+async function resolveConflictRow(c: IngestionConflictResponse, action: ConflictResolutionAction) {
+  await withToast(() => store.resolveConflict(cohortId, c.id, { action }), {
+    success: { tone: 'success', title: RESOLVE_TOAST_TITLE[action] },
+    error: { tone: 'warning', title: 'Could not resolve conflict' },
+  })
 }
 
 async function sendOne(n: Notification) {
@@ -253,6 +273,7 @@ async function sendAll() {
                 <th>Incoming payload</th>
                 <th>Resolution</th>
                 <th>Created</th>
+                <th aria-hidden="true"></th>
               </tr>
             </thead>
             <tbody>
@@ -269,6 +290,13 @@ async function sendAll() {
                 </td>
                 <td class="muted">{{ c.resolutionNote ?? '—' }}</td>
                 <td class="mono muted">{{ formatRunAt(c.createdAt) }}</td>
+                <td style="text-align: right">
+                  <div v-if="c.status === 'PENDING'" class="notif-actions">
+                    <VButton v-if="c.existingResultId" size="sm" variant="ghost" @click="resolveConflictRow(c, 'KEEP_EXISTING')">Keep existing</VButton>
+                    <VButton size="sm" variant="ghost" @click="resolveConflictRow(c, 'KEEP_INCOMING')">Keep incoming</VButton>
+                    <VButton size="sm" variant="danger" @click="resolveConflictRow(c, 'REJECT')">Reject</VButton>
+                  </div>
+                </td>
               </tr>
             </tbody>
           </table>

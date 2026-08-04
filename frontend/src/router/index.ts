@@ -52,6 +52,7 @@ const router = createRouter({
         { path: 'runs',      name: 'admin-runs',       component: () => import('@/views/admin/RunsView.vue') },
         { path: 'runs/:id',  name: 'admin-run-review', component: () => import('@/views/admin/RunReviewView.vue') },
         { path: 'audit',     name: 'admin-audit',      component: () => import('@/views/admin/AuditView.vue') },
+        { path: 'audit/events/:id', name: 'admin-audit-event', component: () => import('@/views/admin/AuditEventDetailView.vue') },
         { path: 'sync-schedules', name: 'admin-sync-schedules', component: () => import('@/views/admin/SyncSchedulesView.vue') },
         { path: 'settings',  name: 'admin-settings',   component: () => import('@/views/admin/SettingsView.vue') },
       ],

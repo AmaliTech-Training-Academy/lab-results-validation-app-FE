@@ -59,9 +59,9 @@ export const useRunReviewStore = defineStore('runReview', () => {
     }
   }
 
-  async function resolveConflict(id: string, payload: ResolveConflictPayload) {
-    const updated = await resolveConflictApi(id, payload)
-    replaceConflict(updated.id, updated)
+  async function resolveConflict(cohortId: string, conflictId: string, payload: ResolveConflictPayload) {
+    const updated = await resolveConflictApi(cohortId, conflictId, payload)
+    replaceConflictRow(updated.id, updated)
   }
 
   async function dismissConflict(id: string) {
@@ -87,6 +87,15 @@ export const useRunReviewStore = defineStore('runReview', () => {
   function replaceConflict(id: string, next: RunReview['conflicts'][number]) {
     if (!review.value) return
     review.value.conflicts = review.value.conflicts.map((c) => (c.id === id ? next : c))
+  }
+
+  /** Patches a row in the real conflict-queue page (as opposed to the dead `review.conflicts` merge view). */
+  function replaceConflictRow(id: string, next: IngestionConflictResponse) {
+    if (!conflictsPage.value) return
+    conflictsPage.value = {
+      ...conflictsPage.value,
+      content: conflictsPage.value.content.map((c) => (c.id === id ? next : c)),
+    }
   }
 
   function replaceNotification(id: string, next: RunReview['notifications'][number]) {
