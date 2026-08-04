@@ -15,7 +15,7 @@ vi.mock('@/services/users.service', () => ({
   getUser: vi.fn<() => Promise<unknown>>(),
 }))
 vi.mock('@/services/http', () => ({
-  http: { get: vi.fn() },
+  http: { get: vi.fn<(path: string) => Promise<unknown>>() },
 }))
 
 import { listAuditRuns, listAuditEvents, getAuditEvent } from '@/services/audit.service'
