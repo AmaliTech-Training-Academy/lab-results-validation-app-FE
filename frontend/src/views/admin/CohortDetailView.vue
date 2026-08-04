@@ -154,7 +154,7 @@ async function toggleLock() {
               <td style="font-weight: 500">{{ ins.fullName }}</td>
               <td class="mono muted">{{ ins.email }}</td>
               <td style="text-align: center">
-                <VPill :tone="ins.isActive ? 'success' : 'info'">{{ ins.isActive ? 'Active' : 'Inactive' }}</VPill>
+                <VPill :tone="ins.active ? 'success' : 'info'">{{ ins.active ? 'Active' : 'Inactive' }}</VPill>
               </td>
             </tr>
           </tbody>
