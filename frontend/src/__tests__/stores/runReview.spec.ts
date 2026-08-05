@@ -170,4 +170,52 @@ describe('useRunReviewStore', () => {
     await expect(store.sendNotification('nt-1')).resolves.toBeUndefined()
     expect(store.notificationsPage?.content.find((n) => n.id === 'nt-1')?.status).toBe('PENDING')
   })
+
+  it('fetchConflicts ignores a slower, superseded response — Prev right after Next must not have the earlier page win the race', async () => {
+    const store = useRunReviewStore()
+    let resolvePage0!: (p: Paged<IngestionConflictResponse>) => void
+    vi.mocked(svc.listConflicts)
+      .mockImplementationOnce(() => new Promise((resolve) => { resolvePage0 = resolve }))
+      .mockResolvedValueOnce(page({ number: 1, content: [conflictResponse({ id: 'cf-2' })] }))
+
+    const firstFetch = store.fetchConflicts('c1', 'run-1', 0) // slow — resolves last
+    await store.fetchConflicts('c1', 'run-1', 1) // fast — resolves first, should win
+    resolvePage0(page({ number: 0 })) // now let the stale page-0 response land
+    await firstFetch
+
+    expect(store.conflictsPage?.number).toBe(1)
+    expect(store.conflictsPage?.content[0]!.id).toBe('cf-2')
+  })
+
+  it('fetchNotifications ignores a slower, superseded response the same way', async () => {
+    const store = useRunReviewStore()
+    let resolveStale!: (p: Paged<Notification>) => void
+    vi.mocked(svc.listNotifications)
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveStale = resolve }))
+      .mockResolvedValueOnce(notifPage({ number: 1, content: [notif({ id: 'nt-fresh' })] }))
+
+    const staleFetch = store.fetchNotifications('c1', 'run-1', 0)
+    await store.fetchNotifications('c1', 'run-1', 1)
+    resolveStale(notifPage({ number: 0 }))
+    await staleFetch
+
+    expect(store.notificationsPage?.number).toBe(1)
+    expect(store.notificationsPage?.content[0]!.id).toBe('nt-fresh')
+  })
+
+  it('fetchConflicts ignores a stale error too, so a slow failed request cannot blank out a page that already loaded', async () => {
+    const store = useRunReviewStore()
+    let rejectStale!: (e: Error) => void
+    vi.mocked(svc.listConflicts)
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectStale = reject }))
+      .mockResolvedValueOnce(page({ number: 1 }))
+
+    const staleFetch = store.fetchConflicts('c1', 'run-1', 0).catch(() => {})
+    await store.fetchConflicts('c1', 'run-1', 1)
+    rejectStale(new Error('stale request boom'))
+    await staleFetch
+
+    expect(store.conflictsError).toBeNull()
+    expect(store.conflictsPage?.number).toBe(1)
+  })
 })

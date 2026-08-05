@@ -302,6 +302,53 @@ describe('RunReviewView', () => {
     expect(toast.toast?.body).toContain('1 notification queued')
   })
 
+  it('keeps "Send all held" enabled when the pending items are on another page than the one currently shown', async () => {
+    vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
+    vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
+    vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage())
+    // Current page has zero PENDING rows, but the job has more elsewhere (totalElements > this page's content).
+    vi.mocked(reviewSvc.listNotifications).mockResolvedValue(notificationsPage({
+      content: [notification({ status: 'SENT', sentAt: '2026-07-21T08:05:00Z' })],
+      totalElements: 5,
+      totalPages: 5,
+      last: false,
+    }))
+    const { wrapper } = mountView()
+    await flushPromises()
+    await completeSync()
+
+    const sendAllBtn = wrapper.findAll('button').find((b) => b.text().includes('Send all held'))!
+    expect(sendAllBtn.attributes('disabled')).toBeUndefined()
+  })
+
+  it('disables "Send all held" only when the run truly has no notifications at all', async () => {
+    vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
+    vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
+    vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage())
+    vi.mocked(reviewSvc.listNotifications).mockResolvedValue(notificationsPage({ content: [], totalElements: 0, totalPages: 1, last: true }))
+    const { wrapper } = mountView()
+    await flushPromises()
+    await completeSync()
+
+    const sendAllBtn = wrapper.findAll('button').find((b) => b.text().includes('Send all held'))!
+    expect(sendAllBtn.attributes('disabled')).toBeDefined()
+  })
+
+  it('falls back to the raw status text for a notification status the FE does not recognize yet', async () => {
+    vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
+    vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
+    vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage())
+    vi.mocked(reviewSvc.listNotifications).mockResolvedValue(notificationsPage({
+      // Cast past the type — simulates the backend shipping a status the FE hasn't been updated for yet.
+      content: [notification({ status: 'CANCELLED' as Notification['status'] })],
+    }))
+    const { wrapper } = mountView()
+    await flushPromises()
+    await completeSync()
+
+    expect(wrapper.text()).toContain('CANCELLED')
+  })
+
   it('reports a send that came back 200 OK but still failed, and shows the error detail', async () => {
     vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
     vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())

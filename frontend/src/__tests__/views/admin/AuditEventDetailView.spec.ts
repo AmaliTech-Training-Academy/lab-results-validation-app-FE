@@ -111,6 +111,45 @@ describe('AuditEventDetailView', () => {
     expect(text).toContain('"specs": 3')
   })
 
+  it('renders a CONFLICT_RESOLVED payload with a humanized action, matching CohortSyncService.resolveConflict\'s minimal { conflictId, action, note } shape', async () => {
+    vi.mocked(cohortsSvc.listCohorts).mockResolvedValue([cohort()])
+    vi.mocked(auditSvc.getAuditEvent).mockResolvedValue(
+      event({
+        eventType: 'CONFLICT_RESOLVED',
+        payload: { conflictId: 'cf-002', action: 'KEEP_INCOMING', note: 'Kept row 41 (later submission).' },
+      }),
+    )
+
+    const wrapper = mountView()
+    await flushPromises()
+    const text = wrapper.text()
+
+    expect(text).toContain('CONFLICT RESOLVED')
+    // SCREAMING_SNAKE_CASE action reads as a title-cased phrase, not the raw code
+    expect(text).toContain('Keep Incoming')
+    expect(text).not.toContain('KEEP_INCOMING')
+    // the id has no underscores and stays untouched; the note is prose and passes through as-is
+    expect(text).toContain('cf-002')
+    expect(text).toContain('Kept row 41 (later submission).')
+  })
+
+  it('renders a CONFLICT_DISMISSED payload (the REJECT-action counterpart to CONFLICT_RESOLVED)', async () => {
+    vi.mocked(cohortsSvc.listCohorts).mockResolvedValue([cohort()])
+    vi.mocked(auditSvc.getAuditEvent).mockResolvedValue(
+      event({
+        eventType: 'CONFLICT_DISMISSED',
+        payload: { conflictId: 'cf-003', action: 'REJECT', note: 'Duplicate export from instructor — no action needed.' },
+      }),
+    )
+
+    const wrapper = mountView()
+    await flushPromises()
+    const text = wrapper.text()
+
+    expect(text).toContain('CONFLICT DISMISSED')
+    expect(text).toContain('cf-003')
+  })
+
   it('shows a friendly message when there is no payload', async () => {
     vi.mocked(cohortsSvc.listCohorts).mockResolvedValue([cohort()])
     vi.mocked(auditSvc.getAuditEvent).mockResolvedValue(event({ payload: undefined }))

@@ -39,20 +39,29 @@ export const useRunReviewStore = defineStore('runReview', () => {
   const notificationsLoading = ref(false)
   const notificationsError = ref<string | null>(null)
 
+  // Bumped on every fetch so a slower, superseded request (e.g. Prev clicked right after Next, or the status
+  // filter changed before the previous page finished loading) can tell it's stale and not clobber newer state.
+  let conflictsRequestId = 0
+  let notificationsRequestId = 0
+
   /** Fetches one page of the real conflict list (B10) — independent of `review`, which still carries the speculative merge-view `conflicts` array. */
   async function fetchConflicts(cohortId: string, runId: string, page = 0) {
+    const requestId = ++conflictsRequestId
     conflictsLoading.value = true
     conflictsError.value = null
     try {
-      conflictsPage.value = await listConflictsApi(cohortId, runId, {
+      const result = await listConflictsApi(cohortId, runId, {
         status: conflictsStatusFilter.value || undefined,
         page,
         size: CONFLICTS_PAGE_SIZE,
       })
+      if (requestId !== conflictsRequestId) return // a newer fetch already landed — don't overwrite it
+      conflictsPage.value = result
     } catch (e) {
+      if (requestId !== conflictsRequestId) return
       conflictsError.value = toErrorMessage(e, 'Failed to load conflicts')
     } finally {
-      conflictsLoading.value = false
+      if (requestId === conflictsRequestId) conflictsLoading.value = false
     }
   }
 
@@ -63,20 +72,24 @@ export const useRunReviewStore = defineStore('runReview', () => {
 
   /** Fetches one page of the real, paginated notification list (GET /notifications) — independent of `review.notifications`, which is mock-only. */
   async function fetchNotifications(cohortId: string, runId: string, page = 0) {
+    const requestId = ++notificationsRequestId
     notificationsLoading.value = true
     notificationsError.value = null
     try {
-      notificationsPage.value = await listNotificationsApi({
+      const result = await listNotificationsApi({
         cohortId,
         syncJobId: runId,
         status: notificationsStatusFilter.value || undefined,
         page,
         size: NOTIFICATIONS_PAGE_SIZE,
       })
+      if (requestId !== notificationsRequestId) return // a newer fetch already landed — don't overwrite it
+      notificationsPage.value = result
     } catch (e) {
+      if (requestId !== notificationsRequestId) return
       notificationsError.value = toErrorMessage(e, 'Failed to load notifications')
     } finally {
-      notificationsLoading.value = false
+      if (requestId === notificationsRequestId) notificationsLoading.value = false
     }
   }
 

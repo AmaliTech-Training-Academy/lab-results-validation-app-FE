@@ -336,7 +336,13 @@ export const auditEvents: AuditEvent[] = [
   { id: genId('ae'), eventType: 'REFERENCE_ACCEPTED', cohortId: 'coh-stood',  cohortName: 'Cohort 7 — Autumn 2025', actorEmail: 'admin@amalitech.com', occurredAt: '2025-09-03T11:00:00Z', payload: { sharepointVersion: '1.0' } },
   { id: genId('ae'), eventType: 'STOOD_UP',           cohortId: 'coh-stood',  cohortName: 'Cohort 7 — Autumn 2025', actorEmail: null,                  occurredAt: '2025-09-03T11:05:00Z' },
   { id: genId('ae'), eventType: 'COHORT_LOCKED',      cohortId: 'coh-locked', cohortName: 'Cohort 6 — Summer 2025', actorEmail: 'admin@amalitech.com', occurredAt: '2025-11-01T08:00:00Z' },
-  { id: genId('ae'), eventType: 'CONFLICT_RESOLVED',  cohortId: 'coh-stood',  cohortName: 'Cohort 7 — Autumn 2025', actorEmail: 'admin@amalitech.com', occurredAt: '2026-07-21T09:15:00Z', payload: { conflictId: 'cf-000' } },
+  // Mirror the resolved/dismissed conflicts above (cf-002, cf-003) so the audit trail and the
+  // run-review conflict queue agree on what happened to each conflict. CohortSyncService.resolveConflict
+  // records CONFLICT_RESOLVED for KEEP_EXISTING/KEEP_INCOMING and CONFLICT_DISMISSED for REJECT, with the
+  // same minimal payload shape either way: `{ conflictId, action, note }` (no conflictKind/learnerId/labId —
+  // those only exist on the separate IngestionConflictResponse DTO from /cohorts/{id}/conflicts).
+  { id: genId('ae'), eventType: 'CONFLICT_RESOLVED',  cohortId: 'coh-stood',  cohortName: 'Cohort 7 — Autumn 2025', actorEmail: 'admin@amalitech.com', occurredAt: '2026-07-21T09:10:00Z', payload: { conflictId: 'cf-002', action: 'KEEP_INCOMING', note: 'Kept row 41 (later submission).' } },
+  { id: genId('ae'), eventType: 'CONFLICT_DISMISSED', cohortId: 'coh-stood',  cohortName: 'Cohort 7 — Autumn 2025', actorEmail: 'admin@amalitech.com', occurredAt: '2026-07-21T09:12:00Z', payload: { conflictId: 'cf-003', action: 'REJECT', note: 'Duplicate export from instructor — no action needed.' } },
 ]
 
 // ---------------------------------------------------------------------------

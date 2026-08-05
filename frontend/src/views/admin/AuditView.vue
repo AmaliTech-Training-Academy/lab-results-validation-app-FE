@@ -6,8 +6,10 @@ import VIcon from '@/components/base/VIcon.vue'
 import VPill from '@/components/base/VPill.vue'
 import { useAuditStore } from '@/stores/audit'
 import { useCohortsStore } from '@/stores/cohorts'
-import { RUN_STATUS_TONE, type RunStatus } from '@/types/run.types'
+import { getCohortReference } from '@/services/cohorts.service'
+import { RUN_STATUS_TONE, type IngestionRun, type RunStatus } from '@/types/run.types'
 import { EVENT_TYPE_TONE, EVENT_TYPE_ICON, TONE_CHIP_STYLE, type AuditEventType } from '@/types/audit.types'
+import type { InstructorContact } from '@/types/domain.types'
 
 const router = useRouter()
 const route = useRoute()
@@ -19,29 +21,52 @@ const tab = ref<'runs' | 'events'>(route.query.tab === 'events' ? 'events' : 'ru
 const expandedRun = ref<string | null>(null)
 
 // Filters
-const f = ref({ cohortId: '', status: '' as '' | RunStatus, eventType: '' as '' | AuditEventType, dateFrom: '', dateTo: ''})
+const f = ref({ cohortId: '', status: '' as '' | RunStatus, eventType: '' as '' | AuditEventType, instructorContactId: '', dateFrom: '', dateTo: ''})
 
 function applyFilters() {
   audit.fetch({
     cohortId: f.value.cohortId || undefined,
     status: f.value.status || undefined,
     eventType: f.value.eventType || undefined,
+    instructorContactId: f.value.instructorContactId || undefined,
     dateFrom: f.value.dateFrom || undefined,
     dateTo: f.value.dateTo || undefined,
   })
 }
 
 function resetFilters() {
-  f.value = { cohortId: '', status: '', eventType: '', dateFrom: '', dateTo: ''}
+  f.value = { cohortId: '', status: '', eventType: '', instructorContactId: '', dateFrom: '', dateTo: ''}
   applyFilters()
+}
+
+/**
+ * No cross-cohort instructor-listing endpoint exists (`GET /instructors/{id}` is a single-id lookup only) —
+ * the "Runs only" instructorContactId filter (D5 AC1) needs *a* list to pick from, so fan out the lightweight
+ * per-cohort reference endpoint over every stood-up cohort and merge, deduping by id (an instructor can be
+ * attached to more than one cohort's reference bundle). A failed lookup for one cohort shouldn't blank the
+ * whole list — skip it and keep whatever the others returned.
+ */
+const instructors = ref<InstructorContact[]>([])
+async function loadInstructors() {
+  const bundles = await Promise.all(
+    cohorts.list.filter((c) => c.lifecycleState === 'STOOD_UP').map((c) => getCohortReference(c.id).catch(() => null)),
+  )
+  const byId = new Map<string, InstructorContact>()
+  for (const b of bundles) for (const ins of b?.instructors ?? []) byId.set(ins.id, ins)
+  instructors.value = [...byId.values()].sort((a, b) => a.fullName.localeCompare(b.fullName))
 }
 
 function changeEventsPage(page: number) {
   audit.fetchEvents(page)
 }
 
-onMounted(() => {
-  cohorts.fetchList()
+function changeRunsPage(page: number) {
+  audit.fetchRuns(page)
+}
+
+onMounted(async () => {
+  await cohorts.fetchList()
+  loadInstructors()
   applyFilters()
 })
 
@@ -68,6 +93,12 @@ function openEvent(id: string) {
   router.push({ name: 'admin-audit-event', params: { id } })
 }
 
+/** `r.id` is the ingestion_runs row itself, not the sync job — the run-review page is keyed by the parent job (`syncJobId`), scoped to the same cohort. */
+function openRunReview(r: IngestionRun) {
+  router.push({ name: 'admin-run-review', params: { id: r.syncJobId }, query: { cohortId: r.cohortId } })
+}
+
+const runs = computed(() => audit.runsPage?.content ?? [])
 const events = computed(() => audit.eventsPage?.content ?? [])
 
 /** Neither the real grading-runs nor audit-events endpoint denormalizes the cohort name — look it up. */
@@ -104,6 +135,13 @@ function cohortLabel(r: { cohortId: string | null; cohortName?: string }): strin
       </select>
     </label>
     <label class="fld">
+      <span>Instructor</span>
+      <select v-model="f.instructorContactId" @change="applyFilters">
+        <option value="">All</option>
+        <option v-for="ins in instructors" :key="ins.id" :value="ins.id">{{ ins.fullName }}</option>
+      </select>
+    </label>
+    <label class="fld">
       <span>Event type</span>
       <select v-model="f.eventType" @change="applyFilters">
         <option value="">All</option>
@@ -125,7 +163,7 @@ function cohortLabel(r: { cohortId: string | null; cohortName?: string }): strin
   <!-- Tabs -->
   <div class="tabs" role="tablist">
     <button :class="['tab', { on: tab === 'runs' }]" role="tab" :aria-selected="tab === 'runs'" @click="tab = 'runs'">
-      Ingestion runs <span class="count-badge mono">{{ audit.runs.length }}</span>
+      Ingestion runs <span class="count-badge mono">{{ audit.runsPage?.totalElements ?? 0 }}</span>
     </button>
     <button :class="['tab', { on: tab === 'events' }]" role="tab" :aria-selected="tab === 'events'" @click="tab = 'events'">
       Lifecycle events <span class="count-badge mono">{{ audit.eventsPage?.totalElements ?? 0 }}</span>
@@ -140,56 +178,71 @@ function cohortLabel(r: { cohortId: string | null; cohortName?: string }): strin
     <VButton variant="ghost" icon="rotate-ccw" @click="applyFilters">Try again</VButton>
   </div>
 
-  <div v-else-if="tab === 'runs'" class="tbl-wrap">
-    <table class="tbl">
-      <thead>
-        <tr><th>Cohort</th><th>Trigger</th><th style="text-align: center">Status</th><th>When</th><th aria-hidden="true"></th></tr>
-      </thead>
+  <template v-else-if="tab === 'runs'">
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead>
+          <tr><th>Cohort</th><th>Workbook</th><th>Trigger</th><th style="text-align: center">Status</th><th>When</th><th aria-hidden="true"></th></tr>
+        </thead>
 
-      <tbody v-if="audit.loading">
-        <tr v-for="i in 4" :key="i" class="skel-row">
-          <td><span class="skel" style="width: 60%" /></td>
-          <td class="muted"><span class="skel" style="width: 70%" /></td>
-          <td style="text-align: center"><span class="skel" style="width: 64px; border-radius: 999px; margin: 0 auto" /></td>
-          <td><span class="skel mono" style="width: 90px" /></td>
-          <td></td>
-        </tr>
-      </tbody>
+        <tbody v-if="audit.loading">
+          <tr v-for="i in 4" :key="i" class="skel-row">
+            <td><span class="skel" style="width: 60%" /></td>
+            <td class="muted"><span class="skel" style="width: 80%" /></td>
+            <td class="muted"><span class="skel" style="width: 70%" /></td>
+            <td style="text-align: center"><span class="skel" style="width: 64px; border-radius: 999px; margin: 0 auto" /></td>
+            <td><span class="skel mono" style="width: 90px" /></td>
+            <td></td>
+          </tr>
+        </tbody>
 
-      <tbody v-else>
-        <template v-for="r in audit.runs" :key="r.id">
-          <tr class="row-click" @click="toggleRun(r.id)">
-            <td>{{ cohortLabel(r) }}</td>
-            <td class="muted">{{ !r.triggerType ? '—' : r.triggerType === 'SCHEDULED' ? 'Scheduled · System' : `Manual · ${r.triggeredByEmail ?? r.triggeredBy ?? 'Admin'}` }}</td>
-            <td style="text-align: center"><VPill :tone="RUN_STATUS_TONE[r.status]">{{ r.status }}</VPill></td>
-            <td class="mono muted">{{ fmt(r.runAt ?? r.startedAt) }}</td>
-            <td style="text-align: right; width: 44px"><VIcon :name="expandedRun === r.id ? 'chevron-down' : 'chevron-right'" :size="18" class="muted" /></td>
-          </tr>
-          <tr v-if="expandedRun === r.id" class="detail-row">
-            <td colspan="5">
-              <div class="run-detail">
-                <div class="rd-counts mono">
-                  {{ r.counts?.rowsRead ?? 0 }} read · {{ r.counts?.committedNew ?? 0 }} new · {{ r.counts?.updated ?? 0 }} updated ·
-                  {{ r.counts?.skippedInvalid ?? 0 }} invalid · {{ r.counts?.skippedUnchanged ?? 0 }} unchanged · {{ r.counts?.conflicts ?? 0 }} conflicts
+        <tbody v-else>
+          <template v-for="r in runs" :key="r.id">
+            <tr class="row-click" @click="toggleRun(r.id)">
+              <td>{{ cohortLabel(r) }}</td>
+              <td class="mono">{{ r.workbookFilename ?? '—' }}</td>
+              <td class="muted">{{ !r.triggerType ? '—' : r.triggerType === 'SCHEDULED' ? 'Scheduled · System' : `Manual · ${r.triggeredByEmail ?? r.triggeredBy ?? 'Admin'}` }}</td>
+              <td style="text-align: center"><VPill :tone="RUN_STATUS_TONE[r.status]">{{ r.status }}</VPill></td>
+              <td class="mono muted">{{ fmt(r.runAt ?? r.startedAt) }}</td>
+              <td style="text-align: right; width: 44px"><VIcon :name="expandedRun === r.id ? 'chevron-down' : 'chevron-right'" :size="18" class="muted" /></td>
+            </tr>
+            <tr v-if="expandedRun === r.id" class="detail-row">
+              <td colspan="6">
+                <div class="run-detail">
+                  <div class="rd-counts mono">
+                    {{ r.counts?.rowsRead ?? 0 }} read · {{ r.counts?.committedNew ?? 0 }} new · {{ r.counts?.updated ?? 0 }} updated ·
+                    {{ r.counts?.skippedInvalid ?? 0 }} invalid · {{ r.counts?.skippedUnchanged ?? 0 }} unchanged · {{ r.counts?.conflicts ?? 0 }} conflicts
+                  </div>
+                  <div v-if="r.highFailure" class="rd-hi-fail mono">
+                    <VIcon name="alert-triangle" :size="13" /> High failure — {{ r.failureRatePercent?.toFixed(1) }}% rejected
+                  </div>
+                  <div v-if="r.sharepointVersionId" class="rd-meta mono muted">version {{ r.sharepointVersionId }} · hash {{ r.quickXorHash }}</div>
+                  <div v-if="r.errorReport?.length" class="rd-errors">
+                    <p class="rd-errors-title">Rejected rows</p>
+                    <ul class="err-list">
+                      <li v-for="(e, i) in r.errorReport ?? []" :key="i" class="mono err-item">
+                        {{ [e.sheet, e.row != null ? `row ${e.row}` : '', e.rule].filter(Boolean).join(' · ') }} — {{ e.message }}
+                      </li>
+                    </ul>
+                  </div>
+                  <div v-if="r.syncJobId" class="rd-footer">
+                    <VButton variant="primary" size="sm" icon-right="arrow-right" @click.stop="openRunReview(r)">Open run review</VButton>
+                  </div>
                 </div>
-                <div v-if="r.sharepointVersionId" class="rd-meta mono muted">version {{ r.sharepointVersionId }} · hash {{ r.quickXorHash }}</div>
-                <div v-if="r.errorReport?.length" class="rd-errors">
-                  <p class="rd-errors-title">Rejected rows</p>
-                  <ul class="err-list">
-                    <li v-for="(e, i) in r.errorReport ?? []" :key="i" class="mono err-item">
-                      {{ [e.sheet, e.row != null ? `row ${e.row}` : '', e.rule].filter(Boolean).join(' · ') }} — {{ e.message }}
-                    </li>
-                  </ul>
-                </div>
-                <VButton size="sm" variant="ghost" icon-right="arrow-right" @click.stop="router.push({ name: 'admin-run-review', params: { id: r.id }, query: { cohortId: r.cohortId } })">Open run review</VButton>
-              </div>
-            </td>
-          </tr>
-        </template>
-        <tr v-if="audit.runs.length === 0"><td colspan="5"><div class="empty-inline"><VIcon name="scroll-text" :size="24" class="muted" /><p class="empty-sub">No runs match these filters.</p></div></td></tr>
-      </tbody>
-    </table>
-  </div>
+              </td>
+            </tr>
+          </template>
+          <tr v-if="runs.length === 0"><td colspan="6"><div class="empty-inline"><VIcon name="scroll-text" :size="24" class="muted" /><p class="empty-sub">No runs match these filters.</p></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div v-if="!audit.loading && audit.runsPage && runs.length > 0" class="pager">
+      <VButton size="sm" variant="ghost" :disabled="audit.runsPage.number === 0" @click="changeRunsPage(audit.runsPage.number - 1)">Prev</VButton>
+      <span class="mono muted">Page {{ audit.runsPage.number + 1 }} of {{ Math.max(audit.runsPage.totalPages, 1) }}</span>
+      <VButton size="sm" variant="ghost" :disabled="audit.runsPage.last" @click="changeRunsPage(audit.runsPage.number + 1)">Next</VButton>
+    </div>
+  </template>
 
   <!-- Events tab -->
   <div v-else-if="audit.eventsError && !audit.eventsLoading" class="load-error-state">
@@ -264,9 +317,11 @@ function cohortLabel(r: { cohortId: string | null; cohortName?: string }): strin
 .run-detail { display: flex; flex-direction: column; gap: 10px; padding: 6px 4px; }
 .rd-counts { font-size: 13px; }
 .rd-meta { font-size: 12px; }
+.rd-hi-fail { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--danger); }
 .rd-errors-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
 .err-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
 .err-item { font-size: 12.5px; color: var(--danger); background: var(--danger-bg); padding: 6px 10px; border-radius: 3px; }
+.rd-footer { display: flex; justify-content: flex-end; padding-top: 10px; margin-top: 2px; border-top: 1px solid var(--border); }
 
 .event-cell { display: inline-flex; align-items: center; gap: 10px; font-weight: 500; }
 .event-ic { display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: var(--r-sm); flex-shrink: 0; }
