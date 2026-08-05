@@ -39,13 +39,18 @@ const cohortLabel = computed(() => {
 const payloadEntries = computed(() => Object.entries(event.value?.payload ?? {}))
 
 /** Gate/standup payloads mix booleans, numbers, arrays, and nested objects — a bare `JSON.stringify` reads badly for anything but a plain string, e.g. `quizReferencePresent: true` showing as the text "true", or `null` showing as the text "null". */
-type PayloadValueKind = 'bool' | 'empty' | 'list' | 'json' | 'text'
+type PayloadValueKind = 'bool' | 'empty' | 'list' | 'json' | 'enum' | 'text'
 
+/** e.g. conflict-resolution payloads carry a raw `conflictKind`/`action` code (`in_file_duplicate`, `KEEP_INCOMING`) — snake_case in either case, not prose. IDs like `conflictId`/`labId` never contain underscores, so they fall through to plain text untouched. */
+function isEnumLike(v: unknown): v is string {
+  return typeof v === 'string' && /^[a-z0-9]+(_[a-z0-9]+)+$/i.test(v)
+}
 function payloadKind(v: unknown): PayloadValueKind {
   if (typeof v === 'boolean') return 'bool'
   if (v === null || v === undefined) return 'empty'
   if (Array.isArray(v)) return v.every((x) => x === null || typeof x !== 'object') ? 'list' : 'json'
   if (typeof v === 'object') return 'json'
+  if (isEnumLike(v)) return 'enum'
   return 'text'
 }
 function payloadList(v: unknown): string {
@@ -53,6 +58,11 @@ function payloadList(v: unknown): string {
 }
 function payloadJson(v: unknown): string {
   return JSON.stringify(v, null, 2)
+}
+/** Backend enums show up in either case — `conflictKind` is `in_file_duplicate`, `action` is `KEEP_INCOMING` — so
+ * lowercase first or the two read inconsistently side by side ("In File Duplicate" next to "KEEP INCOMING"). */
+function payloadEnum(v: unknown): string {
+  return String(v).toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
 onMounted(() => {
@@ -121,6 +131,7 @@ onMounted(() => {
               </span>
               <span v-else-if="payloadKind(v) === 'empty'" class="muted">—</span>
               <span v-else-if="payloadKind(v) === 'list'">{{ payloadList(v) }}</span>
+              <span v-else-if="payloadKind(v) === 'enum'">{{ payloadEnum(v) }}</span>
               <pre v-else-if="payloadKind(v) === 'json'" class="payload-json">{{ payloadJson(v) }}</pre>
               <template v-else>{{ v }}</template>
             </td>

@@ -70,8 +70,22 @@ const files = computed(() => store.review?.files ?? [])
 const headerRun = computed(() => review.value?.run ?? runsStore.current)
 const conflictRows = computed(() => store.conflictsPage?.content ?? [])
 const notifications = computed(() => store.notificationsPage?.content ?? [])
-/** Scoped to the current page — "Send all held" still touches every PENDING notification for the job, page or not. */
+/** Scoped to the current page — informational only. "Send all held" itself touches every PENDING
+ * notification for the whole job, page (and filter) or not, so it must not be gated on this. */
 const pendingCount = computed(() => notifications.value.filter((n) => n.status === 'PENDING').length)
+/**
+ * Whether "Send all held" could plausibly have something to do. `totalElements` covers every page for the
+ * *current* filter — an exact PENDING total when the filter is 'PENDING', and (when there's no filter at all)
+ * an exact total-notifications count, so 0 there really does mean nothing to send. Under any other filter
+ * (e.g. viewing only SENT/FAILED) it tells us nothing about how many PENDING notifications exist elsewhere,
+ * so we fail open rather than risk a false negative silently blocking a legitimate bulk action — the send-all
+ * endpoint is a harmless no-op if nothing is actually queued.
+ */
+const canSendAll = computed(() => {
+  const filter = store.notificationsStatusFilter
+  if (filter !== '' && filter !== 'PENDING') return true
+  return (store.notificationsPage?.totalElements ?? 0) > 0
+})
 
 const SUMMARY = [
   { key: 'rowsRead', label: 'Rows read' },
@@ -100,6 +114,15 @@ const NOTIF_TONE: Record<NotificationStatus, 'success' | 'warning' | 'danger' | 
 }
 const NOTIF_LABEL: Record<NotificationStatus, string> = {
   PENDING: 'Held', SENT: 'Sent', SKIPPED: 'Dismissed', FAILED: 'Failed',
+}
+/** `mapNotification` casts the real API's `status`/`recipientKind` strings without runtime validation — an
+ * unrecognized value (a status the backend adds before the FE knows about it) would otherwise render as a
+ * blank pill instead of just falling back to the raw value. */
+function notifTone(status: NotificationStatus): 'success' | 'warning' | 'danger' | 'info' {
+  return NOTIF_TONE[status] ?? 'info'
+}
+function notifLabel(status: NotificationStatus): string {
+  return NOTIF_LABEL[status] ?? status
 }
 
 function notifTypeLabel(t: Notification['type']): string {
@@ -312,7 +335,7 @@ function recipientLabel(n: Notification): string {
                 <td class="mono">{{ c.learnerId ?? '—' }}</td>
                 <td class="mono">{{ c.labId ?? '—' }}</td>
                 <td class="mono muted">{{ c.existingResultId ?? '— (new row)' }}</td>
-                <td style="text-align: center"><VPill :tone="CONFLICT_STATUS_TONE[c.status]">{{ c.status }}</VPill></td>
+                <td style="text-align: center"><VPill :tone="CONFLICT_STATUS_TONE[c.status] ?? 'info'">{{ c.status }}</VPill></td>
                 <td>
                   <details>
                     <summary class="mono">payload</summary>
@@ -358,7 +381,7 @@ function recipientLabel(n: Notification): string {
               <option value="FAILED">Failed</option>
             </select>
           </label>
-          <VButton variant="primary" icon="send" :disabled="pendingCount === 0" @click="sendAll">Send all held</VButton>
+          <VButton variant="primary" icon="send" :disabled="!canSendAll" @click="sendAll">Send all held</VButton>
         </div>
       </div>
 
@@ -392,7 +415,7 @@ function recipientLabel(n: Notification): string {
                 </td>
                 <td><span class="policy-tag" :class="n.dispatchPolicy === 'HELD' ? 'held' : 'auto'">{{ n.dispatchPolicy }}</span></td>
                 <td style="text-align: center">
-                  <VPill :tone="NOTIF_TONE[n.status]">{{ NOTIF_LABEL[n.status] }}</VPill>
+                  <VPill :tone="notifTone(n.status)">{{ notifLabel(n.status) }}</VPill>
                   <div v-if="n.status === 'SENT' && n.sentAt" class="muted mono sub">Sent {{ formatRunAt(n.sentAt) }}</div>
                   <div v-if="n.status === 'FAILED' && n.errorDetail" class="danger-note mono" :title="n.errorDetail">{{ n.errorDetail }}</div>
                 </td>

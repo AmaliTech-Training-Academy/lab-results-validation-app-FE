@@ -11,7 +11,10 @@ export type AuditEventType =
   | 'COHORT_LOCKED'
   | 'COHORT_UNLOCKED'
   | 'STOOD_UP'
+  /** CohortSyncService.resolveConflict records this for a KEEP_EXISTING/KEEP_INCOMING action. Payload: `{ conflictId, action, note }`. */
   | 'CONFLICT_RESOLVED'
+  /** CohortSyncService.resolveConflict records this instead of CONFLICT_RESOLVED when the action is REJECT. Same payload shape. */
+  | 'CONFLICT_DISMISSED'
 
 /** Tone per known event type, shared across the audit list and detail views. Falls back to 'info' for anything outside `AuditEventType` (the backend field isn't a closed enum on our side). */
 export const EVENT_TYPE_TONE: Record<AuditEventType, 'success' | 'warning' | 'danger' | 'info'> = {
@@ -24,6 +27,7 @@ export const EVENT_TYPE_TONE: Record<AuditEventType, 'success' | 'warning' | 'da
   COHORT_UNLOCKED: 'info',
   STOOD_UP: 'success',
   CONFLICT_RESOLVED: 'info',
+  CONFLICT_DISMISSED: 'warning',
 }
 
 /** Icon per known event type, shared across the audit list and detail views. Falls back to 'circle'. */
@@ -37,6 +41,7 @@ export const EVENT_TYPE_ICON: Record<AuditEventType, string> = {
   COHORT_UNLOCKED: 'lock-open',
   STOOD_UP: 'flag',
   CONFLICT_RESOLVED: 'git-merge',
+  CONFLICT_DISMISSED: 'trash-2',
 }
 
 /** bg/fg pair per pill tone — matches the `.pill-*` colors in global.css — for coloring an icon chip alongside a tone-carrying label (VStatCard's `.stat-chip` pattern). */
