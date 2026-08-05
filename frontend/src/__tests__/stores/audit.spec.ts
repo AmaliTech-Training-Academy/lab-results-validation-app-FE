@@ -16,6 +16,10 @@ function run(over: Partial<IngestionRun> = {}): IngestionRun {
   return { id: 'run-1', cohortId: 'c1', status: 'completed', runAt: '2026-07-20T08:00:00Z', ...over }
 }
 
+function runsPage(overrides: Partial<Paged<IngestionRun>> = {}): Paged<IngestionRun> {
+  return { content: [run()], number: 0, size: 20, totalElements: 1, totalPages: 1, last: true, ...overrides }
+}
+
 function event(over: Partial<AuditEvent> = {}): AuditEvent {
   return { id: 'ev-1', eventType: 'STOOD_UP', cohortId: 'c1', actorEmail: null, occurredAt: '2026-07-20T08:00:00Z', ...over }
 }
@@ -30,21 +34,37 @@ beforeEach(() => {
 })
 
 describe('useAuditStore', () => {
-  it('fetch loads runs and the first page of events together, storing the filters used', async () => {
-    vi.mocked(svc.listAuditRuns).mockResolvedValue([run()])
+  it('fetch loads the first page of runs and events together, storing the filters used', async () => {
+    vi.mocked(svc.listAuditRuns).mockResolvedValue(runsPage())
     vi.mocked(svc.listAuditEvents).mockResolvedValue(page())
 
     const store = useAuditStore()
     await store.fetch({ cohortId: 'c1' })
 
-    expect(store.runs).toHaveLength(1)
+    expect(store.runsPage?.content).toHaveLength(1)
     expect(store.eventsPage?.content).toHaveLength(1)
+    expect(svc.listAuditRuns).toHaveBeenCalledWith({ cohortId: 'c1', page: 0, size: 20 })
     expect(svc.listAuditEvents).toHaveBeenCalledWith({ cohortId: 'c1', page: 0, size: 20 })
     expect(store.filters).toEqual({ cohortId: 'c1' })
   })
 
+  it('fetchRuns pages independently of events, reusing the stored filters', async () => {
+    vi.mocked(svc.listAuditRuns).mockResolvedValue(runsPage())
+    vi.mocked(svc.listAuditEvents).mockResolvedValue(page())
+
+    const store = useAuditStore()
+    await store.fetch({ status: 'failed' })
+    vi.mocked(svc.listAuditRuns).mockResolvedValue(runsPage({ number: 1, last: true }))
+
+    await store.fetchRuns(1)
+
+    expect(svc.listAuditRuns).toHaveBeenLastCalledWith({ status: 'failed', page: 1, size: 20 })
+    expect(svc.listAuditEvents).toHaveBeenCalledTimes(1)
+    expect(store.runsPage?.number).toBe(1)
+  })
+
   it('fetchEvents pages independently of runs, reusing the stored filters', async () => {
-    vi.mocked(svc.listAuditRuns).mockResolvedValue([run()])
+    vi.mocked(svc.listAuditRuns).mockResolvedValue(runsPage())
     vi.mocked(svc.listAuditEvents).mockResolvedValue(page())
 
     const store = useAuditStore()
@@ -67,6 +87,23 @@ describe('useAuditStore', () => {
 
     expect(store.error).toBe('runs boom')
     expect(store.eventsError).toBe('events boom')
+  })
+
+  it('fetchRuns ignores a slower, superseded response so a stale page cannot clobber a newer one', async () => {
+    const store = useAuditStore()
+    let resolveStale!: (p: Paged<IngestionRun>) => void
+    vi.mocked(svc.listAuditRuns)
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveStale = resolve }))
+      .mockResolvedValueOnce(runsPage({ number: 1, content: [run({ id: 'run-fresh' })] }))
+    vi.mocked(svc.listAuditEvents).mockResolvedValue(page())
+
+    const staleFetch = store.fetchRuns(0)
+    await store.fetchRuns(1)
+    resolveStale(runsPage({ number: 0 }))
+    await staleFetch
+
+    expect(store.runsPage?.number).toBe(1)
+    expect(store.runsPage?.content[0]!.id).toBe('run-fresh')
   })
 
   it('fetchEvent loads a single event by id into currentEvent', async () => {

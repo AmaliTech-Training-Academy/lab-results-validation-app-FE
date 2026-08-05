@@ -29,6 +29,8 @@ export interface RunCounts {
 export interface IngestionRun {
   id: string
   cohortId: string
+  /** Only populated by the audit-log endpoint so far — the parent sync job's id, distinct from `id`, for linking into the run-review page. */
+  syncJobId?: string
   cohortName?: string
   workbookFilename?: string
   sharepointFileUrl?: string | null
@@ -44,6 +46,8 @@ export interface IngestionRun {
   counts?: RunCounts
   /** Derived flag: rejected > 50% of a sheet's rows (§4.5, B7 AC3). */
   highFailure?: boolean
+  /** Only populated by the audit-log endpoint so far — the run-level counterpart to `FileIngestionSummary.failureRatePercent`. */
+  failureRatePercent?: number
   runAt?: string
   /** Some endpoints report these instead of a combined `runAt`. */
   startedAt?: string

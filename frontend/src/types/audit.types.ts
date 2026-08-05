@@ -75,6 +75,32 @@ export interface AuditEventResponse {
   occurredAt: string
 }
 
+/**
+ * GET /audit-log/ingestion-runs response row — backend: IngestionRunAuditResponse record. The cross-cohort,
+ * paginated counterpart to `SyncRun`/`SyncRunResponse` (which are both scoped to a single cohort).
+ */
+export interface IngestionRunAuditResponse {
+  id: string
+  cohortId: string
+  /** The parent sync job's id — distinct from `id` (the ingestion_runs row itself) — for linking into the run-review page (`GET /cohorts/{cohortId}/sync/runs/{syncJobId}/overview`). */
+  syncJobId: string
+  workbookFilename: string
+  /** schema: ingestion_runs.status — already the final run status, not a job-stub status like `SyncRunStatus`. */
+  status: string
+  triggerType: string
+  /** Raw user id — null for a scheduler-triggered run; resolved to an email client-side. */
+  triggeredBy: string | null
+  rowsRead: number
+  committedNew: number
+  updatedCount: number
+  skippedInvalid: number
+  skippedUnchanged: number
+  conflictsCount: number
+  highFailureRate: boolean
+  failureRatePercent: number
+  runAt: string
+}
+
 /** Filters for the historical audit-log view (D5 AC1). */
 export interface AuditFilters {
   cohortId?: string
@@ -84,8 +110,8 @@ export interface AuditFilters {
   status?: RunStatus
   /** Events only. */
   eventType?: AuditEventType
-  /** Runs only — filter by instructor whose rows appear in the run. */
-  instructorId?: string
+  /** Runs only — filter by the instructor whose rows appear in the run (`InstructorContact.id`, not the human-readable `instructorId`). */
+  instructorContactId?: string
   page?: number
   size?: number
 }
