@@ -7,6 +7,7 @@ import VPill from '@/components/base/VPill.vue'
 import { useRunReviewStore } from '@/stores/runReview'
 import { useRunsStore } from '@/stores/runs'
 import { useSyncRunStream } from '@/composables/useSyncRunStream'
+import { useNotificationStream } from '@/composables/useNotificationStream'
 import { useToastAction } from '@/composables/useToastAction'
 import { useToastStore } from '@/stores/toast'
 import { toErrorMessage } from '@/utils/errors'
@@ -37,6 +38,18 @@ const stream = useSyncRunStream(cohortId, runId, {
     Promise.all([store.fetchReview(cohortId, runId), store.fetchConflicts(cohortId, runId), store.fetchNotifications(cohortId, runId)]),
 })
 
+// Notification sends are async (auto-dispatch, or the tail of a manual send/retry/send-all) — this stream
+// pushes each outcome live instead of leaving the admin to guess and manually refresh. It's scoped to every
+// run/cohort on the backend, so `applyNotificationEvent` filters to this run before touching store state.
+const notifStream = useNotificationStream({
+  onEvent: (n) => {
+    store.applyNotificationEvent(runId, n)
+    if (n.status === 'FAILED' && (n.syncJobId === runId || n.ingestionRunId === runId)) {
+      toast.show({ tone: 'warning', title: 'Notification failed', body: `${recipientLabel(n)} — ${n.errorDetail ?? 'Delivery failed'}` })
+    }
+  },
+})
+
 const FILE_ICON: Record<SyncFileStatus, string> = {
   discovered: 'loader',
   unchanged: 'check-circle-2',
@@ -61,6 +74,7 @@ onMounted(async () => {
   } else {
     await Promise.all([store.fetchReview(cohortId, runId), store.fetchConflicts(cohortId, runId), store.fetchNotifications(cohortId, runId)])
   }
+  notifStream.start()
 })
 
 const review = computed(() => store.review)
@@ -145,6 +159,11 @@ function changeNotificationsPage(page: number) {
   store.fetchNotifications(cohortId, runId, page)
 }
 
+/** Re-fetches the page currently shown — used by the "new activity" banner once a live event lands off-page. */
+function refreshNotifications() {
+  store.fetchNotifications(cohortId, runId, store.notificationsPage?.number ?? 0)
+}
+
 const RESOLVE_TOAST_TITLE: Record<ConflictResolutionAction, string> = {
   KEEP_EXISTING: 'Kept the existing row',
   KEEP_INCOMING: 'Kept the incoming row',
@@ -199,7 +218,7 @@ function recipientLabel(n: Notification): string {
         Run review
         <VPill v-if="headerRun" :tone="RUN_STATUS_TONE[headerRun.status]">{{ headerRun.status }}</VPill>
       </h1>
-      <p class="page-sub mono">{{ headerRun?.workbookFilename ?? '…' }} · {{ headerRun?.cohortName }}</p>
+      <p class="page-sub mono">{{ headerRun?.cohortName }}</p>
     </div>
   </div>
 
@@ -385,6 +404,13 @@ function recipientLabel(n: Notification): string {
         </div>
       </div>
 
+      <div v-if="store.notificationsStale" class="stale-banner">
+        <VIcon name="mail" :size="14" />
+        New notification activity for this run.
+        <button type="button" class="link-btn" @click="refreshNotifications">Refresh<VIcon name="refresh-cw" :size="12" /></button>
+      </div>
+      <p v-if="notifStream.error.value" class="inline-error"><VIcon name="alert-circle" :size="14" /> {{ notifStream.error.value }}</p>
+
       <div v-if="store.notificationsLoading" class="muted">Loading notifications…</div>
       <p v-else-if="store.notificationsError" class="inline-error"><VIcon name="alert-circle" :size="14" /> {{ store.notificationsError }}</p>
       <template v-else>
@@ -508,6 +534,10 @@ function recipientLabel(n: Notification): string {
 .payload { margin-top: 8px; font-size: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 3px; padding: 8px 10px; max-width: 360px; overflow-x: auto; }
 details summary { cursor: pointer; font-size: 12.5px; color: var(--text-secondary); }
 .pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 14px; }
+
+.stale-banner { display: flex; align-items: center; gap: 6px; background: var(--info-bg, rgba(0, 90, 255, 0.06)); color: var(--text); border-radius: var(--r-sm, 4px); padding: 8px 12px; font-size: 13px; margin-bottom: 12px; }
+.link-btn { display: inline-flex; align-items: center; gap: 4px; border: none; background: none; padding: 0; margin-left: 4px; color: var(--orange, #ff5a00); font-weight: 600; font-size: 13px; cursor: pointer; text-decoration: underline; }
+.link-btn:hover { color: var(--orange-dark, #a83900); }
 
 .notif-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
 .notif-head-actions { display: flex; align-items: flex-end; gap: 12px; }
