@@ -1,6 +1,6 @@
 // Run-Review: conflict queue + staged-notification moderation
 // (PRD Epic B B10, Epic C C7, FE strategy §8).
-import { http } from './http'
+import { http, BASE_URL, getToken } from './http'
 import type {
   ConflictListFilters,
   IngestionConflict,
@@ -184,6 +184,23 @@ async function enrichRecipients(list: Notification[]): Promise<Notification[]> {
 
 async function enrichRecipient(n: Notification): Promise<Notification> {
   return (await enrichRecipients([n]))[0] ?? n
+}
+
+/** Maps + recipient-enriches a single row off the notifications SSE stream (`useNotificationStream`) — same shape as a `listNotifications`/send/dismiss response row. */
+export async function mapStreamNotification(dto: NotificationResponse): Promise<Notification> {
+  return enrichRecipient(mapNotification(dto))
+}
+
+/**
+ * URL for the live notification-status feed — GET /notifications/stream (§Epic C). Unlike the cohort-scoped
+ * standup/gate4/sync streams, this one isn't scoped to a cohort or run: it pushes notification.sent /
+ * notification.failed / notification.skipped events for every dispatch path (auto-dispatch, manual send/retry,
+ * send-all, dismiss), so callers filter to what they care about. Browser `EventSource` can't set an
+ * `Authorization` header, so the JWT rides in the query string instead (same convention as the other streams).
+ */
+export function notificationStreamUrl(): string {
+  const token = getToken() ?? ''
+  return `${BASE_URL}/notifications/stream?token=${encodeURIComponent(token)}`
 }
 
 function buildNotificationsQuery(filters: NotificationListFilters): string {

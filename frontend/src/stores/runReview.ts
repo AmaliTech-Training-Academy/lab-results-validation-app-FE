@@ -38,6 +38,10 @@ export const useRunReviewStore = defineStore('runReview', () => {
   const notificationsStatusFilter = ref<NotificationStatus | ''>('')
   const notificationsLoading = ref(false)
   const notificationsError = ref<string | null>(null)
+  /** Set when a live stream event lands for this run but the row it touches isn't on the currently displayed
+   *  page/filter — e.g. a fresh auto-dispatched notification, or one sitting on page 2 while page 1 is shown.
+   *  Cleared by the next `fetchNotifications`. Patched rows that *are* visible update in place instead. */
+  const notificationsStale = ref(false)
 
   // Bumped on every fetch so a slower, superseded request (e.g. Prev clicked right after Next, or the status
   // filter changed before the previous page finished loading) can tell it's stale and not clobber newer state.
@@ -85,6 +89,7 @@ export const useRunReviewStore = defineStore('runReview', () => {
       })
       if (requestId !== notificationsRequestId) return // a newer fetch already landed — don't overwrite it
       notificationsPage.value = result
+      notificationsStale.value = false
     } catch (e) {
       if (requestId !== notificationsRequestId) return
       notificationsError.value = toErrorMessage(e, 'Failed to load notifications')
@@ -142,6 +147,22 @@ export const useRunReviewStore = defineStore('runReview', () => {
     replaceNotificationRow(updated.id, updated)
   }
 
+  /**
+   * Applies a notification.sent/failed/skipped event pushed over `useNotificationStream`. The stream is global
+   * (every run, every cohort), so events for a different run are ignored outright; a matching event patches the
+   * row in place if it's on the page currently displayed, otherwise it just flags `notificationsStale` so the
+   * view can prompt a refresh rather than silently rewriting pagination/filter state out from under the admin.
+   */
+  function applyNotificationEvent(runId: string, n: Notification) {
+    if (n.syncJobId !== runId && n.ingestionRunId !== runId) return
+    const onPage = notificationsPage.value?.content.some((row) => row.id === n.id) ?? false
+    if (onPage) {
+      replaceNotificationRow(n.id, n)
+    } else {
+      notificationsStale.value = true
+    }
+  }
+
   function replaceConflict(id: string, next: RunReview['conflicts'][number]) {
     if (!review.value) return
     review.value.conflicts = review.value.conflicts.map((c) => (c.id === id ? next : c))
@@ -180,6 +201,7 @@ export const useRunReviewStore = defineStore('runReview', () => {
     notificationsStatusFilter,
     notificationsLoading,
     notificationsError,
+    notificationsStale,
     fetchNotifications,
     setNotificationsStatusFilter,
     resolveConflict,
@@ -187,5 +209,6 @@ export const useRunReviewStore = defineStore('runReview', () => {
     sendNotification,
     sendAll,
     dismissNotification,
+    applyNotificationEvent,
   }
 })
