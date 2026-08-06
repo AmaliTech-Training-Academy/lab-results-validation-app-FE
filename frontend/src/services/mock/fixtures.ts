@@ -14,12 +14,10 @@ import type {
   SpecializationWithModules,
 } from '@/types/domain.types'
 import type { IngestionRun } from '@/types/run.types'
-import type { IngestionConflict, Notification } from '@/types/runReview.types'
+import type { IngestionConflict, IngestionConflictResponse, Notification } from '@/types/runReview.types'
 import type { AuditEvent } from '@/types/audit.types'
 import type { Settings } from '@/types/settings.types'
-
-const env = import.meta.env as unknown as Record<string, string | undefined>
-export const USE_MOCKS = (env.VITE_USE_MOCKS ?? 'true') !== 'false'
+import type { SyncScheduleResponse } from '@/types/syncSchedule.types'
 
 /** Simulated network latency so loading states are exercised. */
 export function mockDelay<T>(value: T, ms = 300): Promise<T> {
@@ -133,8 +131,8 @@ export function buildReference(cohortId: string): CohortReference {
   ]
 
   const instructors: InstructorContact[] = [
-    { id: genId('ins'), instructorId: 'INS-001', email: 'sarah.jenkins@amalitech.com', fullName: 'Sarah Jenkins', isActive: true },
-    { id: genId('ins'), instructorId: 'INS-002', email: 'david.kim@amalitech.com',     fullName: 'David Kim',     isActive: true },
+    { id: genId('ins'), instructorId: 'INS-001', email: 'sarah.jenkins@amalitech.com', fullName: 'Sarah Jenkins', active: true },
+    { id: genId('ins'), instructorId: 'INS-002', email: 'david.kim@amalitech.com',     fullName: 'David Kim',     active: true },
   ]
 
   return { specializations: [specSwe, specDa], learners, instructors }
@@ -223,11 +221,64 @@ export const conflicts: IngestionConflict[] = [
   },
 ]
 
+/** Raw shape from GET /cohorts/{id}/sync/runs/{jobId}/conflicts (B10) — kept separate from `conflicts` above, which is the speculative merge-view shape the resolve/dismiss actions still target. */
+export const ingestionConflictResponses: IngestionConflictResponse[] = [
+  {
+    id: 'cf-001',
+    ingestionRunId: 'run-002',
+    cohortId: 'coh-stood',
+    learnerId: 'DEG-2026-001',
+    labId: 'lab-fe-state',
+    conflictKind: 'in_file_duplicate',
+    existingResultId: null,
+    incomingPayload: { score: [90, 85], submittedOn: '2026-07-19', sourceRef: ['FEM01!row 12', 'FEM01!row 21'] },
+    status: 'PENDING',
+    resolvedBy: null,
+    resolvedAt: null,
+    resolutionNote: null,
+    createdAt: '2026-07-21T08:01:00Z',
+    updatedAt: '2026-07-21T08:01:00Z',
+  },
+  {
+    id: 'cf-002',
+    ingestionRunId: 'run-002',
+    cohortId: 'coh-stood',
+    learnerId: 'DEG-2026-003',
+    labId: 'lab-fe-components',
+    conflictKind: 'in_file_duplicate',
+    existingResultId: 'res-778',
+    incomingPayload: { score: [72, 78], submittedOn: '2026-07-19', sourceRef: ['FEM01!row 30', 'FEM01!row 41'] },
+    status: 'RESOLVED',
+    resolvedBy: 'admin@amalitech.com',
+    resolvedAt: '2026-07-21T09:10:00Z',
+    resolutionNote: 'Kept row 41 (later submission).',
+    createdAt: '2026-07-21T08:02:00Z',
+    updatedAt: '2026-07-21T09:10:00Z',
+  },
+  {
+    id: 'cf-003',
+    ingestionRunId: 'run-002',
+    cohortId: 'coh-stood',
+    learnerId: 'DEG-2026-004',
+    labId: 'lab-fe-components',
+    conflictKind: 'in_file_duplicate',
+    existingResultId: null,
+    incomingPayload: { score: [60, 60], submittedOn: '2026-07-19', sourceRef: ['FEM01!row 33', 'FEM01!row 34'] },
+    status: 'DISMISSED',
+    resolvedBy: 'admin@amalitech.com',
+    resolvedAt: '2026-07-21T09:12:00Z',
+    resolutionNote: 'Duplicate export from instructor — no action needed.',
+    createdAt: '2026-07-21T08:03:00Z',
+    updatedAt: '2026-07-21T09:12:00Z',
+  },
+]
+
 export const notifications: Notification[] = [
   {
     id: 'nt-001',
     ingestionRunId: 'run-002',
     cohortId: 'coh-stood',
+    syncJobId: 'run-002',
     type: 'instructor_digest',
     recipientKind: 'instructor',
     recipientName: 'Sarah Jenkins',
@@ -236,11 +287,16 @@ export const notifications: Notification[] = [
     subject: 'Lab Grading Sync Report — FEM01',
     body: 'Total rows processed: 18 | Accepted: 12 | Rejected: 6',
     status: 'PENDING',
+    createdAt: '2026-07-21T08:01:30Z',
+    issues: [
+      { file: 'BE Lab Grading.xlsx', location: 'sheet Module-5 row 5', rule: 'R5-UNKNOWN-REVIEWER', message: "Reviewer 'Eric Munyaneza' does not match any active instructor." },
+    ],
   },
   {
     id: 'nt-002',
     ingestionRunId: 'run-002',
     cohortId: 'coh-stood',
+    syncJobId: 'run-002',
     type: 'admin_run_digest',
     recipientKind: 'admin',
     recipientName: 'All admins',
@@ -250,11 +306,14 @@ export const notifications: Notification[] = [
     body: 'Run summary: 12 new, 2 updated, 14 skipped-invalid, 2 conflicts.',
     status: 'SENT',
     sentAt: '2026-07-21T08:02:00Z',
+    createdAt: '2026-07-21T08:01:45Z',
+    issues: [],
   },
   {
     id: 'nt-003',
     ingestionRunId: 'run-002',
     cohortId: 'coh-stood',
+    syncJobId: 'run-002',
     type: 'high_failure',
     recipientKind: 'admin',
     recipientName: 'All admins',
@@ -264,6 +323,8 @@ export const notifications: Notification[] = [
     body: 'Rejected 14 of 30 rows (>50%).',
     status: 'SENT',
     sentAt: '2026-07-21T08:02:00Z',
+    createdAt: '2026-07-21T08:02:00Z',
+    issues: [],
   },
 ]
 
@@ -275,7 +336,13 @@ export const auditEvents: AuditEvent[] = [
   { id: genId('ae'), eventType: 'REFERENCE_ACCEPTED', cohortId: 'coh-stood',  cohortName: 'Cohort 7 — Autumn 2025', actorEmail: 'admin@amalitech.com', occurredAt: '2025-09-03T11:00:00Z', payload: { sharepointVersion: '1.0' } },
   { id: genId('ae'), eventType: 'STOOD_UP',           cohortId: 'coh-stood',  cohortName: 'Cohort 7 — Autumn 2025', actorEmail: null,                  occurredAt: '2025-09-03T11:05:00Z' },
   { id: genId('ae'), eventType: 'COHORT_LOCKED',      cohortId: 'coh-locked', cohortName: 'Cohort 6 — Summer 2025', actorEmail: 'admin@amalitech.com', occurredAt: '2025-11-01T08:00:00Z' },
-  { id: genId('ae'), eventType: 'CONFLICT_RESOLVED',  cohortId: 'coh-stood',  cohortName: 'Cohort 7 — Autumn 2025', actorEmail: 'admin@amalitech.com', occurredAt: '2026-07-21T09:15:00Z', payload: { conflictId: 'cf-000' } },
+  // Mirror the resolved/dismissed conflicts above (cf-002, cf-003) so the audit trail and the
+  // run-review conflict queue agree on what happened to each conflict. CohortSyncService.resolveConflict
+  // records CONFLICT_RESOLVED for KEEP_EXISTING/KEEP_INCOMING and CONFLICT_DISMISSED for REJECT, with the
+  // same minimal payload shape either way: `{ conflictId, action, note }` (no conflictKind/learnerId/labId —
+  // those only exist on the separate IngestionConflictResponse DTO from /cohorts/{id}/conflicts).
+  { id: genId('ae'), eventType: 'CONFLICT_RESOLVED',  cohortId: 'coh-stood',  cohortName: 'Cohort 7 — Autumn 2025', actorEmail: 'admin@amalitech.com', occurredAt: '2026-07-21T09:10:00Z', payload: { conflictId: 'cf-002', action: 'KEEP_INCOMING', note: 'Kept row 41 (later submission).' } },
+  { id: genId('ae'), eventType: 'CONFLICT_DISMISSED', cohortId: 'coh-stood',  cohortName: 'Cohort 7 — Autumn 2025', actorEmail: 'admin@amalitech.com', occurredAt: '2026-07-21T09:12:00Z', payload: { conflictId: 'cf-003', action: 'REJECT', note: 'Duplicate export from instructor — no action needed.' } },
 ]
 
 // ---------------------------------------------------------------------------
@@ -283,5 +350,46 @@ export const auditEvents: AuditEvent[] = [
 // ---------------------------------------------------------------------------
 export const settings: Settings = {
   autoSendInstructorEmails: false,
-  syncSchedule: { enabled: true, day: 'MONDAY', time: '08:00', timezone: 'GMT' },
 }
+
+// ---------------------------------------------------------------------------
+// Sync schedules.
+// ---------------------------------------------------------------------------
+export const syncSchedules: SyncScheduleResponse[] = [
+  {
+    id: 'sched-daily-all',
+    name: 'Nightly sync — all cohorts',
+    cohortId: null,
+    frequency: 'DAILY',
+    timeOfDay: '02:00',
+    dayOfWeek: null,
+    timezone: 'Africa/Accra',
+    enabled: true,
+    createdAt: '2026-06-01T00:00:00Z',
+    updatedAt: '2026-06-01T00:00:00Z',
+  },
+  {
+    id: 'sched-weekly-coh',
+    name: 'Weekly sync — Cohort 7',
+    cohortId: 'coh-stood',
+    frequency: 'WEEKLY',
+    timeOfDay: '08:00',
+    dayOfWeek: 'MONDAY',
+    timezone: 'GMT',
+    enabled: true,
+    createdAt: '2026-06-05T00:00:00Z',
+    updatedAt: '2026-06-05T00:00:00Z',
+  },
+  {
+    id: 'sched-weekly-disabled',
+    name: 'Weekly sync — Cohort 6 (paused)',
+    cohortId: 'coh-locked',
+    frequency: 'WEEKLY',
+    timeOfDay: '18:30',
+    dayOfWeek: 'FRIDAY',
+    timezone: 'UTC',
+    enabled: false,
+    createdAt: '2026-05-01T00:00:00Z',
+    updatedAt: '2026-07-10T00:00:00Z',
+  },
+]

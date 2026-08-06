@@ -19,7 +19,11 @@ export interface LocatedError {
   file?: string
   sheet?: string
   row?: number
+  /** Pre-formatted alternative to sheet/row, e.g. "sheet Module-1 row 5" (some endpoints report this instead of the split fields). */
+  location?: string
   /** Rule id, e.g. "S2", "R1", "F2" (PRD §4.4) or a stand-up gate rule. */
   rule?: string
   message: string
+  /** Set on R5-UNKNOWN-REVIEWER-style issues once the reviewer is resolved to a known instructor. */
+  instructorContactId?: string | null
 }

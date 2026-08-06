@@ -11,7 +11,6 @@ import * as svc from '@/services/settings.service'
 
 const BASE: Settings = {
   autoSendInstructorEmails: false,
-  syncSchedule: { enabled: true, day: 'MONDAY', time: '08:00', timezone: 'GMT' },
 }
 
 beforeEach(() => {

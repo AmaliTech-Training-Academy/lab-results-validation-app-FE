@@ -5,27 +5,87 @@ import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import VPill from '@/components/base/VPill.vue'
 import { useRunReviewStore } from '@/stores/runReview'
+import { useRunsStore } from '@/stores/runs'
+import { useSyncRunStream } from '@/composables/useSyncRunStream'
+import { useToastAction } from '@/composables/useToastAction'
 import { useToastStore } from '@/stores/toast'
-import type { RunStatus } from '@/types/run.types'
-import type { Notification, NotificationStatus } from '@/types/runReview.types'
+import { toErrorMessage } from '@/utils/errors'
+import { RUN_STATUS_TONE, type SyncFileStatus } from '@/types/run.types'
+import {
+  CONFLICT_STATUS_TONE,
+  type ConflictResolutionAction,
+  type ConflictStatus,
+  type IngestionConflictResponse,
+  type Notification,
+  type NotificationStatus,
+} from '@/types/runReview.types'
 
 const route = useRoute()
 const store = useRunReviewStore()
+const runsStore = useRunsStore()
+const { run: withToast } = useToastAction()
 const toast = useToastStore()
 
 const runId = route.params.id as string
+const cohortId = route.query.cohortId as string
 
-onMounted(() => store.fetchReview(runId))
+// The run-review REST payload isn't ready while the sync job is still running
+// (§9c) — this stream drives the processing panel, then fetches the full
+// review once the backend's sync.done event lands.
+const stream = useSyncRunStream(cohortId, runId, {
+  onDone: () =>
+    Promise.all([store.fetchReview(cohortId, runId), store.fetchConflicts(cohortId, runId), store.fetchNotifications(cohortId, runId)]),
+})
+
+const FILE_ICON: Record<SyncFileStatus, string> = {
+  discovered: 'loader',
+  unchanged: 'check-circle-2',
+  changed: 'loader',
+  archived: 'check-circle-2',
+  failed: 'x-circle',
+  archive_failed: 'x-circle',
+}
+const FILE_META: Record<SyncFileStatus, string> = {
+  discovered: 'Scanning…',
+  unchanged: 'Unchanged',
+  changed: 'Archiving…',
+  archived: 'Archived',
+  failed: 'Failed',
+  archive_failed: 'Archive failed',
+}
+
+onMounted(async () => {
+  await runsStore.fetchRun(cohortId, runId)
+  if (runsStore.current?.status === 'processing') {
+    stream.start()
+  } else {
+    await Promise.all([store.fetchReview(cohortId, runId), store.fetchConflicts(cohortId, runId), store.fetchNotifications(cohortId, runId)])
+  }
+})
 
 const review = computed(() => store.review)
 const run = computed(() => store.review?.run ?? null)
-const conflicts = computed(() => store.review?.conflicts ?? [])
-const notifications = computed(() => store.review?.notifications ?? [])
+const files = computed(() => store.review?.files ?? [])
+/** Falls back to the lightweight run stub while the full review hasn't loaded yet. */
+const headerRun = computed(() => review.value?.run ?? runsStore.current)
+const conflictRows = computed(() => store.conflictsPage?.content ?? [])
+const notifications = computed(() => store.notificationsPage?.content ?? [])
+/** Scoped to the current page — informational only. "Send all held" itself touches every PENDING
+ * notification for the whole job, page (and filter) or not, so it must not be gated on this. */
 const pendingCount = computed(() => notifications.value.filter((n) => n.status === 'PENDING').length)
-
-const RUN_TONE: Record<RunStatus, 'success' | 'warning' | 'danger' | 'info'> = {
-  completed: 'success', partial: 'warning', failed: 'danger', skipped: 'info', processing: 'info',
-}
+/**
+ * Whether "Send all held" could plausibly have something to do. `totalElements` covers every page for the
+ * *current* filter — an exact PENDING total when the filter is 'PENDING', and (when there's no filter at all)
+ * an exact total-notifications count, so 0 there really does mean nothing to send. Under any other filter
+ * (e.g. viewing only SENT/FAILED) it tells us nothing about how many PENDING notifications exist elsewhere,
+ * so we fail open rather than risk a false negative silently blocking a legitimate bulk action — the send-all
+ * endpoint is a harmless no-op if nothing is actually queued.
+ */
+const canSendAll = computed(() => {
+  const filter = store.notificationsStatusFilter
+  if (filter !== '' && filter !== 'PENDING') return true
+  return (store.notificationsPage?.totalElements ?? 0) > 0
+})
 
 const SUMMARY = [
   { key: 'rowsRead', label: 'Rows read' },
@@ -36,59 +96,98 @@ const SUMMARY = [
   { key: 'conflicts', label: 'Conflicts' },
 ] as const
 
+const FILE_SUMMARY = [
+  { key: 'rowsRead', label: 'Rows read' },
+  { key: 'committedNew', label: 'New' },
+  { key: 'updatedCount', label: 'Updated' },
+  { key: 'skippedInvalid', label: 'Invalid' },
+  { key: 'skippedUnchanged', label: 'Unchanged' },
+  { key: 'conflictsCount', label: 'Conflicts' },
+] as const
+
+function formatRunAt(iso: string): string {
+  return iso.slice(0, 16).replace('T', ' ')
+}
+
 const NOTIF_TONE: Record<NotificationStatus, 'success' | 'warning' | 'danger' | 'info'> = {
   PENDING: 'warning', SENT: 'success', SKIPPED: 'info', FAILED: 'danger',
 }
 const NOTIF_LABEL: Record<NotificationStatus, string> = {
   PENDING: 'Held', SENT: 'Sent', SKIPPED: 'Dismissed', FAILED: 'Failed',
 }
+/** `mapNotification` casts the real API's `status`/`recipientKind` strings without runtime validation — an
+ * unrecognized value (a status the backend adds before the FE knows about it) would otherwise render as a
+ * blank pill instead of just falling back to the raw value. */
+function notifTone(status: NotificationStatus): 'success' | 'warning' | 'danger' | 'info' {
+  return NOTIF_TONE[status] ?? 'info'
+}
+function notifLabel(status: NotificationStatus): string {
+  return NOTIF_LABEL[status] ?? status
+}
 
 function notifTypeLabel(t: Notification['type']): string {
   return t.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-async function resolveConflict(id: string, chosenRowIndex: number | null) {
-  try {
-    await store.resolveConflict(id, { chosenRowIndex })
-    toast.show({ tone: 'success', title: chosenRowIndex === null ? 'Conflict rejected' : 'Conflict resolved' })
-  } catch {
-    toast.show({ tone: 'warning', title: 'Could not resolve conflict' })
-  }
+function onConflictStatusChange(status: ConflictStatus | '') {
+  store.setConflictsStatusFilter(cohortId, runId, status)
 }
 
-async function dismissConflict(id: string) {
-  try {
-    await store.dismissConflict(id)
-    toast.show({ tone: 'info', title: 'Conflict dismissed' })
-  } catch {
-    toast.show({ tone: 'warning', title: 'Could not dismiss conflict' })
-  }
+function changeConflictsPage(page: number) {
+  store.fetchConflicts(cohortId, runId, page)
+}
+
+function onNotificationStatusChange(status: NotificationStatus | '') {
+  store.setNotificationsStatusFilter(cohortId, runId, status)
+}
+
+function changeNotificationsPage(page: number) {
+  store.fetchNotifications(cohortId, runId, page)
+}
+
+const RESOLVE_TOAST_TITLE: Record<ConflictResolutionAction, string> = {
+  KEEP_EXISTING: 'Kept the existing row',
+  KEEP_INCOMING: 'Kept the incoming row',
+  REJECT: 'Conflict rejected',
+}
+
+async function resolveConflictRow(c: IngestionConflictResponse, action: ConflictResolutionAction) {
+  await withToast(() => store.resolveConflict(cohortId, c.id, { action }), {
+    success: { tone: 'success', title: RESOLVE_TOAST_TITLE[action] },
+    error: { tone: 'warning', title: 'Could not resolve conflict' },
+  })
 }
 
 async function sendOne(n: Notification) {
-  try {
-    await store.sendNotification(n.id)
-    toast.show({ tone: 'success', title: 'Notification sent', body: n.recipientEmail })
-  } catch {
-    toast.show({ tone: 'warning', title: 'Send failed' })
-  }
+  await withToast(() => store.sendNotification(n.id), {
+    success: { tone: 'success', title: 'Send queued', body: recipientLabel(n) },
+    error: { tone: 'warning', title: 'Could not queue send' },
+  })
 }
 
 async function dismissNotif(n: Notification) {
+  await withToast(() => store.dismissNotification(n.id), {
+    error: { tone: 'warning', title: 'Could not dismiss' },
+  })
+}
+
+/** Send-all just queues the work (202) and the actual sends happen off-thread — so the toast reports "queued", not "sent", and the caller has to re-check for the outcome. */
+async function sendAll() {
   try {
-    await store.dismissNotification(n.id)
-  } catch {
-    toast.show({ tone: 'warning', title: 'Could not dismiss' })
+    const queued = await store.sendAll(cohortId, runId)
+    toast.show({
+      tone: 'success',
+      title: 'Held notifications queued',
+      body: `${queued} notification${queued === 1 ? '' : 's'} queued — refresh shortly to see delivery status.`,
+    })
+  } catch (e) {
+    toast.show({ tone: 'warning', title: 'Send-all failed', body: toErrorMessage(e, 'Please try again.') })
   }
 }
 
-async function sendAll() {
-  try {
-    await store.sendAll(runId)
-    toast.show({ tone: 'success', title: 'Held notifications sent' })
-  } catch {
-    toast.show({ tone: 'warning', title: 'Send-all failed' })
-  }
+/** Falls back to the raw id when the instructor lookup failed or the recipient is an admin user id. */
+function recipientLabel(n: Notification): string {
+  return n.recipientName ?? n.recipientEmail ?? n.recipientInstructorId ?? n.recipientUserId ?? '—'
 }
 </script>
 
@@ -98,13 +197,37 @@ async function sendAll() {
       <RouterLink :to="{ name: 'admin-runs' }" class="back-link"><VIcon name="chevron-left" :size="15" /> Grading runs</RouterLink>
       <h1 class="page-title">
         Run review
-        <VPill v-if="run" :tone="RUN_TONE[run.status]">{{ run.status }}</VPill>
+        <VPill v-if="headerRun" :tone="RUN_STATUS_TONE[headerRun.status]">{{ headerRun.status }}</VPill>
       </h1>
-      <p class="page-sub mono">{{ run?.workbookFilename ?? '…' }} · {{ run?.cohortName }}</p>
+      <p class="page-sub mono">{{ headerRun?.workbookFilename ?? '…' }} · {{ headerRun?.cohortName }}</p>
     </div>
   </div>
 
-  <div v-if="store.loading" class="muted">Loading run…</div>
+  <div v-if="stream.isPolling.value" class="panel panel--info">
+    <div class="panel-head">
+      <VIcon name="loader" :size="18" class="spin" />
+      <strong>Syncing grading data…</strong>
+    </div>
+    <ul class="file-list">
+      <li v-for="f in stream.files.value" :key="f.file" :class="['file-item', `file-item--${f.status}`]">
+        <VIcon :name="FILE_ICON[f.status]" :size="16" :class="{ spin: f.status === 'discovered' || f.status === 'changed' }" />
+        <span class="file-name mono">{{ f.file }}</span>
+        <span class="file-meta">{{ f.error ?? FILE_META[f.status] }}</span>
+      </li>
+      <li v-if="stream.files.value.length === 0" class="file-item">
+        <VIcon name="loader" :size="16" class="spin" />
+        <span class="file-meta">Scanning SharePoint folder…</span>
+      </li>
+    </ul>
+    <ul v-if="stream.folderErrors.value.length" class="err-list">
+      <li v-for="(e, i) in stream.folderErrors.value" :key="i" class="err-item mono">{{ e.folder }} — {{ e.error }}</li>
+    </ul>
+    <p v-if="stream.error.value" class="inline-error"><VIcon name="alert-circle" :size="14" /> {{ stream.error.value }}</p>
+  </div>
+
+  <div v-else-if="store.loading" class="muted">Loading run…</div>
+
+  <p v-else-if="store.error" class="inline-error"><VIcon name="alert-circle" :size="14" /> {{ store.error }}</p>
 
   <template v-else-if="review">
     <!-- Panel 1 — Results summary -->
@@ -115,16 +238,58 @@ async function sendAll() {
         High failure rate — more than 50% of rows were rejected in this file.
       </div>
       <dl class="summary">
-        <div v-for="s in SUMMARY" :key="s.key" class="summary-cell" :class="{ bad: s.key === 'skippedInvalid' && run && run.counts.skippedInvalid > 0, warn: s.key === 'conflicts' && run && run.counts.conflicts > 0 }">
+        <div v-for="s in SUMMARY" :key="s.key" class="summary-cell" :class="{ bad: s.key === 'skippedInvalid' && (run?.counts?.skippedInvalid ?? 0) > 0, warn: s.key === 'conflicts' && (run?.counts?.conflicts ?? 0) > 0 }">
           <dt>{{ s.label }}</dt>
-          <dd class="mono">{{ run?.counts[s.key] ?? 0 }}</dd>
+          <dd class="mono">{{ run?.counts?.[s.key] ?? 0 }}</dd>
         </div>
       </dl>
-      <details v-if="run && run.errorReport.length" class="err-details">
+      <details v-if="run?.errorReport?.length" class="err-details">
         <summary>{{ run.errorReport.length }} rejected row{{ run.errorReport.length === 1 ? '' : 's' }}</summary>
         <ul class="err-list">
-          <li v-for="(e, i) in run.errorReport" :key="i" class="mono err-item">
-            {{ [e.sheet, e.row != null ? `row ${e.row}` : '', e.rule].filter(Boolean).join(' · ') }} — {{ e.message }}
+          <li v-for="(e, i) in run.errorReport ?? []" :key="i" class="mono err-item">
+            {{ [e.location ?? [e.sheet, e.row != null ? `row ${e.row}` : ''].filter(Boolean).join(' '), e.rule].filter(Boolean).join(' · ') }} — {{ e.message }}
+          </li>
+        </ul>
+      </details>
+
+      <h3 v-if="files.length" class="subsection-title">Per-workbook breakdown</h3>
+      <div v-if="files.length" class="tbl-wrap file-breakdown">
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th>Workbook</th>
+              <th>Status</th>
+              <th style="text-align: center">Failure rate</th>
+              <th v-for="s in FILE_SUMMARY" :key="s.key" style="text-align: center">{{ s.label }}</th>
+              <th>Run at</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="f in files" :key="f.workbookFilename">
+              <td class="mono" style="font-weight: 500">{{ f.workbookFilename }}</td>
+              <td class="muted">{{ f.status }}</td>
+              <td style="text-align: center">
+                <VPill :tone="f.highFailureRate ? 'danger' : 'info'">{{ f.failureRatePercent.toFixed(1) }}%</VPill>
+              </td>
+              <td v-for="s in FILE_SUMMARY" :key="s.key" class="mono" style="text-align: center">{{ f[s.key] }}</td>
+              <td class="mono muted">{{ formatRunAt(f.runAt) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <details v-for="f in files.filter((f) => f.issues.length)" :key="f.workbookFilename + '-issues'" class="err-details">
+        <summary>
+          <VIcon :name="f.highFailureRate ? 'alert-triangle' : 'alert-circle'" :size="14" />
+          {{ f.workbookFilename }} — {{ f.issues.length }} issue{{ f.issues.length === 1 ? '' : 's' }}
+          <template v-if="f.highFailureRate">({{ f.failureRatePercent.toFixed(1) }}% rejected)</template>
+        </summary>
+        <ul class="err-list rejection-summary">
+          <li v-for="r in f.rejectionReasons" :key="r.rule" class="mono err-item">{{ r.rule }} — {{ r.count }} row{{ r.count === 1 ? '' : 's' }}</li>
+        </ul>
+        <ul class="err-list">
+          <li v-for="(e, i) in f.issues" :key="i" class="mono err-item">
+            {{ [e.location ?? [e.sheet, e.row != null ? `row ${e.row}` : ''].filter(Boolean).join(' '), e.rule].filter(Boolean).join(' · ') }} — {{ e.message }}
           </li>
         </ul>
       </details>
@@ -132,81 +297,159 @@ async function sendAll() {
 
     <!-- Panel 2 — Conflict queue -->
     <section class="block">
-      <h2 class="block-title">Conflict queue <span class="count-badge mono">{{ conflicts.length }}</span></h2>
-      <p class="block-sub">In-file duplicates — same learner + lab appearing twice. Choose the authoritative row, or reject both.</p>
-
-      <p v-if="conflicts.length === 0" class="empty-note"><VIcon name="check-circle-2" :size="15" class="ic-success" /> No conflicts in this run.</p>
-
-      <div v-for="c in conflicts" :key="c.id" class="conflict-card">
-        <div class="conflict-head">
-          <span class="mono">{{ c.learnerId }}</span>
-          <span class="sep">·</span>
-          <span>{{ c.incomingRows[0]?.labTitle }}</span>
-          <VPill v-if="c.status !== 'PENDING'" :tone="c.status === 'RESOLVED' ? 'success' : 'info'" style="margin-left: auto">
-            {{ c.status === 'RESOLVED' ? 'Resolved' : 'Dismissed' }}
-          </VPill>
-        </div>
-
-        <div class="merge">
-          <div v-if="c.existingResult" class="merge-col existing">
-            <span class="merge-tag">Existing (committed)</span>
-            <div class="merge-row"><span class="mono score">{{ c.existingResult.score }}</span><span class="muted">{{ c.existingResult.submittedOn }}</span></div>
-          </div>
-          <div class="merge-col incoming">
-            <span class="merge-tag">Incoming ({{ c.incomingRows.length }})</span>
-            <div v-for="(row, idx) in c.incomingRows" :key="idx" class="merge-row incoming-row">
-              <span class="mono score">{{ row.score }}</span>
-              <span class="muted">{{ row.submittedOn }}</span>
-              <span class="muted mono src">{{ row.sourceRef }}</span>
-              <VButton v-if="c.status === 'PENDING'" size="sm" variant="ghost" @click="resolveConflict(c.id, idx)">Use this</VButton>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="c.status === 'PENDING'" class="conflict-actions">
-          <VButton size="sm" variant="ghost" @click="dismissConflict(c.id)">Dismiss</VButton>
-          <VButton size="sm" variant="danger" @click="resolveConflict(c.id, null)">Reject both</VButton>
-        </div>
-        <p v-else-if="c.resolutionNote" class="muted resolution-note">{{ c.resolutionNote }}</p>
+      <div class="conflicts-head">
+        <h2 class="block-title">Conflict queue <span class="count-badge mono">{{ store.conflictsPage?.totalElements ?? 0 }}</span></h2>
+        <label class="fld">
+          <span>Status</span>
+          <select :value="store.conflictsStatusFilter" @change="onConflictStatusChange(($event.target as HTMLSelectElement).value as ConflictStatus | '')">
+            <option value="">All</option>
+            <option value="PENDING">Pending</option>
+            <option value="RESOLVED">Resolved</option>
+            <option value="DISMISSED">Dismissed</option>
+          </select>
+        </label>
       </div>
+      <p class="block-sub">In-file duplicates — same learner + lab appearing twice, held for manual resolution.</p>
+
+      <div v-if="store.conflictsLoading" class="muted">Loading conflicts…</div>
+      <p v-else-if="store.conflictsError" class="inline-error"><VIcon name="alert-circle" :size="14" /> {{ store.conflictsError }}</p>
+      <template v-else>
+        <p v-if="conflictRows.length === 0" class="empty-note"><VIcon name="check-circle-2" :size="15" class="ic-success" /> No conflicts in this run.</p>
+
+        <div v-else class="tbl-wrap">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th>Learner</th>
+                <th>Lab</th>
+                <th>Existing result</th>
+                <th style="text-align: center">Status</th>
+                <th>Incoming payload</th>
+                <th>Resolution</th>
+                <th>Created</th>
+                <th aria-hidden="true"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="c in conflictRows" :key="c.id">
+                <td class="mono">{{ c.learnerId ?? '—' }}</td>
+                <td class="mono">{{ c.labId ?? '—' }}</td>
+                <td class="mono muted">{{ c.existingResultId ?? '— (new row)' }}</td>
+                <td style="text-align: center"><VPill :tone="CONFLICT_STATUS_TONE[c.status] ?? 'info'">{{ c.status }}</VPill></td>
+                <td>
+                  <details>
+                    <summary class="mono">payload</summary>
+                    <pre class="mono payload">{{ JSON.stringify(c.incomingPayload, null, 2) }}</pre>
+                  </details>
+                </td>
+                <td class="muted">{{ c.resolutionNote ?? '—' }}</td>
+                <td class="mono muted">{{ formatRunAt(c.createdAt) }}</td>
+                <td style="text-align: right">
+                  <div v-if="c.status === 'PENDING'" class="notif-actions">
+                    <VButton v-if="c.existingResultId" size="sm" variant="ghost" @click="resolveConflictRow(c, 'KEEP_EXISTING')">Keep existing</VButton>
+                    <VButton size="sm" variant="ghost" @click="resolveConflictRow(c, 'KEEP_INCOMING')">Keep incoming</VButton>
+                    <VButton size="sm" variant="danger" @click="resolveConflictRow(c, 'REJECT')">Reject</VButton>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div v-if="store.conflictsPage && conflictRows.length > 0" class="pager">
+          <VButton size="sm" variant="ghost" :disabled="store.conflictsPage.number === 0" @click="changeConflictsPage(store.conflictsPage.number - 1)">Prev</VButton>
+          <span class="mono muted">Page {{ store.conflictsPage.number + 1 }} of {{ Math.max(store.conflictsPage.totalPages, 1) }}</span>
+          <VButton size="sm" variant="ghost" :disabled="store.conflictsPage.last" @click="changeConflictsPage(store.conflictsPage.number + 1)">Next</VButton>
+        </div>
+      </template>
     </section>
 
     <!-- Panel 3 — Notification moderation -->
     <section class="block">
       <div class="notif-head">
         <div>
-          <h2 class="block-title" style="margin-bottom: 2px">Notifications <span class="count-badge mono">{{ pendingCount }} held</span></h2>
+          <h2 class="block-title" style="margin-bottom: 2px">Notifications <span class="count-badge mono">{{ pendingCount }} held on this page</span></h2>
           <p class="block-sub">Instructor digests are held for review. Auto alerts are already sent (shown for transparency).</p>
         </div>
-        <VButton variant="primary" icon="send" :disabled="pendingCount === 0" @click="sendAll">Send all held</VButton>
+        <div class="notif-head-actions">
+          <label class="fld">
+            <span>Status</span>
+            <select :value="store.notificationsStatusFilter" @change="onNotificationStatusChange(($event.target as HTMLSelectElement).value as NotificationStatus | '')">
+              <option value="">All</option>
+              <option value="PENDING">Pending</option>
+              <option value="SENT">Sent</option>
+              <option value="FAILED">Failed</option>
+            </select>
+          </label>
+          <VButton variant="primary" icon="send" :disabled="!canSendAll" @click="sendAll">Send all held</VButton>
+        </div>
       </div>
 
-      <div class="tbl-wrap">
-        <table class="tbl">
-          <thead>
-            <tr><th>Recipient</th><th>Type</th><th>Policy</th><th style="text-align: center">Status</th><th aria-hidden="true"></th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="n in notifications" :key="n.id">
-              <td>
-                <div style="font-weight: 500">{{ n.recipientName ?? n.recipientEmail }}</div>
-                <div class="muted mono sub">{{ n.recipientEmail }}</div>
-              </td>
-              <td>{{ notifTypeLabel(n.type) }}</td>
-              <td><span class="policy-tag" :class="n.dispatchPolicy === 'HELD' ? 'held' : 'auto'">{{ n.dispatchPolicy }}</span></td>
-              <td style="text-align: center"><VPill :tone="NOTIF_TONE[n.status]">{{ NOTIF_LABEL[n.status] }}</VPill></td>
-              <td style="text-align: right">
-                <div class="notif-actions">
-                  <VButton v-if="n.status === 'PENDING'" size="sm" variant="primary" icon="send" @click="sendOne(n)">Notify</VButton>
-                  <VButton v-if="n.status === 'FAILED'" size="sm" variant="ghost" icon="rotate-ccw" @click="sendOne(n)">Retry</VButton>
-                  <VButton v-if="n.status === 'PENDING'" size="sm" variant="ghost" @click="dismissNotif(n)">Dismiss</VButton>
-                  <span v-if="n.status === 'SENT' && n.sentAt" class="muted mono sub">{{ n.sentAt.slice(0, 16).replace('T', ' ') }}</span>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <div v-if="store.notificationsLoading" class="muted">Loading notifications…</div>
+      <p v-else-if="store.notificationsError" class="inline-error"><VIcon name="alert-circle" :size="14" /> {{ store.notificationsError }}</p>
+      <template v-else>
+        <p v-if="notifications.length === 0" class="empty-note"><VIcon name="check-circle-2" :size="15" class="ic-success" /> No notifications for this run.</p>
+
+        <div v-else class="tbl-wrap notif-tbl-wrap">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th>Recipient</th>
+                <th>Type</th>
+                <th>Policy</th>
+                <th style="text-align: center">Status</th>
+                <th>Issues</th>
+                <th>Created</th>
+                <th style="text-align: right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="n in notifications" :key="n.id">
+                <td>
+                  <div class="cell-title">{{ recipientLabel(n) }}</div>
+                  <div class="muted mono sub">{{ n.recipientKind }}</div>
+                </td>
+                <td>
+                  <div class="cell-title">{{ notifTypeLabel(n.type) }}</div>
+                  <div v-if="n.subject" class="muted sub subject" :title="n.subject">{{ n.subject }}</div>
+                </td>
+                <td><span class="policy-tag" :class="n.dispatchPolicy === 'HELD' ? 'held' : 'auto'">{{ n.dispatchPolicy }}</span></td>
+                <td style="text-align: center">
+                  <VPill :tone="notifTone(n.status)">{{ notifLabel(n.status) }}</VPill>
+                  <div v-if="n.status === 'SENT' && n.sentAt" class="muted mono sub">Sent {{ formatRunAt(n.sentAt) }}</div>
+                  <div v-if="n.status === 'FAILED' && n.errorDetail" class="danger-note mono" :title="n.errorDetail">{{ n.errorDetail }}</div>
+                </td>
+                <td>
+                  <details v-if="n.issues.length">
+                    <summary class="mono">{{ n.issues.length }} issue{{ n.issues.length === 1 ? '' : 's' }}</summary>
+                    <ul class="err-list">
+                      <li v-for="(e, i) in n.issues" :key="i" class="mono err-item">
+                        {{ [e.location ?? [e.sheet, e.row != null ? `row ${e.row}` : ''].filter(Boolean).join(' '), e.rule].filter(Boolean).join(' · ') }} — {{ e.message }}
+                      </li>
+                    </ul>
+                  </details>
+                  <span v-else class="muted">—</span>
+                </td>
+                <td class="mono muted">{{ n.createdAt ? formatRunAt(n.createdAt) : '—' }}</td>
+                <td style="text-align: right">
+                  <div v-if="n.status === 'PENDING' || n.status === 'FAILED'" class="notif-actions">
+                    <VButton v-if="n.status === 'PENDING'" size="sm" variant="primary" icon="send" @click="sendOne(n)">Notify</VButton>
+                    <VButton v-if="n.status === 'FAILED'" size="sm" variant="ghost" icon="rotate-ccw" @click="sendOne(n)">Retry</VButton>
+                    <VButton v-if="n.status === 'PENDING'" size="sm" variant="ghost" @click="dismissNotif(n)">Dismiss</VButton>
+                  </div>
+                  <span v-else class="muted">—</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div v-if="store.notificationsPage && notifications.length > 0" class="pager">
+          <VButton size="sm" variant="ghost" :disabled="store.notificationsPage.number === 0" @click="changeNotificationsPage(store.notificationsPage.number - 1)">Prev</VButton>
+          <span class="mono muted">Page {{ store.notificationsPage.number + 1 }} of {{ Math.max(store.notificationsPage.totalPages, 1) }}</span>
+          <VButton size="sm" variant="ghost" :disabled="store.notificationsPage.last" @click="changeNotificationsPage(store.notificationsPage.number + 1)">Next</VButton>
+        </div>
+      </template>
     </section>
   </template>
 </template>
@@ -218,6 +461,20 @@ async function sendAll() {
 .back-link:hover { color: var(--navy); }
 .muted { color: var(--text-secondary); }
 .ic-success { color: var(--success); }
+
+.panel { margin-bottom: 32px; border: 1px solid var(--border); border-radius: var(--r-sm, 4px); padding: 16px; }
+.panel--info { border-left: 4px solid var(--success); }
+.panel-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.inline-error { display: flex; align-items: center; gap: 6px; color: var(--danger); font-size: 13px; margin-top: 8px; }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.file-list { list-style: none; display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.file-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: var(--r-sm, 4px); background: rgba(0, 0, 0, 0.02); font-size: 13px; color: var(--text-secondary); }
+.file-item--failed, .file-item--archive_failed { color: var(--danger); }
+.file-item--unchanged, .file-item--archived { color: var(--success); }
+.file-name { flex: 1; color: var(--text); }
+.file-meta { font-size: 12px; color: var(--text-secondary); }
 
 .block { margin-bottom: 32px; }
 .block-title { font-family: var(--font-display); font-weight: 600; font-size: 16px; color: var(--text); margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
@@ -233,32 +490,33 @@ async function sendAll() {
 
 .hi-fail-banner { display: flex; align-items: center; gap: 8px; background: var(--danger-bg); color: var(--danger); border-radius: var(--r-sm, 4px); padding: 10px 14px; font-size: 14px; margin-bottom: 14px; }
 
+.subsection-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); margin: 20px 0 10px; }
+.file-breakdown { margin-top: 4px; }
 .err-details { margin-top: 14px; }
 .err-details summary { cursor: pointer; font-size: 13px; color: var(--text-secondary); font-weight: 500; }
 .err-list { list-style: none; display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.err-list.rejection-summary { margin-bottom: 4px; }
 .err-item { font-size: 12.5px; color: var(--danger); background: var(--danger-bg); padding: 6px 10px; border-radius: 3px; }
 
 .empty-note { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 14px; }
 
-.conflict-card { border: 1px solid var(--border); border-radius: var(--r-md, 6px); padding: 16px; margin-bottom: 12px; background: var(--surface); box-shadow: var(--shadow-card); }
-.conflict-head { display: flex; align-items: center; gap: 6px; font-weight: 600; margin-bottom: 12px; }
-.conflict-head .sep { opacity: 0.4; }
-.merge { display: grid; grid-template-columns: 1fr 1.4fr; gap: 12px; }
-.merge-col { border: 1px solid var(--border); border-radius: var(--r-sm, 4px); padding: 12px; }
-.merge-col.existing { background: var(--bg); }
-.merge-col.incoming { background: rgba(255, 90, 0, 0.04); }
-.merge-tag { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); display: block; margin-bottom: 8px; }
-.merge-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
-.merge-row .score { font-size: 16px; font-weight: 600; }
-.incoming-row { border-top: 1px solid var(--border-soft, var(--border)); }
-.incoming-row:first-of-type { border-top: none; }
-.src { font-size: 12px; margin-left: auto; }
-.conflict-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
-.resolution-note { margin-top: 10px; font-size: 13px; }
+.conflicts-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+.fld { display: flex; flex-direction: column; gap: 4px; }
+.fld > span { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); }
+.fld select { height: 34px; border: 1px solid var(--border); border-radius: var(--r-sm, 4px); background: #fff; padding: 0 10px; font-family: inherit; font-size: 13px; color: var(--text); }
+.fld select:focus-visible { outline: none; border-color: var(--orange); box-shadow: var(--ring-focus); }
+.payload { margin-top: 8px; font-size: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 3px; padding: 8px 10px; max-width: 360px; overflow-x: auto; }
+details summary { cursor: pointer; font-size: 12.5px; color: var(--text-secondary); }
+.pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 14px; }
 
 .notif-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.notif-head-actions { display: flex; align-items: flex-end; gap: 12px; }
 .notif-actions { display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.notif-tbl-wrap { overflow-x: auto; }
+.cell-title { font-weight: 500; }
 .sub { font-size: 12px; }
+.subject { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.danger-note { font-size: 11px; color: var(--danger); margin-top: 4px; max-width: 220px; }
 .policy-tag { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; padding: 2px 8px; border-radius: 3px; }
 .policy-tag.held { background: rgba(255, 90, 0, 0.12); color: var(--orange-dark, #a83900); }
 .policy-tag.auto { background: var(--bg); color: var(--text-secondary); border: 1px solid var(--border); }

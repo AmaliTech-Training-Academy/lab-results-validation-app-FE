@@ -11,17 +11,94 @@ export type AuditEventType =
   | 'COHORT_LOCKED'
   | 'COHORT_UNLOCKED'
   | 'STOOD_UP'
+  /** CohortSyncService.resolveConflict records this for a KEEP_EXISTING/KEEP_INCOMING action. Payload: `{ conflictId, action, note }`. */
   | 'CONFLICT_RESOLVED'
+  /** CohortSyncService.resolveConflict records this instead of CONFLICT_RESOLVED when the action is REJECT. Same payload shape. */
+  | 'CONFLICT_DISMISSED'
+
+/** Tone per known event type, shared across the audit list and detail views. Falls back to 'info' for anything outside `AuditEventType` (the backend field isn't a closed enum on our side). */
+export const EVENT_TYPE_TONE: Record<AuditEventType, 'success' | 'warning' | 'danger' | 'info'> = {
+  LINK_SUBMITTED: 'info',
+  GATE_FAILED: 'danger',
+  GATE_PASSED: 'success',
+  REFERENCE_ACCEPTED: 'success',
+  DISCARD_RESET: 'warning',
+  COHORT_LOCKED: 'warning',
+  COHORT_UNLOCKED: 'info',
+  STOOD_UP: 'success',
+  CONFLICT_RESOLVED: 'info',
+  CONFLICT_DISMISSED: 'warning',
+}
+
+/** Icon per known event type, shared across the audit list and detail views. Falls back to 'circle'. */
+export const EVENT_TYPE_ICON: Record<AuditEventType, string> = {
+  LINK_SUBMITTED: 'link',
+  GATE_FAILED: 'x-circle',
+  GATE_PASSED: 'check-circle-2',
+  REFERENCE_ACCEPTED: 'clipboard-check',
+  DISCARD_RESET: 'rotate-ccw',
+  COHORT_LOCKED: 'lock',
+  COHORT_UNLOCKED: 'lock-open',
+  STOOD_UP: 'flag',
+  CONFLICT_RESOLVED: 'git-merge',
+  CONFLICT_DISMISSED: 'trash-2',
+}
+
+/** bg/fg pair per pill tone — matches the `.pill-*` colors in global.css — for coloring an icon chip alongside a tone-carrying label (VStatCard's `.stat-chip` pattern). */
+export const TONE_CHIP_STYLE: Record<'success' | 'warning' | 'danger' | 'info', { background: string; color: string }> = {
+  success: { background: 'var(--success-bg)', color: 'var(--success)' },
+  warning: { background: 'var(--warning-bg)', color: 'var(--warning)' },
+  danger: { background: 'var(--danger-bg)', color: 'var(--danger)' },
+  info: { background: 'var(--info-bg)', color: 'var(--navy)' },
+}
 
 export interface AuditEvent {
   id: string
-  eventType: AuditEventType
+  /** Backend sends a raw string (audit_event.event_type) — may include values outside `AuditEventType`. */
+  eventType: string
   cohortId: string | null
   cohortName?: string
   /** null = SYSTEM actor. */
   actorEmail: string | null
   occurredAt: string
   payload?: Record<string, unknown>
+}
+
+/** GET /audit-log/audit-events response row — backend: AuditEventResponse record. */
+export interface AuditEventResponse {
+  id: string
+  eventType: string
+  cohortId: string | null
+  /** null = SYSTEM actor; resolved to an email client-side for display. */
+  actorUserId: string | null
+  payload: Record<string, unknown> | null
+  occurredAt: string
+}
+
+/**
+ * GET /audit-log/ingestion-runs response row — backend: IngestionRunAuditResponse record. The cross-cohort,
+ * paginated counterpart to `SyncRun`/`SyncRunResponse` (which are both scoped to a single cohort).
+ */
+export interface IngestionRunAuditResponse {
+  id: string
+  cohortId: string
+  /** The parent sync job's id — distinct from `id` (the ingestion_runs row itself) — for linking into the run-review page (`GET /cohorts/{cohortId}/sync/runs/{syncJobId}/overview`). */
+  syncJobId: string
+  workbookFilename: string
+  /** schema: ingestion_runs.status — already the final run status, not a job-stub status like `SyncRunStatus`. */
+  status: string
+  triggerType: string
+  /** Raw user id — null for a scheduler-triggered run; resolved to an email client-side. */
+  triggeredBy: string | null
+  rowsRead: number
+  committedNew: number
+  updatedCount: number
+  skippedInvalid: number
+  skippedUnchanged: number
+  conflictsCount: number
+  highFailureRate: boolean
+  failureRatePercent: number
+  runAt: string
 }
 
 /** Filters for the historical audit-log view (D5 AC1). */
@@ -31,8 +108,10 @@ export interface AuditFilters {
   dateTo?: string
   /** Runs only. */
   status?: RunStatus
-  /** Runs only — filter by instructor whose rows appear in the run. */
-  instructorId?: string
+  /** Events only. */
+  eventType?: AuditEventType
+  /** Runs only — filter by the instructor whose rows appear in the run (`InstructorContact.id`, not the human-readable `instructorId`). */
+  instructorContactId?: string
   page?: number
   size?: number
 }

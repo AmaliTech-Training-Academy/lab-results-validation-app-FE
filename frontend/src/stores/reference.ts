@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { toErrorMessage } from '@/utils/errors'
 import type { CohortReference } from '@/types/domain.types'
 import { getCohortReference } from '@/services/cohorts.service'
 
@@ -15,7 +16,7 @@ export const useReferenceStore = defineStore('reference', () => {
     try {
       reference.value = await getCohortReference(cohortId)
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to load reference data'
+      error.value = toErrorMessage(e, 'Failed to load reference data')
     } finally {
       loading.value = false
     }

@@ -1,4 +1,4 @@
-import { ref, computed, onScopeDispose, type Ref, type ComputedRef } from 'vue'
+import { ref, computed, type Ref, type ComputedRef } from 'vue'
 import type { LocatedError } from '@/types/common.types'
 import type {
   FileFailedData,
@@ -8,7 +8,8 @@ import type {
   Gate4DoneData,
 } from '@/types/standup.types'
 import { gate4StreamUrl } from '@/services/cohorts.service'
-import { USE_MOCKS } from '@/services/mock/fixtures'
+import { USE_MOCKS } from '@/services/mock/useMocks'
+import { useEventSourceStream } from '@/composables/useEventSourceStream'
 
 export type Gate4Overall = 'idle' | 'running' | 'passed' | 'failed'
 
@@ -25,6 +26,7 @@ export interface Gate4Stream {
   error: Ref<string | null>
   start: () => void
   stop: () => void
+  reset: () => void
 }
 
 /**
@@ -42,26 +44,19 @@ export function useGate4Stream(cohortId: string, options: UseGate4StreamOptions 
   const isPolling = ref(false)
   const error = ref<string | null>(null)
 
-  let source: EventSource | null = null
-  let mockTimer: ReturnType<typeof setTimeout> | null = null
-  let disposed = false
-
-  function closeSource() {
-    source?.close()
-    source = null
-  }
-
-  function clearMockTimer() {
-    if (mockTimer) {
-      clearTimeout(mockTimer)
-      mockTimer = null
-    }
-  }
+  const eventSource = useEventSourceStream()
 
   function stop() {
     isPolling.value = false
-    closeSource()
-    clearMockTimer()
+    eventSource.stop()
+  }
+
+  /** Stops the stream and clears file/overall state (Cancel / Discard). */
+  function reset() {
+    stop()
+    overall.value = 'idle'
+    files.value = []
+    error.value = null
   }
 
   function upsertFile(file: string, patch: Partial<FileGateResult>) {
@@ -91,26 +86,18 @@ export function useGate4Stream(cohortId: string, options: UseGate4StreamOptions 
     options.onDone?.(overall.value)
   }
 
-  function bindEvent<T>(name: string, handler: (data: T) => void) {
-    source?.addEventListener(name, (e) => {
-      try {
-        handler(JSON.parse((e as MessageEvent).data) as T)
-      } catch {
-        error.value = 'Received a malformed message from the validation stream.'
-      }
-    })
-  }
-
   function openRealStream() {
-    closeSource()
-    source = new EventSource(gate4StreamUrl(cohortId))
-    bindEvent<FileProcessingData>('file.processing', handleProcessing)
-    bindEvent<FilePassedData>('file.passed', handlePassed)
-    bindEvent<FileFailedData>('file.failed', handleFailed)
-    bindEvent<Gate4DoneData>('gate4.done', handleDone)
+    const onMalformed = () => {
+      error.value = 'Received a malformed message from the validation stream.'
+    }
+    const source = eventSource.open(gate4StreamUrl(cohortId))
+    eventSource.bindEvent<FileProcessingData>('file.processing', handleProcessing, onMalformed)
+    eventSource.bindEvent<FilePassedData>('file.passed', handlePassed, onMalformed)
+    eventSource.bindEvent<FileFailedData>('file.failed', handleFailed, onMalformed)
+    eventSource.bindEvent<Gate4DoneData>('gate4.done', handleDone, onMalformed)
     source.onerror = () => {
       // EventSource reconnects on its own (Last-Event-ID replay) — just surface a soft warning.
-      if (!disposed) error.value = 'Connection to the validation stream was interrupted — reconnecting…'
+      if (!eventSource.isDisposed()) error.value = 'Connection to the validation stream was interrupted — reconnecting…'
     }
   }
 
@@ -119,25 +106,25 @@ export function useGate4Stream(cohortId: string, options: UseGate4StreamOptions 
   function runMock() {
     let i = 0
     const next = () => {
-      if (disposed) return
+      if (eventSource.isDisposed()) return
       const file = MOCK_FILES[i]
       if (!file) {
         handleDone({ status: 'COMPLETED' })
         return
       }
       handleProcessing({ file, scenario: `Scenario ${i + 1}` })
-      mockTimer = setTimeout(() => {
-        if (disposed) return
+      eventSource.scheduleMock(() => {
+        if (eventSource.isDisposed()) return
         handlePassed({ file, rows: 40 + i * 5 })
         i += 1
-        mockTimer = setTimeout(next, 300)
+        eventSource.scheduleMock(next, 300)
       }, 400)
     }
     next()
   }
 
   function start() {
-    if (isPolling.value || disposed) return
+    if (isPolling.value || eventSource.isDisposed()) return
     isPolling.value = true
     error.value = null
     overall.value = 'running'
@@ -151,11 +138,5 @@ export function useGate4Stream(cohortId: string, options: UseGate4StreamOptions 
 
   const errors = computed<LocatedError[]>(() => files.value.flatMap((f) => f.errors))
 
-  onScopeDispose(() => {
-    disposed = true
-    closeSource()
-    clearMockTimer()
-  })
-
-  return { files, overall, errors, isPolling, error, start, stop }
+  return { files, overall, errors, isPolling, error, start, stop, reset }
 }

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { toErrorMessage } from '@/utils/errors'
 import type { StandupStatus } from '@/types/standup.types'
 import {
   attachSharePointLink,
@@ -11,7 +12,7 @@ import {
 
 /**
  * Coordinates the stand-up job for the active cohort (FE strategy §7). The
- * per-gate polling itself lives in the `useJobPolling` composable, which calls
+ * per-gate polling itself lives in `useStandupStream`, which calls
  * `refresh()`; this store holds the latest status and the lifecycle actions.
  */
 export const useStandupStore = defineStore('standup', () => {
@@ -26,7 +27,7 @@ export const useStandupStore = defineStore('standup', () => {
     try {
       await attachSharePointLink(cohortId, { folderUrl: sharepointFolderUrl })
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to start stand-up'
+      error.value = toErrorMessage(e, 'Failed to start stand-up')
       throw e
     } finally {
       busy.value = false
@@ -45,7 +46,7 @@ export const useStandupStore = defineStore('standup', () => {
     try {
       await acceptCohortReference(cohortId)
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to accept reference data'
+      error.value = toErrorMessage(e, 'Failed to accept reference data')
       throw e
     } finally {
       busy.value = false
@@ -59,7 +60,7 @@ export const useStandupStore = defineStore('standup', () => {
     try {
       await triggerGate4(cohortId)
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to start Gate 4 validation'
+      error.value = toErrorMessage(e, 'Failed to start Gate 4 validation')
       throw e
     } finally {
       busy.value = false
@@ -73,7 +74,7 @@ export const useStandupStore = defineStore('standup', () => {
       await discardCohortReference(cohortId)
       status.value = null
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to discard reference data'
+      error.value = toErrorMessage(e, 'Failed to discard reference data')
       throw e
     } finally {
       busy.value = false

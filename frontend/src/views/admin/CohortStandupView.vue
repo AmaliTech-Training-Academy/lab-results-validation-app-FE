@@ -99,8 +99,8 @@ async function retryGate4() {
 
 async function discard() {
   await standup.discard(cohortId)
-  stream.stop()
-  gate4.stop()
+  stream.reset()
+  gate4.reset()
   acceptDone.value = false
   standup.reset()
   await cohorts.fetchCohort(cohortId)
@@ -108,8 +108,8 @@ async function discard() {
 }
 
 function startOver() {
-  stream.stop()
-  gate4.stop()
+  stream.reset()
+  gate4.reset()
   acceptDone.value = false
   standup.reset()
   localError.value = ''

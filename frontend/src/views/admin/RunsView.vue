@@ -65,7 +65,7 @@ const COL_LABELS: { key: keyof typeof cols.value; label: string }[] = [
   { key: 'when', label: 'When' },
 ]
 const colCount = computed(
-  () => 1 + Object.values(cols.value).filter(Boolean).length + 1, // file + toggled columns + kebab
+  () => Object.values(cols.value).filter(Boolean).length + 1, // toggled columns + kebab
 )
 
 function toggleColMenu(event: MouseEvent) {
@@ -79,7 +79,7 @@ function toggleColMenu(event: MouseEvent) {
 }
 
 // ── Sorting ─────────────────────────────────────────────────────────────────
-type SortKey = 'file' | 'cohort' | 'trigger' | 'status' | 'results' | 'when'
+type SortKey = 'cohort' | 'trigger' | 'status' | 'results' | 'when'
 const sortKey = ref<SortKey>('when')
 const sortDir = ref<'asc' | 'desc'>('desc')
 
@@ -94,18 +94,16 @@ function toggleSort(key: SortKey) {
 
 function sortValue(r: IngestionRun, key: SortKey): string | number {
   switch (key) {
-    case 'file':
-      return r.workbookFilename.toLowerCase()
     case 'cohort':
       return (r.cohortName ?? '').toLowerCase()
     case 'trigger':
-      return r.triggerType
+      return r.triggerType ?? ''
     case 'status':
       return STATUS_ORDER[r.status]
     case 'results':
-      return r.counts.committedNew + r.counts.updated
+      return (r.counts?.committedNew ?? 0) + (r.counts?.updated ?? 0)
     case 'when':
-      return r.runAt
+      return whenOf(r) ?? ''
   }
 }
 
@@ -194,17 +192,19 @@ function closeAllMenus() {
 // ── Formatting helpers ───────────────────────────────────────────────────────
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-function fileExt(name: string): string {
-  const dot = name.lastIndexOf('.')
-  return dot > -1 ? name.slice(dot + 1).toUpperCase() : 'FILE'
+/** Best available timestamp for a run (endpoints vary: runAt | completedAt | startedAt). */
+function whenOf(r: IngestionRun): string | undefined {
+  return r.runAt ?? r.completedAt ?? r.startedAt
 }
 
-function fmtDate(iso: string): string {
+function fmtDate(iso?: string): string {
+  if (!iso) return '—'
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso.slice(0, 10)
   return `${String(d.getDate()).padStart(2, '0')} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`
 }
-function fmtTime(iso: string): string {
+function fmtTime(iso?: string): string {
+  if (!iso) return ''
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso.slice(11, 16)
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
@@ -256,21 +256,20 @@ function exportCsv() {
     toast.show({ tone: 'info', title: 'Nothing to export', body: 'There are no runs in the current view.' })
     return
   }
-  const header = ['File', 'Cohort', 'Trigger', 'Triggered by', 'Status', 'Rows read', 'New', 'Updated', 'Invalid', 'Unchanged', 'Conflicts', 'Run at']
+  const header = ['Cohort', 'Trigger', 'Triggered by', 'Status', 'Rows read', 'New', 'Updated', 'Invalid', 'Unchanged', 'Conflicts', 'Run at']
   const body = rows.map((r) =>
     [
-      r.workbookFilename,
       r.cohortName ?? '',
       r.triggerType === 'SCHEDULED' ? 'Scheduled' : 'Manual',
       triggerWho(r),
       STATUS_LABEL[r.status],
-      r.counts.rowsRead,
-      r.counts.committedNew,
-      r.counts.updated,
-      r.counts.skippedInvalid,
-      r.counts.skippedUnchanged,
-      r.counts.conflicts,
-      r.runAt,
+      r.counts?.rowsRead ?? 0,
+      r.counts?.committedNew ?? 0,
+      r.counts?.updated ?? 0,
+      r.counts?.skippedInvalid ?? 0,
+      r.counts?.skippedUnchanged ?? 0,
+      r.counts?.conflicts ?? 0,
+      whenOf(r) ?? '',
     ]
       .map(csvCell)
       .join(','),
@@ -291,7 +290,7 @@ function exportCsv() {
 // ── Sync ────────────────────────────────────────────────────────────────────
 async function runSync() {
   try {
-    await runs.sync(selectedCohortId.value ? { cohortId: selectedCohortId.value } : {})
+    await runs.sync(selectedCohortId.value || undefined)
     toast.show({ tone: 'success', title: 'Sync triggered', body: 'A new run has started.' })
   } catch {
     toast.show({ tone: 'warning', title: 'Sync failed', body: runs.error ?? 'Please try again.' })
@@ -342,12 +341,6 @@ async function runSync() {
       <table class="tbl tbl-light runs-tbl">
         <thead>
           <tr>
-            <th>
-              <button class="th-sort" @click="toggleSort('file')">
-                File
-                <VSortIcon :active="sortKey === 'file'" :dir="sortDir" />
-              </button>
-            </th>
             <th v-if="cols.cohort">
               <button class="th-sort" @click="toggleSort('cohort')">
                 Cohort
@@ -385,12 +378,6 @@ async function runSync() {
         <!-- Loading skeleton -->
         <tbody v-if="runs.loading">
           <tr v-for="i in 5" :key="i" class="skel-row">
-            <td>
-              <div class="file-cell">
-                <span class="skel" style="width: 34px; height: 34px; border-radius: 8px; flex-shrink: 0" />
-                <span class="skel" style="width: 130px" />
-              </div>
-            </td>
             <td v-if="cols.cohort"><span class="skel" style="width: 80px" /></td>
             <td v-if="cols.trigger"><span class="skel" style="width: 110px" /></td>
             <td v-if="cols.status"><span class="skel" style="width: 74px; border-radius: 999px" /></td>
@@ -403,26 +390,6 @@ async function runSync() {
         <!-- Data -->
         <tbody v-else>
           <tr v-for="r in paged" :key="r.id" class="row-click" @click="openRun(r)">
-            <!-- File -->
-            <td>
-              <div class="file-cell">
-                <span class="file-ic"><VIcon name="file-spreadsheet" :size="18" /></span>
-                <span class="file-meta">
-                  <span class="file-name">
-                    {{ r.workbookFilename }}
-                    <VIcon
-                      v-if="r.highFailure"
-                      name="alert-triangle"
-                      :size="13"
-                      class="hi-fail"
-                      aria-label="High failure rate"
-                    />
-                  </span>
-                  <span class="file-sub">{{ fileExt(r.workbookFilename) }} · {{ r.counts.rowsRead }} rows</span>
-                </span>
-              </div>
-            </td>
-
             <!-- Cohort -->
             <td v-if="cols.cohort">
               <span class="cohort-name">{{ r.cohortName ?? '—' }}</span>
@@ -450,21 +417,21 @@ async function runSync() {
             <!-- Results -->
             <td v-if="cols.results">
               <span class="counts">
-                <span class="c-new">{{ r.counts.committedNew }} new</span>
+                <span class="c-new">{{ r.counts?.committedNew ?? 0 }} new</span>
                 <span class="sep">·</span>
-                <span>{{ r.counts.updated }} upd</span>
+                <span>{{ r.counts?.updated ?? 0 }} upd</span>
                 <span class="sep">·</span>
-                <span :class="{ 'c-bad': r.counts.skippedInvalid > 0 }">{{ r.counts.skippedInvalid }} invalid</span>
+                <span :class="{ 'c-bad': (r.counts?.skippedInvalid ?? 0) > 0 }">{{ r.counts?.skippedInvalid ?? 0 }} invalid</span>
                 <span class="sep">·</span>
-                <span :class="{ 'c-conflict': r.counts.conflicts > 0 }">{{ r.counts.conflicts }} conflict</span>
+                <span :class="{ 'c-conflict': (r.counts?.conflicts ?? 0) > 0 }">{{ r.counts?.conflicts ?? 0 }} conflict</span>
               </span>
             </td>
 
             <!-- When -->
             <td v-if="cols.when">
               <span class="when-cell">
-                <span class="when-row"><VIcon name="calendar" :size="13" class="when-ic" />{{ fmtDate(r.runAt) }}</span>
-                <span class="when-row muted"><VIcon name="clock" :size="13" class="when-ic" />{{ fmtTime(r.runAt) }}</span>
+                <span class="when-row"><VIcon name="calendar" :size="13" class="when-ic" />{{ fmtDate(whenOf(r)) }}</span>
+                <span class="when-row muted"><VIcon name="clock" :size="13" class="when-ic" />{{ fmtTime(whenOf(r)) }}</span>
               </span>
             </td>
 

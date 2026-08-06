@@ -1,33 +1,98 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { toErrorMessage } from '@/utils/errors'
 import type { IngestionRun } from '@/types/run.types'
 import type { AuditEvent, AuditFilters } from '@/types/audit.types'
-import { listAuditRuns, listAuditEvents } from '@/services/audit.service'
+import type { Paged } from '@/types/common.types'
+import { listAuditRuns, listAuditEvents, getAuditEvent } from '@/services/audit.service'
+
+const EVENTS_PAGE_SIZE = 20
+const RUNS_PAGE_SIZE = 20
 
 export const useAuditStore = defineStore('audit', () => {
-  const runs = ref<IngestionRun[]>([])
-  const events = ref<AuditEvent[]>([])
-  const filters = ref<AuditFilters>({})
+  const runsPage = ref<Paged<IngestionRun> | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
 
-  async function fetch(next?: AuditFilters) {
-    if (next) filters.value = next
+  const eventsPage = ref<Paged<AuditEvent> | null>(null)
+  const eventsLoading = ref(false)
+  const eventsError = ref<string | null>(null)
+
+  const filters = ref<AuditFilters>({})
+
+  const currentEvent = ref<AuditEvent | null>(null)
+  const currentEventLoading = ref(false)
+  const currentEventError = ref<string | null>(null)
+
+  // Bumped on every fetch so a slower, superseded request (e.g. the cohort filter changing again
+  // before the previous page finished loading) can tell it's stale and not clobber newer state.
+  let runsRequestId = 0
+  let eventsRequestId = 0
+
+  /** GET /audit-log/ingestion-runs is genuinely paginated server-side — paged independently of `eventsPage` so switching pages doesn't re-fetch the other tab. */
+  async function fetchRuns(page = 0) {
+    const requestId = ++runsRequestId
     loading.value = true
     error.value = null
     try {
-      const [r, e] = await Promise.all([
-        listAuditRuns(filters.value),
-        listAuditEvents(filters.value),
-      ])
-      runs.value = r
-      events.value = e
+      const result = await listAuditRuns({ ...filters.value, page, size: RUNS_PAGE_SIZE })
+      if (requestId !== runsRequestId) return // a newer fetch already landed — don't overwrite it
+      runsPage.value = result
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to load audit log'
+      if (requestId !== runsRequestId) return
+      error.value = toErrorMessage(err, 'Failed to load runs')
     } finally {
-      loading.value = false
+      if (requestId === runsRequestId) loading.value = false
     }
   }
 
-  return { runs, events, filters, loading, error, fetch }
+  async function fetchEvents(page = 0) {
+    const requestId = ++eventsRequestId
+    eventsLoading.value = true
+    eventsError.value = null
+    try {
+      const result = await listAuditEvents({ ...filters.value, page, size: EVENTS_PAGE_SIZE })
+      if (requestId !== eventsRequestId) return
+      eventsPage.value = result
+    } catch (err) {
+      if (requestId !== eventsRequestId) return
+      eventsError.value = toErrorMessage(err, 'Failed to load events')
+    } finally {
+      if (requestId === eventsRequestId) eventsLoading.value = false
+    }
+  }
+
+  async function fetch(next?: AuditFilters) {
+    if (next) filters.value = next
+    await Promise.all([fetchRuns(0), fetchEvents(0)])
+  }
+
+  async function fetchEvent(id: string) {
+    currentEventLoading.value = true
+    currentEventError.value = null
+    try {
+      currentEvent.value = await getAuditEvent(id)
+    } catch (err) {
+      currentEventError.value = toErrorMessage(err, 'Failed to load event')
+    } finally {
+      currentEventLoading.value = false
+    }
+  }
+
+  return {
+    runsPage,
+    loading,
+    error,
+    fetchRuns,
+    eventsPage,
+    eventsLoading,
+    eventsError,
+    filters,
+    fetch,
+    fetchEvents,
+    currentEvent,
+    currentEventLoading,
+    currentEventError,
+    fetchEvent,
+  }
 })

@@ -7,7 +7,7 @@ import VIcon from '@/components/base/VIcon.vue'
 import VButton from '@/components/base/VButton.vue'
 import { useCohortsStore } from '@/stores/cohorts'
 import { useRunsStore } from '@/stores/runs'
-import type { IngestionRun, RunStatus } from '@/types/run.types'
+import { RUN_STATUS_TONE, type IngestionRun } from '@/types/run.types'
 import '@/assets/styles/dashboard.css'
 
 const router = useRouter()
@@ -39,20 +39,20 @@ const recentRuns = computed(() => runs.list.slice(0, 5))
 const attentionRuns = computed(() =>
   runs.list.filter((r) => r.highFailure || r.status === 'partial' || r.status === 'failed'),
 )
-const openConflicts = computed(() => runs.list.reduce((n, r) => n + r.counts.conflicts, 0))
-
-const RUN_TONE: Record<RunStatus, 'success' | 'warning' | 'danger' | 'info'> = {
-  completed: 'success', partial: 'warning', failed: 'danger', skipped: 'info', processing: 'info',
-}
+const openConflicts = computed(() => runs.list.reduce((n, r) => n + (r.counts?.conflicts ?? 0), 0))
 
 function rejectPct(r: IngestionRun): number {
-  return r.counts.rowsRead > 0 ? Math.round((r.counts.skippedInvalid / r.counts.rowsRead) * 100) : 0
+  const rowsRead = r.counts?.rowsRead ?? 0
+  return rowsRead > 0 ? Math.round(((r.counts?.skippedInvalid ?? 0) / rowsRead) * 100) : 0
 }
-function fmt(iso: string): string {
-  return iso.replace('T', ' ').slice(0, 16)
+function fmt(iso?: string): string {
+  return iso ? iso.replace('T', ' ').slice(0, 16) : '—'
+}
+function cohortLabel(r: IngestionRun): string {
+  return r.cohortName ?? cohorts.list.find((c) => c.id === r.cohortId)?.name ?? r.cohortId
 }
 function openRun(r: IngestionRun) {
-  router.push({ name: 'admin-run-review', params: { id: r.id } })
+  router.push({ name: 'admin-run-review', params: { id: r.id }, query: { cohortId: r.cohortId } })
 }
 </script>
 
@@ -109,11 +109,10 @@ function openRun(r: IngestionRun) {
           <div class="uploads-scroll">
             <table class="tbl">
               <thead>
-                <tr><th>File</th><th class="col-cohort">Cohort</th><th class="col-status">Status</th><th class="col-when">When</th></tr>
+                <tr><th class="col-cohort">Cohort</th><th class="col-status">Status</th><th class="col-when">When</th></tr>
               </thead>
               <tbody v-if="loading">
                 <tr v-for="i in 4" :key="i" class="skel-row">
-                  <td><span class="skel mono" style="width: 70%" /></td>
                   <td class="col-cohort"><span class="skel" style="width: 60%" /></td>
                   <td class="col-status"><span class="skel" style="width: 64px; border-radius: 999px; display: inline-block" /></td>
                   <td class="col-when"><span class="skel mono" style="width: 80px" /></td>
@@ -121,12 +120,11 @@ function openRun(r: IngestionRun) {
               </tbody>
               <tbody v-else>
                 <tr v-for="r in recentRuns" :key="r.id" style="cursor: pointer" @click="openRun(r)">
-                  <td class="mono col-file" style="font-weight: 500">{{ r.workbookFilename }}</td>
-                  <td class="col-cohort">{{ r.cohortName ?? '—' }}</td>
-                  <td class="col-status"><VPill :tone="RUN_TONE[r.status]">{{ r.status }}</VPill></td>
-                  <td class="col-when mono" style="color: var(--text-secondary)">{{ fmt(r.runAt) }}</td>
+                  <td class="col-cohort">{{ cohortLabel(r) }}</td>
+                  <td class="col-status"><VPill :tone="RUN_STATUS_TONE[r.status]">{{ r.status }}</VPill></td>
+                  <td class="col-when mono" style="color: var(--text-secondary)">{{ fmt(r.runAt ?? r.startedAt) }}</td>
                 </tr>
-                <tr v-if="recentRuns.length === 0"><td colspan="4" style="text-align: center; color: var(--text-secondary); padding: 24px">No runs yet.</td></tr>
+                <tr v-if="recentRuns.length === 0"><td colspan="3" style="text-align: center; color: var(--text-secondary); padding: 24px">No runs yet.</td></tr>
               </tbody>
             </table>
           </div>
@@ -146,14 +144,13 @@ function openRun(r: IngestionRun) {
 
           <div v-for="r in attentionRuns" :key="r.id" class="att-item">
             <div class="att-row">
-              <span class="att-who">{{ r.cohortName }}</span>
+              <span class="att-who">{{ cohortLabel(r) }}</span>
               <VPill :tone="r.highFailure ? 'danger' : 'warning'">
                 {{ r.highFailure ? `${rejectPct(r)}% rejected` : r.status }}
               </VPill>
             </div>
-            <div class="mono att-file">{{ r.workbookFilename }}</div>
             <div class="att-foot">
-              <span>{{ r.counts.committedNew }} new · {{ r.counts.skippedInvalid }} invalid · {{ r.counts.conflicts }} conflicts</span>
+              <span>{{ r.counts?.committedNew ?? 0 }} new · {{ r.counts?.skippedInvalid ?? 0 }} invalid · {{ r.counts?.conflicts ?? 0 }} conflicts</span>
               <button class="link" @click="openRun(r)">Review →</button>
             </div>
           </div>
@@ -168,11 +165,9 @@ function openRun(r: IngestionRun) {
   .dash-grid { grid-template-columns: 1fr; }
 }
 .uploads-scroll { overflow-x: auto; }
-.col-status { width: 108px; }
-.col-when { width: 140px; white-space: nowrap; }
-.col-file { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uploads-scroll .tbl { table-layout: fixed; }
+.col-cohort { width: 48%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.col-status { width: 24%; }
+.col-when { width: 28%; white-space: nowrap; }
 .att-empty { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 14px; }
-@media (max-width: 1100px) {
-  .col-cohort { display: none; }
-}
 </style>

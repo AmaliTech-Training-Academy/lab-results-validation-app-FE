@@ -37,8 +37,8 @@ describe('AppShell', () => {
 
   it('renders the admin sidebar nav', () => {
     const wrapper = mount(AppShell, { props: defaultProps })
-    // Admin-only app: Dashboard, Cohorts, Grading runs, Audit
-    expect(wrapper.findAll('.nav .nav-item')).toHaveLength(4)
+    // Admin-only app: Dashboard, Cohorts, Grading runs, Sync schedules, Audit
+    expect(wrapper.findAll('.nav .nav-item')).toHaveLength(5)
   })
 
   it('bubbles navigate event from the sidebar', async () => {

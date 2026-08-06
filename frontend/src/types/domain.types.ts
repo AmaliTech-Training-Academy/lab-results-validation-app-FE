@@ -37,6 +37,14 @@ export function cohortDisplayState(c: Pick<Cohort, 'lifecycleState' | 'locked'>)
   return c.locked && c.lifecycleState === 'STOOD_UP' ? 'LOCKED' : c.lifecycleState
 }
 
+/** Tone + label for the cohort state chip (§6.1), keyed by `cohortDisplayState()`. */
+export const COHORT_STATE_CHIP: Record<CohortDisplayState, { tone: 'info' | 'warning' | 'success'; label: string }> = {
+  DRAFT: { tone: 'info', label: 'Draft' },
+  REFERENCE_ACCEPTED: { tone: 'warning', label: 'Reference accepted' },
+  STOOD_UP: { tone: 'success', label: 'Stood up' },
+  LOCKED: { tone: 'success', label: 'Locked' },
+}
+
 export interface CreateCohortPayload {
   name: string
   startDate: string
@@ -83,10 +91,10 @@ export interface Learner {
 /** Passwordless notification contact (schema: instructor_contacts). Never a login user. */
 export interface InstructorContact {
   id: string
-  instructorId: string // e.g. "INS-001"
+  instructorId: string
   email: string
   fullName: string
-  isActive: boolean
+  active: boolean
 }
 
 // --- Committed reference hierarchy (read-only inspector, §6.3) -----------------

@@ -1,4 +1,5 @@
-import { ref, computed, onScopeDispose, type Ref, type ComputedRef } from 'vue'
+import { ref, computed, type Ref, type ComputedRef } from 'vue'
+import { toErrorMessage } from '@/utils/errors'
 import type { LocatedError } from '@/types/common.types'
 import type { ReferenceBundleSummary } from '@/types/domain.types'
 import type {
@@ -11,7 +12,8 @@ import type {
   StandupStatus,
 } from '@/types/standup.types'
 import { fetchStandupStatus, standupStreamUrl } from '@/services/cohorts.service'
-import { USE_MOCKS } from '@/services/mock/fixtures'
+import { USE_MOCKS } from '@/services/mock/useMocks'
+import { useEventSourceStream } from '@/composables/useEventSourceStream'
 
 /**
  * Drives Gates 1-3 of the stand-up pipeline over the backend SSE stream
@@ -20,8 +22,8 @@ import { USE_MOCKS } from '@/services/mock/fixtures'
  * gate.passed / gate.failed / pipeline.done
  * events into the same `StandupStatus` shape the view already renders — the
  * stream closes itself after `pipeline.done`, at which point Gate 4 takes
- * over via the existing `useJobPolling` + `fetchStandupStatus` poll (the
- * stream has no concept of post-accept gates).
+ * over via a `fetchStandupStatus` poll (the stream has no concept of
+ * post-accept gates).
  *
  * There's no fake SSE server for local dev, so mock mode instead polls the
  * mock status endpoint on a fast interval and stops at the same terminal
@@ -55,6 +57,7 @@ export interface StandupStream {
   error: Ref<string | null>
   start: () => void
   stop: () => void
+  reset: () => void
 }
 
 export function useStandupStream(cohortId: string): StandupStream {
@@ -62,26 +65,18 @@ export function useStandupStream(cohortId: string): StandupStream {
   const isPolling = ref(false)
   const error = ref<string | null>(null)
 
-  let source: EventSource | null = null
-  let mockTimer: ReturnType<typeof setTimeout> | null = null
-  let disposed = false
-
-  function closeSource() {
-    source?.close()
-    source = null
-  }
-
-  function clearMockTimer() {
-    if (mockTimer) {
-      clearTimeout(mockTimer)
-      mockTimer = null
-    }
-  }
+  const eventSource = useEventSourceStream()
 
   function stop() {
     isPolling.value = false
-    closeSource()
-    clearMockTimer()
+    eventSource.stop()
+  }
+
+  /** Stops the stream and clears status so `started` goes back to false (Cancel / Discard). */
+  function reset() {
+    stop()
+    status.value = null
+    error.value = null
   }
 
   function setGate(id: GateId, patch: Partial<Gate>) {
@@ -130,50 +125,42 @@ export function useStandupStream(cohortId: string): StandupStream {
     }
   }
 
-  function bindEvent<T>(name: string, handler: (data: T) => void) {
-    source?.addEventListener(name, (e) => {
-      try {
-        handler(JSON.parse((e as MessageEvent).data) as T)
-      } catch {
-        error.value = 'Received a malformed message from the validation stream.'
-      }
-    })
-  }
-
   function openRealStream() {
-    closeSource()
-    source = new EventSource(standupStreamUrl(cohortId))
-    bindEvent<GatePassedData>('gate.passed', handlePassed)
-    bindEvent<GateFailedData>('gate.failed', handleFailed)
-    bindEvent<PipelineDoneData>('pipeline.done', handleDone)
+    const onMalformed = () => {
+      error.value = 'Received a malformed message from the validation stream.'
+    }
+    const source = eventSource.open(standupStreamUrl(cohortId))
+    eventSource.bindEvent<GatePassedData>('gate.passed', handlePassed, onMalformed)
+    eventSource.bindEvent<GateFailedData>('gate.failed', handleFailed, onMalformed)
+    eventSource.bindEvent<PipelineDoneData>('pipeline.done', handleDone, onMalformed)
     source.onerror = () => {
       // EventSource reconnects on its own (Last-Event-ID replay) — just surface a soft warning.
-      if (!disposed) error.value = 'Connection to the validation stream was interrupted — reconnecting…'
+      if (!eventSource.isDisposed()) error.value = 'Connection to the validation stream was interrupted — reconnecting…'
     }
   }
 
   function mockTick() {
-    if (disposed) return
+    if (eventSource.isDisposed()) return
     fetchStandupStatus(cohortId)
       .then((next) => {
-        if (disposed) return
+        if (eventSource.isDisposed()) return
         status.value = next
         error.value = null
         if (next.overall === 'passed' || next.overall === 'failed') {
           stop()
           return
         }
-        mockTimer = setTimeout(mockTick, 400)
+        eventSource.scheduleMock(mockTick, 400)
       })
       .catch((e) => {
-        if (disposed) return
-        error.value = e instanceof Error ? e.message : 'Failed to fetch stand-up status'
-        mockTimer = setTimeout(mockTick, 400)
+        if (eventSource.isDisposed()) return
+        error.value = toErrorMessage(e, 'Failed to fetch stand-up status')
+        eventSource.scheduleMock(mockTick, 400)
       })
   }
 
   function start() {
-    if (isPolling.value || disposed) return
+    if (isPolling.value || eventSource.isDisposed()) return
     isPolling.value = true
     error.value = null
     status.value = { overall: 'running', gates: emptyGates() }
@@ -187,11 +174,5 @@ export function useStandupStream(cohortId: string): StandupStream {
   const gates = computed<Gate[]>(() => status.value?.gates ?? [])
   const errors = computed<LocatedError[]>(() => gates.value.flatMap((g) => g.errors))
 
-  onScopeDispose(() => {
-    disposed = true
-    closeSource()
-    clearMockTimer()
-  })
-
-  return { status, gates, errors, isPolling, error, start, stop }
+  return { status, gates, errors, isPolling, error, start, stop, reset }
 }

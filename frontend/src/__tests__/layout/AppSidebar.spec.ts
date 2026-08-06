@@ -18,7 +18,7 @@ describe('AppSidebar', () => {
     it('renders the admin nav items', () => {
       const wrapper = mount(AppSidebar, { props: adminProps })
       const navItems = wrapper.findAll('.nav .nav-item')
-      expect(navItems).toHaveLength(4)
+      expect(navItems).toHaveLength(5)
     })
 
     it('renders the Settings footer item', () => {
@@ -35,6 +35,7 @@ describe('AppSidebar', () => {
       expect(labels).toContain('Dashboard')
       expect(labels).toContain('Cohorts')
       expect(labels).toContain('Grading runs')
+      expect(labels).toContain('Sync schedules')
       expect(labels).toContain('Audit')
     })
   })

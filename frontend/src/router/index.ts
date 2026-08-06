@@ -42,7 +42,7 @@ const router = createRouter({
     {
       path: '/admin',
       redirect: '/admin/dashboard',
-      component: () => import('@/views/admin/AdminDashboardView.vue'),
+      component: () => import('@/views/admin/AdminLayoutView.vue'),
       meta: { requiresAuth: true },
       children: [
         { path: 'dashboard', name: 'admin-dashboard', component: () => import('@/views/admin/AdminHomeView.vue') },
@@ -52,6 +52,8 @@ const router = createRouter({
         { path: 'runs',      name: 'admin-runs',       component: () => import('@/views/admin/RunsView.vue') },
         { path: 'runs/:id',  name: 'admin-run-review', component: () => import('@/views/admin/RunReviewView.vue') },
         { path: 'audit',     name: 'admin-audit',      component: () => import('@/views/admin/AuditView.vue') },
+        { path: 'audit/events/:id', name: 'admin-audit-event', component: () => import('@/views/admin/AuditEventDetailView.vue') },
+        { path: 'sync-schedules', name: 'admin-sync-schedules', component: () => import('@/views/admin/SyncSchedulesView.vue') },
         { path: 'settings',  name: 'admin-settings',   component: () => import('@/views/admin/SettingsView.vue') },
       ],
     },

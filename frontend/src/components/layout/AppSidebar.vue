@@ -24,10 +24,11 @@ interface NavItem {
 }
 
 const ADMIN_NAV: NavItem[] = [
-  { id: 'a-dashboard', label: 'Dashboard',     icon: 'layout-dashboard' },
-  { id: 'a-cohorts',   label: 'Cohorts',       icon: 'layers'           },
-  { id: 'a-runs',      label: 'Grading runs',  icon: 'refresh-cw'       },
-  { id: 'a-audit',     label: 'Audit',         icon: 'scroll-text'      },
+  { id: 'a-dashboard',      label: 'Dashboard',      icon: 'layout-dashboard' },
+  { id: 'a-cohorts',        label: 'Cohorts',        icon: 'layers'           },
+  { id: 'a-runs',           label: 'Grading runs',   icon: 'refresh-cw'       },
+  { id: 'a-sync-schedules', label: 'Sync schedules', icon: 'calendar'         },
+  { id: 'a-audit',          label: 'Audit',          icon: 'scroll-text'      },
 ]
 
 const ADMIN_FOOTER: NavItem[] = [
