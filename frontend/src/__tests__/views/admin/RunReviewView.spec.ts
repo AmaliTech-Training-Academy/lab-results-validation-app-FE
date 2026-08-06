@@ -20,7 +20,7 @@ vi.mock('@/services/runReview.service', () => ({
   notificationStreamUrl: vi.fn<() => string>(() => 'http://mock/notifications-stream'),
   // The stream carries the same shape `listNotifications` already returns mapped+enriched, so the test
   // fixtures below can be emitted as-is without a separate raw-DTO shape.
-  mapStreamNotification: vi.fn(async (n: unknown) => n),
+  mapStreamNotification: vi.fn<(n: unknown) => Promise<unknown>>(async (n) => n),
 }))
 // The review panels only render once the sync-run stream reports sync.done
 // (store.fetchReview is invoked from that callback, not unconditionally on
@@ -434,7 +434,7 @@ describe('RunReviewView', () => {
     vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
     vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage())
     vi.mocked(reviewSvc.listNotifications).mockResolvedValue(notificationsPage())
-    const { wrapper, pinia } = mountView()
+    const { pinia } = mountView()
     await flushPromises()
     await completeSync()
 
