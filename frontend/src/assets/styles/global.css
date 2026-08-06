@@ -46,6 +46,9 @@
 .btn-primary:disabled { background: var(--orange); opacity: 0.5; cursor: not-allowed; }
 .btn-ghost { background: #fff; color: var(--text); border-color: var(--navy); }
 .btn-ghost:hover { background: var(--surface-alt); }
+.btn-dark { background: var(--navy); color: #fff; }
+.btn-dark:hover { background: var(--navy-2); }
+.btn-dark:disabled { background: var(--navy); opacity: 0.5; cursor: not-allowed; }
 .btn-danger { background: var(--danger); color: #fff; }
 .btn-danger:hover { background: #8a2626; }
 .btn-warning { background: var(--warning-bg); color: var(--warning); border-color: var(--warning); }
@@ -66,21 +69,19 @@
 .stat-foot { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-soft); display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-secondary); }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
-/* ---------- Tables ---------- */
+/* ---------- Tables ----------
+   Default table style app-wide: light header, neutral Inter body, hover rows, no zebra.
+   `.tbl-light` is kept as a backward-compatible alias (identical to the default). */
 .tbl-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; box-shadow: var(--shadow-card); }
-table.tbl { width: 100%; border-collapse: collapse; }
-.tbl thead th { background: var(--navy); color: #fff; text-align: left; font-size: 13px; font-weight: 600; padding: 13px 16px; white-space: nowrap; }
+table.tbl { width: 100%; border-collapse: collapse; font-family: var(--font-body); }
+.tbl thead th { background: var(--table-head-bg); color: var(--navy); text-align: left; font-size: 13px; font-weight: 600; padding: 12px 16px; white-space: nowrap; border-bottom: 1px solid var(--border); }
 .tbl tbody td { padding: 14px 16px; font-size: 14px; border-top: 1px solid var(--border); vertical-align: middle; }
-.tbl tbody tr:nth-child(even) { background: var(--bg); }
-.tbl-light thead th { background: #fff; color: var(--text-secondary); font-size: 11px; font-weight: 500; letter-spacing: 0.6px; text-transform: uppercase; border-bottom: 1px solid var(--border); }
-.tbl-light tbody tr:nth-child(even) { background: #fff; }
-.tbl-light tbody tr:hover { background: var(--surface-alt); }
+.tbl tbody tr:hover { background: var(--bg); }
 .mono { font-family: var(--font-mono); font-size: 13px; }
 .tbl input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--orange); }
-.tbl thead th input[type='checkbox'] { accent-color: #fff; }
 
-/* ---------- Pills ---------- */
-.pill { border-radius: var(--r-pill); padding: 4px 12px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+/* ---------- Pills (status badges: rounded-rectangle, soft pastel fill) ---------- */
+.pill { border-radius: var(--r-md); padding: 4px 10px; font-size: 12px; font-weight: 600; line-height: 1.4; display: inline-flex; align-items: center; gap: 6px; }
 .pill-success { background: var(--success-bg); color: var(--success); }
 .pill-warning { background: var(--warning-bg); color: var(--warning); }
 .pill-danger  { background: var(--danger-bg);  color: var(--danger); }
@@ -156,13 +157,13 @@ table.tbl { width: 100%; border-collapse: collapse; }
 /* ---------- Toolbar / filters ---------- */
 .toolbar { display: flex; align-items: flex-end; gap: 12px; padding: 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .filterbar { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
-.search { display: flex; align-items: center; gap: 9px; height: 40px; padding: 0 13px; background: #fff; border: 1px solid var(--border); border-radius: var(--r-sm); }
+.search { display: flex; align-items: center; gap: 9px; height: 40px; padding: 0 13px; background: var(--bg-sunken); border: 1px solid var(--border); border-radius: var(--r-lg); }
 .search input { border: none; outline: none; background: transparent; font-family: inherit; font-size: 14px; color: var(--text); flex: 1; min-width: 0; }
 .search input::placeholder { color: var(--text-muted); }
 .search:focus-within { border-color: var(--orange); box-shadow: var(--ring-focus); }
 .selectf { display: flex; flex-direction: column; gap: 6px; }
 .selectf-label { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
-.selectf-btn { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 40px; min-width: 150px; padding: 0 13px; background: #fff; border: 1px solid var(--border); border-radius: var(--r-sm); font-family: inherit; font-size: 14px; color: var(--text); cursor: pointer; }
+.selectf-btn { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 40px; min-width: 150px; padding: 0 13px; background: #fff; border: 1px solid var(--border); border-radius: var(--r-lg); font-family: inherit; font-size: 14px; color: var(--text); cursor: pointer; }
 .segtoggle { display: inline-flex; background: #fff; border: 1px solid var(--border); border-radius: var(--r-sm); padding: 3px; }
 .segtoggle-btn { border: none; background: transparent; padding: 7px 16px; border-radius: 2px; font-family: inherit; font-size: 14px; font-weight: 600; color: var(--text-secondary); cursor: pointer; }
 .segtoggle-btn.on { background: var(--navy); color: #fff; }
@@ -175,10 +176,14 @@ table.tbl { width: 100%; border-collapse: collapse; }
 /* ---------- Pagination ---------- */
 .pager { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-top: 1px solid var(--border); }
 .pager-count { font-size: 14px; color: var(--text-secondary); }
+/* Emphasised counts inside "Showing X to Y of Z entries". */
+.pg-strong { color: var(--text); font-weight: 600; }
 .pager-ctrls { display: flex; align-items: center; gap: 6px; }
 .pg-num,
-.pg-arrow { min-width: 34px; height: 34px; padding: 0 8px; border: 1px solid var(--border); background: #fff; border-radius: var(--r-sm); font-family: inherit; font-size: 14px; color: var(--text); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
-.pg-num.on { background: var(--orange); border-color: var(--orange); color: #fff; font-weight: 600; }
+.pg-arrow { min-width: 32px; height: 32px; padding: 0 8px; border: 1px solid transparent; background: transparent; border-radius: var(--r-md); font-family: inherit; font-size: 14px; color: var(--text); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.pg-num:hover:not(.on),
+.pg-arrow:hover:not(:disabled) { background: var(--bg); }
+.pg-num.on { background: #E9EBEE; color: var(--text); font-weight: 600; }
 .pg-arrow { color: var(--text-secondary); }
 .pg-ellipsis { padding: 0 4px; color: var(--text-secondary); }
 
@@ -187,6 +192,49 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .kebab:hover { background: var(--bg); }
 .count-chip { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; padding: 3px 10px; border-radius: var(--r-pill); font-family: var(--font-mono); font-size: 13px; font-weight: 500; }
 .pill-dot { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; }
+
+/* ---------- Modern data-table chrome (shared toolbar · sort · filter · popovers · page size) ---------- */
+/* Toolbar: search/filter on the left, actions (manage-columns · export) on the right. */
+.tbl-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.tbl-toolbar .tb-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tbl-toolbar .tb-left .search { width: 260px; max-width: 100%; }
+.tbl-toolbar .tb-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.tbl-toolbar .tb-hint { font-size: 13px; color: var(--text-secondary); }
+
+/* Filter dropdown trigger */
+.filter-btn { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; background: var(--bg-sunken); border: 1px solid var(--border); border-radius: var(--r-lg); font-family: inherit; font-size: 14px; color: var(--text); cursor: pointer; }
+.filter-btn:hover { background: var(--surface-alt); }
+.filter-btn.on { border-color: var(--orange); color: var(--orange-deep); }
+.filter-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--r-pill); background: var(--orange); color: #fff; font-size: 11px; font-weight: 700; }
+
+/* Sortable header button + caret */
+.th-sort { display: inline-flex; align-items: center; gap: 5px; background: none; border: none; padding: 0; font: inherit; font-weight: 500; color: inherit; cursor: pointer; white-space: nowrap; }
+.th-sort:hover { color: var(--text); }
+.th-caret { color: var(--navy); opacity: 0.5; }
+.th-caret.on { color: var(--orange); opacity: 1; }
+
+/* Leading status dot inside a pill */
+.s-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+
+/* Rows-per-page select + pager layout */
+.pager-right { display: flex; align-items: center; gap: 14px; }
+.pgsize select { height: 34px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-sunken); padding: 0 10px; font-family: inherit; font-size: 13px; color: var(--text); cursor: pointer; }
+.pgsize select:focus-visible { outline: none; border-color: var(--orange); box-shadow: var(--ring-focus); }
+
+/* Teleported popovers (row actions · manage-columns · filter) */
+.pop { position: fixed; z-index: 1000; background: #fff; border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-pop); min-width: 180px; overflow: hidden; padding: 4px; }
+.pop-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border: none; background: none; border-radius: var(--r-sm); font-family: inherit; font-size: 14px; color: var(--text); cursor: pointer; text-align: left; }
+.pop-item:hover { background: var(--bg); }
+.pop-item svg { color: var(--text-secondary); }
+.col-pop { min-width: 200px; padding: 10px 8px 8px; }
+.pop-head { display: flex; align-items: center; justify-content: space-between; padding: 0 8px; margin-bottom: 6px; }
+.pop-title { font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: var(--text-secondary); margin: 0 0 6px; padding: 0 8px; }
+.pop-head .pop-title { margin: 0; padding: 0; }
+.pop-clear { border: none; background: none; color: var(--orange); font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; padding: 0; }
+.pop-clear:hover { color: var(--orange-hover); }
+.pop-row { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: var(--r-sm); font-size: 14px; color: var(--text); cursor: pointer; }
+.pop-row:hover { background: var(--bg); }
+.pop-row input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--orange); }
 
 /* ---------- Empty state ---------- */
 .empty { text-align: center; padding: 56px 24px; color: var(--text-secondary); }
@@ -433,9 +481,12 @@ textarea:focus-visible {
   outline: 3px solid var(--orange);
   outline-offset: 2px;
 }
-/* Suppress the global outline for elements that already manage their own focus state */
-.input:focus-within a:focus-visible,
-.input:focus-within button:focus-visible { outline: none; }
+/* Suppress the global outline for elements that already manage their own focus state.
+   Wrappers below draw their own focus ring via :focus-within, so the inner control
+   must NOT also show the global outline — otherwise it renders as a double ring. */
+.input:focus-within :is(input, textarea, select, a, button):focus-visible,
+.search:focus-within :is(input, textarea, select):focus-visible,
+.ff-input:focus-within :is(input, textarea, select):focus-visible { outline: none; }
 
 /* ============================================================
    Desktop guard — shown on viewports narrower than 1024 px
