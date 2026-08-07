@@ -67,6 +67,7 @@ function onLogout() {
     :user-name="auth.user?.name ?? ''"
     :user-role="displayRole"
     :user-initials="auth.user?.initials ?? ''"
+    :user-email="auth.user?.email"
     @navigate="onNavigate"
     @logout="onLogout"
   >

@@ -8,6 +8,7 @@ defineProps<{
   userName: string
   userRole: string
   userInitials: string
+  userEmail?: string
 }>()
 
 const emit = defineEmits<{
@@ -62,16 +63,25 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
           <VIcon name="chevron-down" :size="16" :class="['profile-caret', { open }]" />
         </button>
 
-        <div v-if="open" class="profile-menu" role="menu">
-          <div class="profile-meta">
-            <div class="profile-name">{{ userName }}</div>
-            <div class="profile-role">{{ userRole }}</div>
+        <Transition name="menu-pop">
+          <div v-if="open" class="profile-menu" role="menu">
+            <div class="profile-meta">
+              <span class="avatar avatar-lg" aria-hidden="true">{{ userInitials }}</span>
+              <div class="profile-meta-text">
+                <div class="profile-name-row">
+                  <span class="profile-name">{{ userName }}</span>
+                  <span class="role-badge">{{ userRole }}</span>
+                </div>
+                <div v-if="userEmail" class="profile-email">{{ userEmail }}</div>
+              </div>
+            </div>
+            <div class="profile-divider" role="separator" />
+            <button class="profile-item" type="button" role="menuitem" @click="onLogout">
+              <VIcon name="log-out" :size="16" />
+              Logout
+            </button>
           </div>
-          <button class="profile-item" type="button" role="menuitem" @click="onLogout">
-            <VIcon name="log-out" :size="16" />
-            Logout
-          </button>
-        </div>
+        </Transition>
       </div>
     </div>
   </header>
@@ -92,15 +102,26 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 .profile-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 6px 4px 4px;
+  gap: 9px;
+  padding: 4px 8px 4px 4px;
   border: none;
   background: none;
   border-radius: 10px;
   cursor: pointer;
+  transition: background 0.15s ease;
 }
 .profile-btn:hover {
   background: var(--bg);
+}
+.profile-btn:hover .avatar {
+  box-shadow: 0 0 0 3px var(--surface), 0 0 0 4px var(--orange);
+}
+
+/* Give the initials avatar a bit of presence against the white topbar —
+   otherwise it reads as a flat, unfinished shape. */
+.profile-btn .avatar {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--border);
+  transition: box-shadow 0.15s ease;
 }
 
 .profile-caret {
@@ -114,30 +135,59 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 .profile-menu {
   position: absolute;
   right: 0;
-  top: calc(100% + 8px);
-  min-width: 210px;
+  top: calc(100% + 10px);
+  min-width: 248px;
   background: #fff;
   border: 1px solid var(--border);
   border-radius: 12px;
   box-shadow: var(--shadow-pop);
   padding: 6px;
   z-index: 50;
+  transform-origin: top right;
 }
 
 .profile-meta {
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border-soft);
-  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 10px 12px;
+}
+.avatar-lg {
+  width: 40px;
+  height: 40px;
+  font-size: 15px;
+  flex-shrink: 0;
+}
+.profile-meta-text {
+  min-width: 0;
+  flex: 1;
+}
+.profile-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .profile-name {
+  font-family: var(--font-display);
   font-weight: 600;
   font-size: 14px;
   color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.profile-role {
+.profile-email {
   font-size: 12px;
   color: var(--text-secondary);
   margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.profile-divider {
+  height: 1px;
+  background: var(--border-soft);
+  margin: 0 2px 6px;
 }
 
 .profile-item {
@@ -155,9 +205,23 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
   color: var(--text);
   text-align: left;
   cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 .profile-item:hover {
   background: var(--danger-bg);
   color: var(--danger);
+}
+
+/* Pop-in transition for the dropdown */
+.menu-pop-enter-active {
+  transition: opacity 0.14s ease, transform 0.14s ease;
+}
+.menu-pop-leave-active {
+  transition: opacity 0.1s ease, transform 0.1s ease;
+}
+.menu-pop-enter-from,
+.menu-pop-leave-to {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.98);
 }
 </style>
