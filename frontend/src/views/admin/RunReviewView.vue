@@ -11,6 +11,7 @@ import { useNotificationStream } from '@/composables/useNotificationStream'
 import { useToastAction } from '@/composables/useToastAction'
 import { useToastStore } from '@/stores/toast'
 import { toErrorMessage } from '@/utils/errors'
+import type { Paged } from '@/types/common.types'
 import { RUN_STATUS_TONE, type SyncFileStatus } from '@/types/run.types'
 import {
   CONFLICT_STATUS_TONE,
@@ -158,6 +159,34 @@ function onNotificationStatusChange(status: NotificationStatus | '') {
 function changeNotificationsPage(page: number) {
   store.fetchNotifications(cohortId, runId, page)
 }
+
+// ── Pagination (server-paged — mirrors the numbered pager used by the
+// client-paged admin tables, e.g. RunsView/CohortsView) ─────────────────────
+function pageItemsFor(page: Paged<unknown> | null): (number | '…')[] {
+  const tp = Math.max(page?.totalPages ?? 1, 1)
+  const cur = (page?.number ?? 0) + 1
+  if (tp <= 7) return Array.from({ length: tp }, (_, i) => i + 1)
+  const items: (number | '…')[] = []
+  if (cur <= 4) {
+    for (let i = 1; i <= 5; i++) items.push(i)
+    items.push('…', tp)
+  } else if (cur >= tp - 3) {
+    items.push(1, '…')
+    for (let i = tp - 4; i <= tp; i++) items.push(i)
+  } else {
+    items.push(1, '…', cur - 1, cur, cur + 1, '…', tp)
+  }
+  return items
+}
+function showingRange(page: Paged<unknown> | null): { from: number; to: number; total: number } {
+  if (!page || page.totalElements === 0) return { from: 0, to: 0, total: 0 }
+  const from = page.number * page.size + 1
+  return { from, to: from + page.content.length - 1, total: page.totalElements }
+}
+const conflictsPageItems = computed(() => pageItemsFor(store.conflictsPage))
+const conflictsShowing = computed(() => showingRange(store.conflictsPage))
+const notificationsPageItems = computed(() => pageItemsFor(store.notificationsPage))
+const notificationsShowing = computed(() => showingRange(store.notificationsPage))
 
 /** Re-fetches the page currently shown — used by the "new activity" banner once a live event lands off-page. */
 function refreshNotifications() {
@@ -373,12 +402,25 @@ function recipientLabel(n: Notification): string {
               </tr>
             </tbody>
           </table>
-        </div>
 
-        <div v-if="store.conflictsPage && conflictRows.length > 0" class="pager">
-          <VButton size="sm" variant="ghost" :disabled="store.conflictsPage.number === 0" @click="changeConflictsPage(store.conflictsPage.number - 1)">Prev</VButton>
-          <span class="mono muted">Page {{ store.conflictsPage.number + 1 }} of {{ Math.max(store.conflictsPage.totalPages, 1) }}</span>
-          <VButton size="sm" variant="ghost" :disabled="store.conflictsPage.last" @click="changeConflictsPage(store.conflictsPage.number + 1)">Next</VButton>
+          <div v-if="store.conflictsPage && conflictRows.length > 0" class="pager">
+            <span class="pager-count">
+              Showing <span class="pg-strong">{{ conflictsShowing.from }}</span> to <span class="pg-strong">{{ conflictsShowing.to }}</span>
+              of <span class="pg-strong">{{ conflictsShowing.total }}</span> entries
+            </span>
+            <div class="pager-ctrls">
+              <button class="pg-arrow" aria-label="Previous page" :disabled="store.conflictsPage.number === 0" @click="changeConflictsPage(store.conflictsPage.number - 1)">
+                <VIcon name="chevron-left" :size="16" />
+              </button>
+              <template v-for="(p, i) in conflictsPageItems" :key="i">
+                <span v-if="p === '…'" class="pg-ellipsis">…</span>
+                <button v-else :class="['pg-num', { on: store.conflictsPage.number + 1 === p }]" @click="changeConflictsPage(Number(p) - 1)">{{ p }}</button>
+              </template>
+              <button class="pg-arrow" aria-label="Next page" :disabled="store.conflictsPage.last" @click="changeConflictsPage(store.conflictsPage.number + 1)">
+                <VIcon name="chevron-right" :size="16" />
+              </button>
+            </div>
+          </div>
         </div>
       </template>
     </section>
@@ -416,64 +458,79 @@ function recipientLabel(n: Notification): string {
       <template v-else>
         <p v-if="notifications.length === 0" class="empty-note"><VIcon name="check-circle-2" :size="15" class="ic-success" /> No notifications for this run.</p>
 
-        <div v-else class="tbl-wrap notif-tbl-wrap">
-          <table class="tbl">
-            <thead>
-              <tr>
-                <th>Recipient</th>
-                <th>Type</th>
-                <th>Policy</th>
-                <th style="text-align: center">Status</th>
-                <th>Issues</th>
-                <th>Created</th>
-                <th style="text-align: right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="n in notifications" :key="n.id">
-                <td>
-                  <div class="cell-title">{{ recipientLabel(n) }}</div>
-                  <div class="muted mono sub">{{ n.recipientKind }}</div>
-                </td>
-                <td>
-                  <div class="cell-title">{{ notifTypeLabel(n.type) }}</div>
-                  <div v-if="n.subject" class="muted sub subject" :title="n.subject">{{ n.subject }}</div>
-                </td>
-                <td><span class="policy-tag" :class="n.dispatchPolicy === 'HELD' ? 'held' : 'auto'">{{ n.dispatchPolicy }}</span></td>
-                <td style="text-align: center">
-                  <VPill :tone="notifTone(n.status)">{{ notifLabel(n.status) }}</VPill>
-                  <div v-if="n.status === 'SENT' && n.sentAt" class="muted mono sub">Sent {{ formatRunAt(n.sentAt) }}</div>
-                  <div v-if="n.status === 'FAILED' && n.errorDetail" class="danger-note mono" :title="n.errorDetail">{{ n.errorDetail }}</div>
-                </td>
-                <td>
-                  <details v-if="n.issues.length">
-                    <summary class="mono">{{ n.issues.length }} issue{{ n.issues.length === 1 ? '' : 's' }}</summary>
-                    <ul class="err-list">
-                      <li v-for="(e, i) in n.issues" :key="i" class="mono err-item">
-                        {{ [e.location ?? [e.sheet, e.row != null ? `row ${e.row}` : ''].filter(Boolean).join(' '), e.rule].filter(Boolean).join(' · ') }} — {{ e.message }}
-                      </li>
-                    </ul>
-                  </details>
-                  <span v-else class="muted">—</span>
-                </td>
-                <td class="mono muted">{{ n.createdAt ? formatRunAt(n.createdAt) : '—' }}</td>
-                <td style="text-align: right">
-                  <div v-if="n.status === 'PENDING' || n.status === 'FAILED'" class="notif-actions">
-                    <VButton v-if="n.status === 'PENDING'" size="sm" variant="primary" icon="send" @click="sendOne(n)">Notify</VButton>
-                    <VButton v-if="n.status === 'FAILED'" size="sm" variant="ghost" icon="rotate-ccw" @click="sendOne(n)">Retry</VButton>
-                    <VButton v-if="n.status === 'PENDING'" size="sm" variant="ghost" @click="dismissNotif(n)">Dismiss</VButton>
-                  </div>
-                  <span v-else class="muted">—</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <div v-else class="tbl-wrap">
+          <div class="notif-tbl-scroll">
+            <table class="tbl">
+              <thead>
+                <tr>
+                  <th>Recipient</th>
+                  <th>Type</th>
+                  <th>Policy</th>
+                  <th style="text-align: center">Status</th>
+                  <th>Issues</th>
+                  <th>Created</th>
+                  <th style="text-align: right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="n in notifications" :key="n.id">
+                  <td>
+                    <div class="cell-title">{{ recipientLabel(n) }}</div>
+                    <div class="muted mono sub">{{ n.recipientKind }}</div>
+                  </td>
+                  <td>
+                    <div class="cell-title">{{ notifTypeLabel(n.type) }}</div>
+                    <div v-if="n.subject" class="muted sub subject" :title="n.subject">{{ n.subject }}</div>
+                  </td>
+                  <td><span class="policy-tag" :class="n.dispatchPolicy === 'HELD' ? 'held' : 'auto'">{{ n.dispatchPolicy }}</span></td>
+                  <td style="text-align: center">
+                    <VPill :tone="notifTone(n.status)">{{ notifLabel(n.status) }}</VPill>
+                    <div v-if="n.status === 'SENT' && n.sentAt" class="muted mono sub">Sent {{ formatRunAt(n.sentAt) }}</div>
+                    <div v-if="n.status === 'FAILED' && n.errorDetail" class="danger-note mono" :title="n.errorDetail">{{ n.errorDetail }}</div>
+                  </td>
+                  <td>
+                    <details v-if="n.issues.length">
+                      <summary class="mono">{{ n.issues.length }} issue{{ n.issues.length === 1 ? '' : 's' }}</summary>
+                      <ul class="err-list">
+                        <li v-for="(e, i) in n.issues" :key="i" class="mono err-item">
+                          {{ [e.location ?? [e.sheet, e.row != null ? `row ${e.row}` : ''].filter(Boolean).join(' '), e.rule].filter(Boolean).join(' · ') }} — {{ e.message }}
+                        </li>
+                      </ul>
+                    </details>
+                    <span v-else class="muted">—</span>
+                  </td>
+                  <td class="mono muted">{{ n.createdAt ? formatRunAt(n.createdAt) : '—' }}</td>
+                  <td style="text-align: right">
+                    <div v-if="n.status === 'PENDING' || n.status === 'FAILED'" class="notif-actions">
+                      <VButton v-if="n.status === 'PENDING'" size="sm" variant="primary" icon="send" @click="sendOne(n)">Notify</VButton>
+                      <VButton v-if="n.status === 'FAILED'" size="sm" variant="ghost" icon="rotate-ccw" @click="sendOne(n)">Retry</VButton>
+                      <VButton v-if="n.status === 'PENDING'" size="sm" variant="ghost" @click="dismissNotif(n)">Dismiss</VButton>
+                    </div>
+                    <span v-else class="muted">—</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
 
-        <div v-if="store.notificationsPage && notifications.length > 0" class="pager">
-          <VButton size="sm" variant="ghost" :disabled="store.notificationsPage.number === 0" @click="changeNotificationsPage(store.notificationsPage.number - 1)">Prev</VButton>
-          <span class="mono muted">Page {{ store.notificationsPage.number + 1 }} of {{ Math.max(store.notificationsPage.totalPages, 1) }}</span>
-          <VButton size="sm" variant="ghost" :disabled="store.notificationsPage.last" @click="changeNotificationsPage(store.notificationsPage.number + 1)">Next</VButton>
+          <div v-if="store.notificationsPage && notifications.length > 0" class="pager">
+            <span class="pager-count">
+              Showing <span class="pg-strong">{{ notificationsShowing.from }}</span> to <span class="pg-strong">{{ notificationsShowing.to }}</span>
+              of <span class="pg-strong">{{ notificationsShowing.total }}</span> entries
+            </span>
+            <div class="pager-ctrls">
+              <button class="pg-arrow" aria-label="Previous page" :disabled="store.notificationsPage.number === 0" @click="changeNotificationsPage(store.notificationsPage.number - 1)">
+                <VIcon name="chevron-left" :size="16" />
+              </button>
+              <template v-for="(p, i) in notificationsPageItems" :key="i">
+                <span v-if="p === '…'" class="pg-ellipsis">…</span>
+                <button v-else :class="['pg-num', { on: store.notificationsPage.number + 1 === p }]" @click="changeNotificationsPage(Number(p) - 1)">{{ p }}</button>
+              </template>
+              <button class="pg-arrow" aria-label="Next page" :disabled="store.notificationsPage.last" @click="changeNotificationsPage(store.notificationsPage.number + 1)">
+                <VIcon name="chevron-right" :size="16" />
+              </button>
+            </div>
+          </div>
         </div>
       </template>
     </section>
@@ -533,7 +590,6 @@ function recipientLabel(n: Notification): string {
 .fld select:focus-visible { outline: none; border-color: var(--orange); box-shadow: var(--ring-focus); }
 .payload { margin-top: 8px; font-size: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 3px; padding: 8px 10px; max-width: 360px; overflow-x: auto; }
 details summary { cursor: pointer; font-size: 12.5px; color: var(--text-secondary); }
-.pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 14px; }
 
 .stale-banner { display: flex; align-items: center; gap: 6px; background: var(--info-bg, rgba(0, 90, 255, 0.06)); color: var(--text); border-radius: var(--r-sm, 4px); padding: 8px 12px; font-size: 13px; margin-bottom: 12px; }
 .link-btn { display: inline-flex; align-items: center; gap: 4px; border: none; background: none; padding: 0; margin-left: 4px; color: var(--orange, #ff5a00); font-weight: 600; font-size: 13px; cursor: pointer; text-decoration: underline; }
@@ -542,7 +598,7 @@ details summary { cursor: pointer; font-size: 12.5px; color: var(--text-secondar
 .notif-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
 .notif-head-actions { display: flex; align-items: flex-end; gap: 12px; }
 .notif-actions { display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; }
-.notif-tbl-wrap { overflow-x: auto; }
+.notif-tbl-scroll { overflow-x: auto; }
 .cell-title { font-weight: 500; }
 .sub { font-size: 12px; }
 .subject { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

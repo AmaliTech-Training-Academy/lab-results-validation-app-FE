@@ -166,7 +166,8 @@ describe('RunReviewView', () => {
 
     expect(reviewSvc.listConflicts).toHaveBeenCalledWith('c1', 'run-1', { status: undefined, page: 0, size: 20 })
 
-    await wrapper.findAll('button').find((b) => b.text() === 'Next')!.trigger('click')
+    const conflictsNext = wrapper.findAll('[aria-label="Next page"]').find((b) => b.attributes('disabled') === undefined)
+    await conflictsNext!.trigger('click')
     await flushPromises()
     expect(reviewSvc.listConflicts).toHaveBeenCalledWith('c1', 'run-1', { status: undefined, page: 1, size: 20 })
   })
@@ -229,8 +230,8 @@ describe('RunReviewView', () => {
 
     expect(reviewSvc.listNotifications).toHaveBeenCalledWith({ cohortId: 'c1', syncJobId: 'run-1', status: undefined, page: 0, size: 20 })
 
-    const nextButtons = wrapper.findAll('button').filter((b) => b.text() === 'Next')
-    await nextButtons[nextButtons.length - 1]!.trigger('click')
+    const notificationsNext = wrapper.findAll('[aria-label="Next page"]').find((b) => b.attributes('disabled') === undefined)
+    await notificationsNext!.trigger('click')
     await flushPromises()
     expect(reviewSvc.listNotifications).toHaveBeenCalledWith({ cohortId: 'c1', syncJobId: 'run-1', status: undefined, page: 1, size: 20 })
   })
