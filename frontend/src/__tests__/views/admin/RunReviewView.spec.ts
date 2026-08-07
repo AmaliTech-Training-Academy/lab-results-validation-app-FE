@@ -155,6 +155,27 @@ describe('RunReviewView', () => {
     expect(text).toContain('Sarah')
   })
 
+  it('shows a retry state when the review fails to load, and reloads on Try again', async () => {
+    vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
+    vi.mocked(reviewSvc.getRunReview).mockRejectedValueOnce(new Error('Network error'))
+    vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage())
+    vi.mocked(reviewSvc.listNotifications).mockResolvedValue(notificationsPage())
+    const { wrapper } = mountView()
+    await flushPromises()
+    await completeSync()
+
+    expect(wrapper.text()).toContain('Could not load this run')
+    expect(wrapper.text()).toContain('Network error')
+
+    vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
+    const tryAgain = wrapper.findAll('button').find((b) => b.text() === 'Try again')
+    await tryAgain!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Results')
+    expect(wrapper.text()).toContain('Conflict queue')
+  })
+
   it('fetches conflicts for the run and paginates via the Next button', async () => {
     vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
     vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
@@ -200,7 +221,11 @@ describe('RunReviewView', () => {
     await flushPromises()
     await completeSync()
 
-    await wrapper.findAll('button').find((b) => b.text() === 'Keep incoming')!.trigger('click')
+    // Keep incoming lives in the conflict row's ⋮ kebab, whose menu teleports to <body>.
+    await wrapper.find('button[aria-label="Row actions"]').trigger('click')
+    await flushPromises()
+    const keepIncoming = Array.from(document.body.querySelectorAll('button')).find((b) => b.textContent?.includes('Keep incoming'))
+    keepIncoming!.click()
     await flushPromises()
 
     expect(reviewSvc.resolveConflict).toHaveBeenCalledWith('c1', 'cf-1', { action: 'KEEP_INCOMING' })
@@ -216,7 +241,11 @@ describe('RunReviewView', () => {
     await flushPromises()
     await completeSync()
 
-    expect(wrapper.findAll('button').some((b) => b.text() === 'Keep existing')).toBe(false)
+    await wrapper.find('button[aria-label="Row actions"]').trigger('click')
+    await flushPromises()
+    const popoverButtons = Array.from(document.body.querySelectorAll('button')).map((b) => b.textContent?.trim())
+    expect(popoverButtons).not.toContain('Keep existing')
+    expect(popoverButtons.some((t) => t?.includes('Keep incoming'))).toBe(true)
   })
 
   it('fetches notifications for the run and paginates via the Next button', async () => {
@@ -263,7 +292,12 @@ describe('RunReviewView', () => {
     await flushPromises()
     await completeSync()
 
-    await wrapper.findAll('button').find((b) => b.text() === 'Notify')!.trigger('click')
+    // Notify lives in the notification row's ⋮ kebab — the second one on the page, since the conflict
+    // queue's pending row renders one too — whose menu teleports to <body>.
+    await wrapper.findAll('button[aria-label="Row actions"]')[1]!.trigger('click')
+    await flushPromises()
+    const notify = Array.from(document.body.querySelectorAll('button')).find((b) => b.textContent?.includes('Notify'))
+    notify!.click()
     await flushPromises()
 
     expect(reviewSvc.sendNotification).toHaveBeenCalledWith('nt-1')
@@ -271,7 +305,7 @@ describe('RunReviewView', () => {
     expect(wrapper.text()).toContain('Sent 2026-07-21 08:05')
   })
 
-  it('labels the notifications actions column and blanks it once a notification is sent', async () => {
+  it('blanks the notifications row-actions kebab once a notification is sent', async () => {
     vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
     vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
     vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage())
@@ -282,9 +316,9 @@ describe('RunReviewView', () => {
     await flushPromises()
     await completeSync()
 
-    const headers = wrapper.findAll('th').map((h) => h.text())
-    expect(headers).toContain('Actions')
-    expect(wrapper.findAll('button').some((b) => ['Notify', 'Retry', 'Dismiss'].includes(b.text()))).toBe(false)
+    // Only the conflict queue's pending row has a kebab — the sent notification has no actions left,
+    // so its cell falls back to a dash instead of a ⋮ button.
+    expect(wrapper.findAll('button[aria-label="Row actions"]')).toHaveLength(1)
   })
 
   it('send-all queues held notifications (202 + count) and refreshes the page, reporting the count as queued not sent', async () => {
@@ -364,7 +398,12 @@ describe('RunReviewView', () => {
     await flushPromises()
     await completeSync()
 
-    await wrapper.findAll('button').find((b) => b.text() === 'Notify')!.trigger('click')
+    // Notify lives in the notification row's ⋮ kebab — the second one on the page, since the conflict
+    // queue's pending row renders one too — whose menu teleports to <body>.
+    await wrapper.findAll('button[aria-label="Row actions"]')[1]!.trigger('click')
+    await flushPromises()
+    const notify = Array.from(document.body.querySelectorAll('button')).find((b) => b.textContent?.includes('Notify'))
+    notify!.click()
     await flushPromises()
 
     expect(wrapper.text()).toContain('Failed')

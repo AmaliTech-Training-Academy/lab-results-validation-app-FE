@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
@@ -31,12 +31,16 @@ const toast = useToastStore()
 const runId = route.params.id as string
 const cohortId = route.query.cohortId as string
 
+/** Loads the review + its two paged panels together — used once the sync stream completes, and by the "Try again" retry. */
+function retryReview() {
+  return Promise.all([store.fetchReview(cohortId, runId), store.fetchConflicts(cohortId, runId), store.fetchNotifications(cohortId, runId)])
+}
+
 // The run-review REST payload isn't ready while the sync job is still running
 // (§9c) — this stream drives the processing panel, then fetches the full
 // review once the backend's sync.done event lands.
 const stream = useSyncRunStream(cohortId, runId, {
-  onDone: () =>
-    Promise.all([store.fetchReview(cohortId, runId), store.fetchConflicts(cohortId, runId), store.fetchNotifications(cohortId, runId)]),
+  onDone: retryReview,
 })
 
 // Notification sends are async (auto-dispatch, or the tail of a manual send/retry/send-all) — this stream
@@ -73,10 +77,12 @@ onMounted(async () => {
   if (runsStore.current?.status === 'processing') {
     stream.start()
   } else {
-    await Promise.all([store.fetchReview(cohortId, runId), store.fetchConflicts(cohortId, runId), store.fetchNotifications(cohortId, runId)])
+    await retryReview()
   }
   notifStream.start()
+  window.addEventListener('click', closeKebab)
 })
+onUnmounted(() => window.removeEventListener('click', closeKebab))
 
 const review = computed(() => store.review)
 const run = computed(() => store.review?.run ?? null)
@@ -85,6 +91,30 @@ const files = computed(() => store.review?.files ?? [])
 const headerRun = computed(() => review.value?.run ?? runsStore.current)
 const conflictRows = computed(() => store.conflictsPage?.content ?? [])
 const notifications = computed(() => store.notificationsPage?.content ?? [])
+
+// ── Row actions (kebab) — matches the row-actions pattern used across the other
+// admin tables (Runs/Cohorts/Sync schedules/Learners/User management): one
+// shared kebab id/pos, closed on any outside click. Conflict and notification
+// ids never collide, so one shared state covers both tables on this page.
+const activeKebabId = ref<string | null>(null)
+const kebabPos = ref<{ top: number; left: number } | null>(null)
+const activeKebabConflict = computed(() => conflictRows.value.find((c) => c.id === activeKebabId.value) ?? null)
+const activeKebabNotification = computed(() => notifications.value.find((n) => n.id === activeKebabId.value) ?? null)
+
+function toggleKebab(event: MouseEvent, id: string) {
+  event.stopPropagation()
+  if (activeKebabId.value === id) {
+    closeKebab()
+    return
+  }
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  kebabPos.value = { top: rect.bottom + 4, left: rect.right - 200 }
+  activeKebabId.value = id
+}
+function closeKebab() {
+  activeKebabId.value = null
+  kebabPos.value = null
+}
 /** Scoped to the current page — informational only. "Send all held" itself touches every PENDING
  * notification for the whole job, page (and filter) or not, so it must not be gated on this. */
 const pendingCount = computed(() => notifications.value.filter((n) => n.status === 'PENDING').length)
@@ -200,6 +230,7 @@ const RESOLVE_TOAST_TITLE: Record<ConflictResolutionAction, string> = {
 }
 
 async function resolveConflictRow(c: IngestionConflictResponse, action: ConflictResolutionAction) {
+  closeKebab()
   await withToast(() => store.resolveConflict(cohortId, c.id, { action }), {
     success: { tone: 'success', title: RESOLVE_TOAST_TITLE[action] },
     error: { tone: 'warning', title: 'Could not resolve conflict' },
@@ -207,6 +238,7 @@ async function resolveConflictRow(c: IngestionConflictResponse, action: Conflict
 }
 
 async function sendOne(n: Notification) {
+  closeKebab()
   await withToast(() => store.sendNotification(n.id), {
     success: { tone: 'success', title: 'Send queued', body: recipientLabel(n) },
     error: { tone: 'warning', title: 'Could not queue send' },
@@ -214,6 +246,7 @@ async function sendOne(n: Notification) {
 }
 
 async function dismissNotif(n: Notification) {
+  closeKebab()
   await withToast(() => store.dismissNotification(n.id), {
     error: { tone: 'warning', title: 'Could not dismiss' },
   })
@@ -275,7 +308,12 @@ function recipientLabel(n: Notification): string {
 
   <div v-else-if="store.loading" class="muted">Loading run…</div>
 
-  <p v-else-if="store.error" class="inline-error"><VIcon name="alert-circle" :size="14" /> {{ store.error }}</p>
+  <div v-else-if="store.error" class="load-error-state">
+    <div class="load-error-icon"><VIcon name="wifi-off" :size="28" /></div>
+    <p class="load-error-title">Could not load this run</p>
+    <p class="load-error-sub">{{ store.error }}</p>
+    <VButton variant="ghost" icon="rotate-ccw" @click="retryReview">Try again</VButton>
+  </div>
 
   <template v-else-if="review">
     <!-- Panel 1 — Results summary -->
@@ -393,11 +431,10 @@ function recipientLabel(n: Notification): string {
                 <td class="muted">{{ c.resolutionNote ?? '—' }}</td>
                 <td class="mono muted">{{ formatRunAt(c.createdAt) }}</td>
                 <td style="text-align: right">
-                  <div v-if="c.status === 'PENDING'" class="notif-actions">
-                    <VButton v-if="c.existingResultId" size="sm" variant="ghost" @click="resolveConflictRow(c, 'KEEP_EXISTING')">Keep existing</VButton>
-                    <VButton size="sm" variant="ghost" @click="resolveConflictRow(c, 'KEEP_INCOMING')">Keep incoming</VButton>
-                    <VButton size="sm" variant="danger" @click="resolveConflictRow(c, 'REJECT')">Reject</VButton>
-                  </div>
+                  <button v-if="c.status === 'PENDING'" class="kebab" aria-label="Row actions" @click="toggleKebab($event, c.id)">
+                    <VIcon name="more-vertical" :size="18" />
+                  </button>
+                  <span v-else class="muted">—</span>
                 </td>
               </tr>
             </tbody>
@@ -442,7 +479,7 @@ function recipientLabel(n: Notification): string {
               <option value="FAILED">Failed</option>
             </select>
           </label>
-          <VButton variant="primary" icon="send" :disabled="!canSendAll" @click="sendAll">Send all held</VButton>
+          <VButton size="sm" variant="dark" icon="send" :disabled="!canSendAll" @click="sendAll">Send all held</VButton>
         </div>
       </div>
 
@@ -469,7 +506,7 @@ function recipientLabel(n: Notification): string {
                   <th style="text-align: center">Status</th>
                   <th>Issues</th>
                   <th>Created</th>
-                  <th style="text-align: right">Actions</th>
+                  <th aria-hidden="true"></th>
                 </tr>
               </thead>
               <tbody>
@@ -501,11 +538,9 @@ function recipientLabel(n: Notification): string {
                   </td>
                   <td class="mono muted">{{ n.createdAt ? formatRunAt(n.createdAt) : '—' }}</td>
                   <td style="text-align: right">
-                    <div v-if="n.status === 'PENDING' || n.status === 'FAILED'" class="notif-actions">
-                      <VButton v-if="n.status === 'PENDING'" size="sm" variant="primary" icon="send" @click="sendOne(n)">Notify</VButton>
-                      <VButton v-if="n.status === 'FAILED'" size="sm" variant="ghost" icon="rotate-ccw" @click="sendOne(n)">Retry</VButton>
-                      <VButton v-if="n.status === 'PENDING'" size="sm" variant="ghost" @click="dismissNotif(n)">Dismiss</VButton>
-                    </div>
+                    <button v-if="n.status === 'PENDING' || n.status === 'FAILED'" class="kebab" aria-label="Row actions" @click="toggleKebab($event, n.id)">
+                      <VIcon name="more-vertical" :size="18" />
+                    </button>
                     <span v-else class="muted">—</span>
                   </td>
                 </tr>
@@ -535,6 +570,42 @@ function recipientLabel(n: Notification): string {
       </template>
     </section>
   </template>
+
+  <!-- Conflict row actions popover -->
+  <Teleport to="body">
+    <div v-if="activeKebabConflict && kebabPos" class="pop" :style="{ top: `${kebabPos.top}px`, left: `${kebabPos.left}px` }" @click.stop>
+      <button v-if="activeKebabConflict.existingResultId" class="pop-item" @click="resolveConflictRow(activeKebabConflict, 'KEEP_EXISTING')">
+        <VIcon name="check" :size="15" />
+        Keep existing
+      </button>
+      <button class="pop-item" @click="resolveConflictRow(activeKebabConflict, 'KEEP_INCOMING')">
+        <VIcon name="check-circle-2" :size="15" />
+        Keep incoming
+      </button>
+      <button class="pop-item danger" @click="resolveConflictRow(activeKebabConflict, 'REJECT')">
+        <VIcon name="x-circle" :size="15" />
+        Reject
+      </button>
+    </div>
+  </Teleport>
+
+  <!-- Notification row actions popover -->
+  <Teleport to="body">
+    <div v-if="activeKebabNotification && kebabPos" class="pop" :style="{ top: `${kebabPos.top}px`, left: `${kebabPos.left}px` }" @click.stop>
+      <button v-if="activeKebabNotification.status === 'PENDING'" class="pop-item" @click="sendOne(activeKebabNotification)">
+        <VIcon name="send" :size="15" />
+        Notify
+      </button>
+      <button v-if="activeKebabNotification.status === 'FAILED'" class="pop-item" @click="sendOne(activeKebabNotification)">
+        <VIcon name="rotate-ccw" :size="15" />
+        Retry
+      </button>
+      <button v-if="activeKebabNotification.status === 'PENDING'" class="pop-item" @click="dismissNotif(activeKebabNotification)">
+        <VIcon name="x" :size="15" />
+        Dismiss
+      </button>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -597,7 +668,11 @@ details summary { cursor: pointer; font-size: 12.5px; color: var(--text-secondar
 
 .notif-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
 .notif-head-actions { display: flex; align-items: flex-end; gap: 12px; }
-.notif-actions { display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; }
+
+/* Danger action in the row-actions popover (Reject) — matches SyncSchedulesView's kebab-menu treatment */
+.pop-item.danger { color: var(--danger); }
+.pop-item.danger:hover { background: var(--danger-bg); }
+.pop-item.danger svg { color: var(--danger); }
 .notif-tbl-scroll { overflow-x: auto; }
 .cell-title { font-weight: 500; }
 .sub { font-size: 12px; }
