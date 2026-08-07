@@ -38,7 +38,13 @@ describe('AppTopbar', () => {
     const wrapper = mountTopbar()
     expect(wrapper.find('.topbar-name').exists()).toBe(false)
     await wrapper.find('.profile-btn').trigger('click')
-    expect(wrapper.find('.profile-role').text()).toBe('Admin')
+    expect(wrapper.find('.role-badge').text()).toBe('Admin')
+  })
+
+  it('shows the signed-in email in the profile menu when provided', async () => {
+    const wrapper = mountTopbar({ userEmail: 'david.kim@amalitech.com' })
+    await wrapper.find('.profile-btn').trigger('click')
+    expect(wrapper.find('.profile-email').text()).toBe('david.kim@amalitech.com')
   })
 
   it('updates the crumb label when prop changes', async () => {
