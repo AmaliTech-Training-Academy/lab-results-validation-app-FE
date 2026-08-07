@@ -256,7 +256,7 @@ describe('AuditView', () => {
 
     const runsCallCount = vi.mocked(auditSvc.listAuditRuns).mock.calls.length
 
-    await wrapper.findAll('button').find((b) => b.text() === 'Next')!.trigger('click')
+    await wrapper.find('button[aria-label="Next page"]').trigger('click')
     await flushPromises()
 
     expect(auditSvc.listAuditEvents).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1 }))
@@ -311,7 +311,7 @@ describe('AuditView', () => {
     const wrapper = mountView()
     await flushPromises()
 
-    await wrapper.findAll('button').find((b) => b.text() === 'Next')!.trigger('click')
+    await wrapper.find('button[aria-label="Next page"]').trigger('click')
     await flushPromises()
 
     expect(auditSvc.listAuditRuns).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1 }))

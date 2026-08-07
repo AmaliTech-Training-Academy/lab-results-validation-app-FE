@@ -125,13 +125,22 @@ describe('SyncSchedulesView', () => {
     const wrapper = mountView()
     await flushPromises()
 
-    await wrapper.find('button[aria-label="Delete schedule"]').trigger('click')
-    await flushPromises()
+    // Delete lives in the row's ⋮ kebab, whose menu teleports to <body>.
+    async function clickDeleteViaKebab() {
+      await wrapper.find('button[aria-label="Row actions"]').trigger('click')
+      await flushPromises()
+      const del = Array.from(document.body.querySelectorAll('button')).find((b) =>
+        b.textContent?.includes('Delete schedule'),
+      )
+      del!.click()
+      await flushPromises()
+    }
+
+    await clickDeleteViaKebab()
     expect(svc.removeSyncSchedule).not.toHaveBeenCalled()
 
     confirmSpy.mockReturnValue(true)
-    await wrapper.find('button[aria-label="Delete schedule"]').trigger('click')
-    await flushPromises()
+    await clickDeleteViaKebab()
     expect(svc.removeSyncSchedule).toHaveBeenCalledWith('s1')
   })
 })
