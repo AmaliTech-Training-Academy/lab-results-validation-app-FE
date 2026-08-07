@@ -10,6 +10,7 @@ withDefaults(
     userName: string
     userRole: string
     userInitials: string
+    userEmail?: string
     /** Let the content fill the full canvas width instead of the 1100px column. */
     wide?: boolean
   }>(),
@@ -41,6 +42,7 @@ const collapsed = ref(false)
         :user-name="userName"
         :user-role="userRole"
         :user-initials="userInitials"
+        :user-email="userEmail"
         @logout="$emit('logout')"
       />
       <div id="main-content" class="content" tabindex="-1">
