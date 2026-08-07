@@ -17,6 +17,10 @@ vi.mock('@/services/runReview.service', () => ({
   sendNotification: vi.fn<() => Promise<unknown>>(),
   sendAllNotifications: vi.fn<() => Promise<unknown>>(),
   dismissNotification: vi.fn<() => Promise<unknown>>(),
+  notificationStreamUrl: vi.fn<() => string>(() => 'http://mock/notifications-stream'),
+  // The stream carries the same shape `listNotifications` already returns mapped+enriched, so the test
+  // fixtures below can be emitted as-is without a separate raw-DTO shape.
+  mapStreamNotification: vi.fn<(n: unknown) => Promise<unknown>>(async (n) => n),
 }))
 // The review panels only render once the sync-run stream reports sync.done
 // (store.fetchReview is invoked from that callback, not unconditionally on
@@ -364,5 +368,81 @@ describe('RunReviewView', () => {
 
     expect(wrapper.text()).toContain('Failed')
     expect(wrapper.text()).toContain('Provider timed out')
+  })
+
+  // The sync-run stream opens first (instances[0]); the notifications stream is started right after, in the
+  // same onMounted, so it's always instances[1] across these tests (all of which use a "processing" run).
+  function notifStreamEs(): FakeEventSource {
+    return FakeEventSource.instances[1]!
+  }
+
+  it('live-patches a visible notification row when the SSE stream reports it sent', async () => {
+    vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
+    vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
+    vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage())
+    vi.mocked(reviewSvc.listNotifications).mockResolvedValue(notificationsPage())
+    const { wrapper } = mountView()
+    await flushPromises()
+    await completeSync()
+
+    notifStreamEs().emit('notification.updated', notification({ status: 'SENT', sentAt: '2026-07-21T09:00:00Z' }))
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Sent')
+    expect(wrapper.text()).toContain('Sent 2026-07-21 09:00')
+  })
+
+  it('flags new activity for a notification the stream reports off the current page, and refetches on Refresh', async () => {
+    vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
+    vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
+    vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage())
+    vi.mocked(reviewSvc.listNotifications).mockResolvedValue(notificationsPage())
+    const { wrapper } = mountView()
+    await flushPromises()
+    await completeSync()
+
+    notifStreamEs().emit('notification.updated', notification({ id: 'nt-2', status: 'SENT' }))
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('New notification activity')
+    expect(reviewSvc.listNotifications).toHaveBeenCalledTimes(1)
+
+    await wrapper.findAll('button').find((b) => b.text().includes('Refresh'))!.trigger('click')
+    await flushPromises()
+
+    expect(reviewSvc.listNotifications).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).not.toContain('New notification activity')
+  })
+
+  it('ignores a stream event for a different run', async () => {
+    vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
+    vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
+    vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage())
+    vi.mocked(reviewSvc.listNotifications).mockResolvedValue(notificationsPage())
+    const { wrapper } = mountView()
+    await flushPromises()
+    await completeSync()
+
+    notifStreamEs().emit('notification.updated', notification({ id: 'nt-9', syncJobId: 'run-9', ingestionRunId: 'run-9', status: 'SENT' }))
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('New notification activity')
+  })
+
+  it('shows a warning toast when the stream reports a notification failed', async () => {
+    vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
+    vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
+    vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage())
+    vi.mocked(reviewSvc.listNotifications).mockResolvedValue(notificationsPage())
+    const { pinia } = mountView()
+    await flushPromises()
+    await completeSync()
+
+    notifStreamEs().emit('notification.updated', notification({ status: 'FAILED', errorDetail: 'Provider timed out' }))
+    await flushPromises()
+
+    const toast = useToastStore(pinia)
+    expect(toast.toast?.title).toBe('Notification failed')
+    expect(toast.toast?.body).toContain('Provider timed out')
   })
 })
