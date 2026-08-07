@@ -15,6 +15,7 @@ import type { CohortSyncJobStatus, GradingSyncOverviewResponse, RunCounts, RunSt
 import type { LocatedError, Paged } from '@/types/common.types'
 import { USE_MOCKS } from './mock/useMocks'
 import { getInstructor } from './instructors.service'
+import { getUser } from './users.service'
 
 const OVERVIEW_STATUS_MAP: Record<CohortSyncJobStatus, RunStatus> = {
   RUNNING: 'processing',
@@ -168,17 +169,33 @@ function mapNotification(dto: NotificationResponse): Notification {
   }
 }
 
-/** Resolves each instructor recipient's id to a display name/email via GET /instructors/{id} (deduped per unique id). */
+/**
+ * Resolves each recipient's id to a display name/email — instructors via GET /instructors/{id},
+ * admins via GET /users/{id} — so the Recipient column shows an email instead of a raw user id
+ * (deduped per unique id, per kind).
+ */
 async function enrichRecipients(list: Notification[]): Promise<Notification[]> {
-  const ids = [...new Set(list.filter((n) => n.recipientKind === 'instructor' && n.recipientInstructorId).map((n) => n.recipientInstructorId as string))]
-  if (!ids.length) return list
+  const instructorIds = [...new Set(list.filter((n) => n.recipientKind === 'instructor' && n.recipientInstructorId).map((n) => n.recipientInstructorId as string))]
+  const userIds = [...new Set(list.filter((n) => n.recipientKind === 'admin' && n.recipientUserId).map((n) => n.recipientUserId as string))]
+  if (!instructorIds.length && !userIds.length) return list
 
-  const instructors = await Promise.all(ids.map((id) => getInstructor(id).catch(() => null)))
-  const byId = new Map(ids.map((id, i) => [id, instructors[i]]))
+  const [instructors, users] = await Promise.all([
+    Promise.all(instructorIds.map((id) => getInstructor(id).catch(() => null))),
+    Promise.all(userIds.map((id) => getUser(id).catch(() => null))),
+  ])
+  const instructorById = new Map(instructorIds.map((id, i) => [id, instructors[i]]))
+  const userById = new Map(userIds.map((id, i) => [id, users[i]]))
 
   return list.map((n) => {
-    const instructor = n.recipientInstructorId ? byId.get(n.recipientInstructorId) : null
-    return instructor ? { ...n, recipientName: instructor.fullName, recipientEmail: instructor.email } : n
+    if (n.recipientKind === 'instructor' && n.recipientInstructorId) {
+      const instructor = instructorById.get(n.recipientInstructorId)
+      return instructor ? { ...n, recipientName: instructor.fullName, recipientEmail: instructor.email } : n
+    }
+    if (n.recipientKind === 'admin' && n.recipientUserId) {
+      const user = userById.get(n.recipientUserId)
+      return user ? { ...n, recipientEmail: user.email } : n
+    }
+    return n
   })
 }
 
