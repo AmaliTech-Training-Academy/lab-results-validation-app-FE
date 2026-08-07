@@ -123,11 +123,10 @@ async function toggleLock() {
       <div class="tbl-wrap">
         <table class="tbl">
           <thead>
-            <tr><th>Learner ID</th><th>Name</th><th>Email</th><th>Specialization</th><th style="text-align: center">Status</th></tr>
+            <tr><th>Name</th><th>Email</th><th>Specialization</th><th style="text-align: center">Status</th></tr>
           </thead>
           <tbody>
             <tr v-for="l in ref_.learners" :key="l.id">
-              <td class="mono">{{ l.learnerId }}</td>
               <td style="font-weight: 500">{{ l.fullName }}</td>
               <td class="mono muted">{{ l.email }}</td>
               <td>{{ specName[l.specializationId] ?? '—' }}</td>
@@ -146,11 +145,10 @@ async function toggleLock() {
       <div class="tbl-wrap">
         <table class="tbl">
           <thead>
-            <tr><th>Instructor ID</th><th>Name</th><th>Email</th><th style="text-align: center">Status</th></tr>
+            <tr><th>Name</th><th>Email</th><th style="text-align: center">Status</th></tr>
           </thead>
           <tbody>
             <tr v-for="ins in ref_.instructors" :key="ins.id">
-              <td class="mono">{{ ins.instructorId }}</td>
               <td style="font-weight: 500">{{ ins.fullName }}</td>
               <td class="mono muted">{{ ins.email }}</td>
               <td style="text-align: center">
