@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import VIcon from './VIcon.vue'
 
-// Design-system sort affordance: a "wide→narrow" sort glyph, dimmed when the
-// column isn't the active sort and emphasised (navy) when it is. The arrow
-// flips up/down to indicate ascending vs descending.
+// Design-system sort affordance: an up/down (↑↓) arrow shown on every sortable
+// header, dimmed when the column isn't the active sort. When it IS active the
+// glyph collapses to the single direction (↑ asc / ↓ desc) at full strength.
 withDefaults(
   defineProps<{
     active?: boolean
@@ -15,7 +15,7 @@ withDefaults(
 
 <template>
   <VIcon
-    :name="active && dir === 'asc' ? 'arrow-up-narrow-wide' : 'arrow-down-wide-narrow'"
+    :name="active ? (dir === 'asc' ? 'arrow-up' : 'arrow-down') : 'arrow-up-down'"
     :size="14"
     :class="['v-sort', { on: active }]"
   />
@@ -24,7 +24,7 @@ withDefaults(
 <style scoped>
 .v-sort {
   color: var(--navy);
-  opacity: 0.4;
+  opacity: 0.7;
   flex-shrink: 0;
 }
 .v-sort.on {

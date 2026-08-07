@@ -57,6 +57,14 @@ function clearFilter() {
   stateFilter.value = new Set()
 }
 
+// ── Date formatting (e.g. "Apr 23, 2021") ────────────────────────────────────
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+function fmtDate(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`
+}
+
 // ── Column visibility ────────────────────────────────────────────────────────
 const cols = ref({ start: true, end: true, state: true })
 const COL_LABELS: { key: keyof typeof cols.value; label: string }[] = [
@@ -187,8 +195,6 @@ const paged = computed(() => {
   const start = (safePage.value - 1) * pageSize.value
   return sorted.value.slice(start, start + pageSize.value)
 })
-const showingFrom = computed(() => (total.value === 0 ? 0 : (safePage.value - 1) * pageSize.value + 1))
-const showingTo = computed(() => Math.min(safePage.value * pageSize.value, total.value))
 const pageItems = computed<(number | '…')[]>(() => {
   const tp = totalPages.value
   const cur = safePage.value
@@ -355,8 +361,8 @@ async function submit() {
               <VIcon v-if="c.locked" name="lock" :size="13" class="lock-icon" aria-label="Locked" />
             </span>
           </td>
-          <td v-if="cols.start" class="muted">{{ c.startDate }}</td>
-          <td v-if="cols.end" class="muted">{{ c.endDate }}</td>
+          <td v-if="cols.start" class="muted">{{ fmtDate(c.startDate) }}</td>
+          <td v-if="cols.end" class="muted">{{ fmtDate(c.endDate) }}</td>
           <td v-if="cols.state">
             <VPill :tone="chipFor(c).tone" class="state-pill">{{ chipFor(c).label }}</VPill>
           </td>
@@ -384,13 +390,11 @@ async function submit() {
 
     <!-- Pagination -->
     <div v-if="!store.loading && total > 0" class="pager">
-      <span class="pager-count">Showing <span class="pg-strong">{{ showingFrom }}</span> to <span class="pg-strong">{{ showingTo }}</span> of <span class="pg-strong">{{ total }}</span> Entries</span>
+      <span class="pager-count"><span class="pg-strong">{{ total }}</span> Entries</span>
       <div class="pager-right">
         <div class="pgsize">
           <select v-model.number="pageSize" aria-label="Rows per page">
-            <option :value="10">10 per page</option>
-            <option :value="25">25 per page</option>
-            <option :value="50">50 per page</option>
+            <option v-for="n in [10, 15, 20, 25, 30, 35, 40]" :key="n" :value="n">{{ n }} per page</option>
           </select>
         </div>
         <div class="pager-ctrls">
@@ -549,15 +553,6 @@ async function submit() {
 /* ── Table typography (neutral Inter face, matching the design system) ── */
 .cohorts-tbl {
   width: 100%;
-}
-.cohorts-tbl thead th {
-  background: var(--table-head-bg);
-  color: var(--navy);
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: 13px;
-  font-weight: 600;
-  padding: 12px 16px;
 }
 .cohorts-tbl tbody td {
   padding: 14px 16px;

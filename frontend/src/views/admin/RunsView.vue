@@ -70,11 +70,46 @@ const colCount = computed(
 
 function toggleColMenu(event: MouseEvent) {
   event.stopPropagation()
+  showFilterMenu.value = false
   showColMenu.value = !showColMenu.value
   if (showColMenu.value) {
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
     colMenuPos.value = { top: rect.bottom + 6, left: rect.right - 200 }
     activeKebabId.value = null
+  }
+}
+
+// ── Search + filter ──────────────────────────────────────────────────────────
+const search = ref('')
+const statusFilter = ref<Set<RunStatus>>(new Set())
+const showFilterMenu = ref(false)
+const filterMenuPos = ref<{ top: number; left: number } | null>(null)
+const STATUS_FILTER_OPTIONS: { key: RunStatus; label: string }[] = [
+  { key: 'completed', label: 'Completed' },
+  { key: 'partial', label: 'Partial' },
+  { key: 'failed', label: 'Failed' },
+  { key: 'skipped', label: 'Skipped' },
+  { key: 'processing', label: 'Processing' },
+]
+const activeFilterCount = computed(() => (selectedCohortId.value ? 1 : 0) + statusFilter.value.size)
+function toggleStatusFilter(k: RunStatus) {
+  const next = new Set(statusFilter.value)
+  if (next.has(k)) next.delete(k)
+  else next.add(k)
+  statusFilter.value = next
+}
+function clearFilter() {
+  selectedCohortId.value = ''
+  statusFilter.value = new Set()
+}
+function toggleFilterMenu(event: MouseEvent) {
+  event.stopPropagation()
+  showColMenu.value = false
+  activeKebabId.value = null
+  showFilterMenu.value = !showFilterMenu.value
+  if (showFilterMenu.value) {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+    filterMenuPos.value = { top: rect.bottom + 6, left: rect.left }
   }
 }
 
@@ -108,11 +143,18 @@ function sortValue(r: IngestionRun, key: SortKey): string | number {
 }
 
 // ── Derived list: filter → sort → paginate ──────────────────────────────────
-const filtered = computed(() =>
-  selectedCohortId.value
-    ? runs.list.filter((r) => r.cohortId === selectedCohortId.value)
-    : runs.list,
-)
+const filtered = computed(() => {
+  const q = search.value.trim().toLowerCase()
+  return runs.list.filter((r) => {
+    if (selectedCohortId.value && r.cohortId !== selectedCohortId.value) return false
+    if (statusFilter.value.size && !statusFilter.value.has(r.status)) return false
+    if (q) {
+      const hay = `${r.cohortName ?? ''} ${triggerWho(r)} ${r.triggerType ?? ''} ${r.status}`.toLowerCase()
+      if (!hay.includes(q)) return false
+    }
+    return true
+  })
+})
 
 const sorted = computed(() => {
   const dir = sortDir.value === 'asc' ? 1 : -1
@@ -162,7 +204,7 @@ function goToPage(p: number) {
   currentPage.value = p
 }
 
-watch([selectedCohortId, pageSize], () => {
+watch([selectedCohortId, pageSize, search, statusFilter], () => {
   currentPage.value = 1
 })
 
@@ -187,6 +229,7 @@ function closeAllMenus() {
   activeKebabId.value = null
   kebabPos.value = null
   showColMenu.value = false
+  showFilterMenu.value = false
 }
 
 // ── Formatting helpers ───────────────────────────────────────────────────────
@@ -243,49 +286,6 @@ async function copyLink(r: IngestionRun) {
   }
 }
 
-// ── Export CSV ─────────────────────────────────────────────────────────────────
-function csvCell(v: string | number): string {
-  const s = String(v)
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-}
-
-function exportCsv() {
-  closeAllMenus()
-  const rows = sorted.value
-  if (rows.length === 0) {
-    toast.show({ tone: 'info', title: 'Nothing to export', body: 'There are no runs in the current view.' })
-    return
-  }
-  const header = ['Cohort', 'Trigger', 'Triggered by', 'Status', 'Rows read', 'New', 'Updated', 'Invalid', 'Unchanged', 'Conflicts', 'Run at']
-  const body = rows.map((r) =>
-    [
-      r.cohortName ?? '',
-      r.triggerType === 'SCHEDULED' ? 'Scheduled' : 'Manual',
-      triggerWho(r),
-      STATUS_LABEL[r.status],
-      r.counts?.rowsRead ?? 0,
-      r.counts?.committedNew ?? 0,
-      r.counts?.updated ?? 0,
-      r.counts?.skippedInvalid ?? 0,
-      r.counts?.skippedUnchanged ?? 0,
-      r.counts?.conflicts ?? 0,
-      whenOf(r) ?? '',
-    ]
-      .map(csvCell)
-      .join(','),
-  )
-  const csv = [header.map(csvCell).join(','), ...body].join('\r\n')
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `grading-runs${selectedCohortId.value ? '-filtered' : ''}.csv`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
-  toast.show({ tone: 'success', title: 'Export ready', body: `${rows.length} run${rows.length === 1 ? '' : 's'} exported to CSV.` })
-}
 
 // ── Sync ────────────────────────────────────────────────────────────────────
 async function runSync() {
@@ -305,15 +305,6 @@ async function runSync() {
       <h1 class="page-title">Grading runs</h1>
       <p class="page-sub">SharePoint grading ingestion — scheduled weekly and on demand.</p>
     </div>
-    <div class="head-actions">
-      <select v-model="selectedCohortId" class="cohort-select" aria-label="Filter by cohort">
-        <option value="">All cohorts</option>
-        <option v-for="c in eligibleCohorts" :key="c.id" :value="c.id">{{ c.name }}</option>
-      </select>
-      <VButton variant="primary" icon="refresh-cw" :disabled="runs.syncing" @click="runSync">
-        {{ runs.syncing ? 'Syncing…' : selectedCohortId ? 'Sync cohort' : 'Run sync now' }}
-      </VButton>
-    </div>
   </div>
 
   <!-- Load error -->
@@ -327,13 +318,24 @@ async function runSync() {
   <!-- Runs card -->
   <div v-else class="tbl-wrap">
     <!-- Toolbar -->
-    <div class="runs-toolbar">
-      <span class="tb-hint">
-        {{ total }} run{{ total === 1 ? '' : 's' }}<template v-if="selectedCohortId"> · filtered</template>
-      </span>
+    <div class="tbl-toolbar">
+      <div class="tb-left">
+        <div class="search">
+          <VIcon name="search" :size="16" style="color: var(--text-muted)" />
+          <input v-model="search" type="search" placeholder="Search runs" aria-label="Search runs" />
+        </div>
+        <button :class="['filter-btn', { on: activeFilterCount > 0 }]" @click="toggleFilterMenu">
+          <VIcon name="list-filter" :size="16" />
+          Filter
+          <span v-if="activeFilterCount > 0" class="filter-badge">{{ activeFilterCount }}</span>
+          <VIcon name="chevron-down" :size="14" style="color: var(--text-secondary)" />
+        </button>
+      </div>
       <div class="tb-actions">
-        <VButton size="sm" variant="ghost" icon="download" @click="exportCsv">Export</VButton>
         <VButton size="sm" variant="ghost" icon="columns-3" @click="toggleColMenu">Manage columns</VButton>
+        <VButton size="sm" variant="dark" icon="refresh-cw" :disabled="runs.syncing" @click="runSync">
+          {{ runs.syncing ? 'Syncing…' : selectedCohortId ? 'Sync cohort' : 'Run sync now' }}
+        </VButton>
       </div>
     </div>
 
@@ -484,6 +486,28 @@ async function runSync() {
     </div>
   </div>
 
+  <!-- Filter popover -->
+  <Teleport to="body">
+    <div v-if="showFilterMenu && filterMenuPos" class="pop col-pop" :style="{ top: `${filterMenuPos.top}px`, left: `${filterMenuPos.left}px` }" @click.stop>
+      <div class="pop-head">
+        <p class="pop-title">Filter runs</p>
+        <button v-if="activeFilterCount > 0" class="pop-clear" @click="clearFilter">Clear</button>
+      </div>
+      <div class="pop-field">
+        <span class="pop-flabel">Cohort</span>
+        <select v-model="selectedCohortId" class="pop-select">
+          <option value="">All cohorts</option>
+          <option v-for="c in eligibleCohorts" :key="c.id" :value="c.id">{{ c.name }}</option>
+        </select>
+      </div>
+      <p class="pop-flabel" style="margin: 8px 0 2px; padding: 0 8px">Status</p>
+      <label v-for="opt in STATUS_FILTER_OPTIONS" :key="opt.key" class="pop-row">
+        <input type="checkbox" :checked="statusFilter.has(opt.key)" @change="toggleStatusFilter(opt.key)" />
+        {{ opt.label }}
+      </label>
+    </div>
+  </Teleport>
+
   <!-- Manage columns popover -->
   <Teleport to="body">
     <div v-if="showColMenu && colMenuPos" class="pop col-pop" :style="{ top: `${colMenuPos.top}px`, left: `${colMenuPos.left}px` }" @click.stop>
@@ -561,15 +585,6 @@ async function runSync() {
 }
 .runs-tbl {
   width: 100%;
-}
-.runs-tbl thead th {
-  background: var(--table-head-bg);
-  color: var(--navy);
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: 13px;
-  font-weight: 600;
-  padding: 12px 16px;
 }
 .runs-tbl tbody td {
   padding: 12px 16px;
@@ -837,5 +852,35 @@ async function runSync() {
   width: 16px;
   height: 16px;
   accent-color: var(--orange);
+}
+.pop-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 8px;
+  margin-bottom: 4px;
+}
+.pop-flabel {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.pop-select {
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: #fff;
+  padding: 0 10px;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text);
+  cursor: pointer;
+}
+.pop-select:focus-visible {
+  outline: none;
+  border-color: var(--orange);
+  box-shadow: var(--ring-focus);
 }
 </style>
