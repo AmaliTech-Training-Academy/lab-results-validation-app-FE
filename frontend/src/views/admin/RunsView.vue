@@ -130,7 +130,7 @@ function toggleSort(key: SortKey) {
 function sortValue(r: IngestionRun, key: SortKey): string | number {
   switch (key) {
     case 'cohort':
-      return (r.cohortName ?? '').toLowerCase()
+      return cohortLabel(r).toLowerCase()
     case 'trigger':
       return r.triggerType ?? ''
     case 'status':
@@ -149,7 +149,7 @@ const filtered = computed(() => {
     if (selectedCohortId.value && r.cohortId !== selectedCohortId.value) return false
     if (statusFilter.value.size && !statusFilter.value.has(r.status)) return false
     if (q) {
-      const hay = `${r.cohortName ?? ''} ${triggerWho(r)} ${r.triggerType ?? ''} ${r.status}`.toLowerCase()
+      const hay = `${cohortLabel(r)} ${triggerWho(r)} ${r.triggerType ?? ''} ${r.status}`.toLowerCase()
       if (!hay.includes(q)) return false
     }
     return true
@@ -254,6 +254,11 @@ function fmtTime(iso?: string): string {
 }
 
 const SEASONS = ['Winter', 'Winter', 'Spring', 'Spring', 'Spring', 'Summer', 'Summer', 'Summer', 'Autumn', 'Autumn', 'Autumn', 'Winter']
+/** Resolve a run's cohort display name from the cohorts store (the cohort list's `name` attribute). */
+function cohortLabel(r: IngestionRun): string {
+  return r.cohortName ?? cohorts.list.find((c) => c.id === r.cohortId)?.name ?? '—'
+}
+
 /** Derive a readable term (e.g. "Autumn 2025") from the cohort's start date. */
 function cohortTerm(cohortId: string): string {
   const c = cohorts.list.find((x) => x.id === cohortId)
@@ -269,7 +274,7 @@ function triggerWho(r: IngestionRun): string {
 
 // ── Row actions ───────────────────────────────────────────────────────────────
 function openRun(r: IngestionRun) {
-  router.push({ name: 'admin-run-review', params: { id: r.id } })
+  router.push({ name: 'admin-run-review', params: { id: r.id }, query: { cohortId: r.cohortId } })
 }
 
 async function copyLink(r: IngestionRun) {
@@ -394,8 +399,8 @@ async function runSync() {
           <tr v-for="r in paged" :key="r.id" class="row-click" @click="openRun(r)">
             <!-- Cohort -->
             <td v-if="cols.cohort">
-              <span class="cohort-name">{{ r.cohortName ?? '—' }}</span>
-              <span v-if="cohortTerm(r.cohortId)" class="cohort-term">— {{ cohortTerm(r.cohortId) }}</span>
+              <span class="cohort-name">{{ cohortLabel(r) }}</span>
+              <span v-if="cohortTerm(r.cohortId)" class="cohort-term">{{ cohortTerm(r.cohortId) }}</span>
             </td>
 
             <!-- Trigger -->
