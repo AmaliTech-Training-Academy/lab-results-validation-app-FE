@@ -413,7 +413,7 @@ function recipientLabel(n: Notification): string {
                 <th>Incoming payload</th>
                 <th>Resolution</th>
                 <th>Created</th>
-                <th aria-hidden="true"></th>
+                <th style="text-align: right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -506,7 +506,7 @@ function recipientLabel(n: Notification): string {
                   <th style="text-align: center">Status</th>
                   <th>Issues</th>
                   <th>Created</th>
-                  <th aria-hidden="true"></th>
+                  <th style="text-align: right">Actions</th>
                 </tr>
               </thead>
               <tbody>
