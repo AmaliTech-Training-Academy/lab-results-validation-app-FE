@@ -3,13 +3,18 @@ import { ref } from 'vue'
 import AppSidebar from './AppSidebar.vue'
 import AppTopbar from './AppTopbar.vue'
 
-defineProps<{
-  activeId: string
-  crumb: string
-  userName: string
-  userRole: string
-  userInitials: string
-}>()
+withDefaults(
+  defineProps<{
+    activeId: string
+    crumb: string
+    userName: string
+    userRole: string
+    userInitials: string
+    /** Let the content fill the full canvas width instead of the 1100px column. */
+    wide?: boolean
+  }>(),
+  { wide: false },
+)
 
 defineEmits<{
   navigate: [id: string]
@@ -39,7 +44,7 @@ const collapsed = ref(false)
         @logout="$emit('logout')"
       />
       <div id="main-content" class="content" tabindex="-1">
-        <div class="container">
+        <div :class="['container', { 'container-fluid': wide }]">
           <slot />
         </div>
       </div>
@@ -50,5 +55,9 @@ const collapsed = ref(false)
 <style scoped>
 /* Cool light-grey app canvas (matches the dashboard mockup). Cards/topbar
    stay white and float on top. */
-.main { background: #ECEDEF; }
+.main { background: var(--bg-sunken); }
+
+/* Opt-in full-width content (e.g. wide data tables). Drops the 1100px column
+   so the content fills the canvas, keeping only the .content 32px gutters. */
+.container-fluid { max-width: none; }
 </style>

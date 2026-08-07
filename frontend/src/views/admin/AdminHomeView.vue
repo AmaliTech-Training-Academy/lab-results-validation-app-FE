@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import VStatCard from '@/components/base/VStatCard.vue'
-import VPill from '@/components/base/VPill.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import VButton from '@/components/base/VButton.vue'
+import VPill from '@/components/base/VPill.vue'
+import { RUN_STATUS_TONE, type IngestionRun, type RunStatus } from '@/types/run.types'
 import { useCohortsStore } from '@/stores/cohorts'
 import { useRunsStore } from '@/stores/runs'
-import { RUN_STATUS_TONE, type IngestionRun } from '@/types/run.types'
 import '@/assets/styles/dashboard.css'
 
 const router = useRouter()
@@ -21,6 +20,10 @@ onMounted(() => {
   cohorts.fetchList()
   runs.fetchList()
 })
+
+const STATUS_LABEL: Record<RunStatus, string> = {
+  completed: 'Completed', partial: 'Partial', failed: 'Failed', skipped: 'Skipped', processing: 'Processing',
+}
 
 // ── Cohorts by state ────────────────────────────────────────────────────────
 const cohortCounts = computed(() => {
@@ -37,22 +40,103 @@ const cohortCounts = computed(() => {
 // ── Runs ────────────────────────────────────────────────────────────────────
 const recentRuns = computed(() => runs.list.slice(0, 5))
 const attentionRuns = computed(() =>
-  runs.list.filter((r) => r.highFailure || r.status === 'partial' || r.status === 'failed'),
+  runs.list.filter((r) => r.highFailure || r.status === 'partial' || r.status === 'failed' || (r.counts?.conflicts ?? 0) > 0),
 )
 const openConflicts = computed(() => runs.list.reduce((n, r) => n + (r.counts?.conflicts ?? 0), 0))
 
+// ── KPI cards ────────────────────────────────────────────────────────────────
+type Tone = 'blue' | 'green' | 'orange' | 'red'
+interface Kpi {
+  key: string
+  label: string
+  value: number
+  icon: string
+  tone: Tone
+  sub: string
+  dot: boolean
+  to?: string
+}
+const kpis = computed<Kpi[]>(() => {
+  const c = cohortCounts.value
+  return [
+    {
+      key: 'cohorts', label: 'Active Cohorts', value: c.total, icon: 'layers', tone: 'blue',
+      sub: `${c.draft} draft · ${c.refAccepted} in setup`, dot: false, to: 'admin-cohorts',
+    },
+    {
+      key: 'ready', label: 'Ready for Grading', value: c.stoodUp + c.locked, icon: 'flag', tone: 'green',
+      sub: c.locked > 0 ? `${c.locked} locked` : 'All unlocked', dot: false, to: 'admin-cohorts',
+    },
+    {
+      key: 'runs', label: 'Grading Runs', value: runs.list.length, icon: 'refresh-cw', tone: 'orange',
+      sub: `${attentionRuns.value.length} need${attentionRuns.value.length === 1 ? 's' : ''} attention`, dot: attentionRuns.value.length > 0, to: 'admin-runs',
+    },
+    {
+      key: 'conflicts', label: 'Open Conflicts', value: openConflicts.value, icon: 'git-merge', tone: 'red',
+      sub: openConflicts.value > 0 ? 'Awaiting resolution' : 'None open', dot: openConflicts.value > 0, to: 'admin-audit',
+    },
+  ]
+})
+
+// ── Attention required ───────────────────────────────────────────────────────
+interface Attn {
+  id: string
+  priority: 'high' | 'medium' | 'low'
+  title: string
+  sub: string
+  action: string
+  run: IngestionRun
+}
+const attentionItems = computed<Attn[]>(() =>
+  attentionRuns.value.map((r) => {
+    const conflicts = r.counts?.conflicts ?? 0
+    if (r.highFailure) {
+      return { id: r.id, priority: 'high', title: cohortLabel(r), sub: `${rejectPct(r)}% of submissions rejected`, action: 'Review run', run: r }
+    }
+    if (conflicts > 0) {
+      return { id: r.id, priority: 'high', title: cohortLabel(r), sub: `${conflicts} unresolved conflict${conflicts === 1 ? '' : 's'}`, action: 'Resolve conflicts', run: r }
+    }
+    return { id: r.id, priority: 'medium', title: cohortLabel(r), sub: r.status === 'failed' ? 'Run failed' : 'Partial commit', action: 'Review run', run: r }
+  }),
+)
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function rejectPct(r: IngestionRun): number {
   const rowsRead = r.counts?.rowsRead ?? 0
   return rowsRead > 0 ? Math.round(((r.counts?.skippedInvalid ?? 0) / rowsRead) * 100) : 0
 }
-function fmt(iso?: string): string {
-  return iso ? iso.replace('T', ' ').slice(0, 16) : '—'
+function whenOf(r: IngestionRun): string | undefined {
+  return r.runAt ?? r.completedAt ?? r.startedAt
+}
+function fmtDate(iso?: string): string {
+  return iso ? iso.slice(0, 10) : '—'
+}
+function fmtTime(iso?: string): string {
+  return iso ? iso.slice(11, 16) : ''
+}
+function triggerLabel(r: IngestionRun): string {
+  if (!r.triggerType) return '—'
+  return r.triggerType === 'SCHEDULED' ? 'Scheduled' : 'Manual'
+}
+function triggerWho(r: IngestionRun): string {
+  return r.triggerType === 'SCHEDULED' ? 'System' : (r.triggeredByEmail ?? r.triggeredBy ?? 'Admin')
+}
+const SEASONS = ['Winter', 'Winter', 'Spring', 'Spring', 'Spring', 'Summer', 'Summer', 'Summer', 'Autumn', 'Autumn', 'Autumn', 'Winter']
+function cohortTerm(r: IngestionRun): string {
+  const c = cohorts.list.find((x) => x.id === r.cohortId)
+  if (!c?.startDate) return ''
+  const d = new Date(c.startDate)
+  if (Number.isNaN(d.getTime())) return ''
+  return `${SEASONS[d.getMonth()]} ${d.getFullYear()}`
 }
 function cohortLabel(r: IngestionRun): string {
   return r.cohortName ?? cohorts.list.find((c) => c.id === r.cohortId)?.name ?? r.cohortId
 }
 function openRun(r: IngestionRun) {
-  router.push({ name: 'admin-run-review', params: { id: r.id }, query: { cohortId: r.cohortId } })
+  router.push({ name: 'admin-run-review', params: { id: r.syncJobId ?? r.id }, query: { cohortId: r.cohortId } })
+}
+function go(to?: string) {
+  if (to) router.push({ name: to })
 }
 </script>
 
@@ -73,85 +157,100 @@ function openRun(r: IngestionRun) {
     </div>
 
     <template v-else>
-      <!-- Stat cards -->
-      <div class="stats">
-        <VStatCard
-          label="Cohorts" :value="cohortCounts.total"
-          chip-icon="layers" chip-bg="rgba(70,97,119,0.12)" chip-fg="#466177"
-          foot-dot="#466177" :foot-text="`${cohortCounts.draft} draft · ${cohortCounts.refAccepted} in setup`"
-          style="cursor: pointer" @click="router.push({ name: 'admin-cohorts' })"
-        />
-        <VStatCard
-          label="Stood up" :value="cohortCounts.stoodUp + cohortCounts.locked"
-          chip-icon="flag" chip-bg="rgba(46,125,50,0.12)" chip-fg="var(--success)"
-          foot-dot="var(--success)" :foot-text="`${cohortCounts.locked} locked`"
-        />
-        <VStatCard
-          label="Grading runs" :value="runs.list.length"
-          chip-icon="refresh-cw" chip-bg="rgba(255,90,0,0.12)" chip-fg="var(--orange)"
-          foot-dot="var(--orange)" :foot-text="`${attentionRuns.length} need attention`"
-          style="cursor: pointer" @click="router.push({ name: 'admin-runs' })"
-        />
-        <VStatCard
-          label="Open conflicts" :value="openConflicts"
-          chip-icon="git-merge" chip-bg="var(--danger-bg)" chip-fg="var(--danger)"
-          foot-dot="var(--danger)" foot-text="Awaiting resolution"
-        />
+      <!-- KPI cards — one horizontal row -->
+      <div class="kpi-row">
+        <template v-if="loading">
+          <div v-for="i in 4" :key="i" class="skel-stat" style="height: 120px" />
+        </template>
+        <template v-else>
+          <button v-for="k in kpis" :key="k.key" :class="['kpi', `kpi--${k.tone}`, { 'kpi--link': k.to }]" @click="go(k.to)">
+            <div class="kpi-top">
+              <span class="kpi-label">{{ k.label }}</span>
+              <span class="kpi-chip"><VIcon :name="k.icon" :size="18" /></span>
+            </div>
+            <div class="kpi-num">{{ k.value }}</div>
+            <div class="kpi-sub">
+              <span v-if="k.dot" class="kpi-dot" />
+              {{ k.sub }}
+            </div>
+          </button>
+        </template>
       </div>
 
       <div class="dash-grid">
-        <!-- Recent runs -->
-        <div class="card">
+        <!-- Recent grading runs -->
+        <div class="card panel">
           <div class="sec-head">
             <h2 class="sec-title">Recent grading runs</h2>
             <button class="link" @click="router.push({ name: 'admin-runs' })">View all</button>
           </div>
-          <div class="uploads-scroll">
-            <table class="tbl">
+          <div class="recent-scroll">
+            <table class="tbl recent-tbl">
               <thead>
-                <tr><th class="col-cohort">Cohort</th><th class="col-status">Status</th><th class="col-when">When</th></tr>
+                <tr>
+                  <th>Cohort</th>
+                  <th>Trigger</th>
+                  <th>Status</th>
+                  <th>When</th>
+                </tr>
               </thead>
               <tbody v-if="loading">
-                <tr v-for="i in 4" :key="i" class="skel-row">
-                  <td class="col-cohort"><span class="skel" style="width: 60%" /></td>
-                  <td class="col-status"><span class="skel" style="width: 64px; border-radius: 999px; display: inline-block" /></td>
-                  <td class="col-when"><span class="skel mono" style="width: 80px" /></td>
+                <tr v-for="i in 5" :key="i" class="skel-row">
+                  <td><span class="skel" style="width: 70%" /></td>
+                  <td><span class="skel" style="width: 60%" /></td>
+                  <td><span class="skel" style="width: 74px; border-radius: 999px; display: inline-block" /></td>
+                  <td><span class="skel" style="width: 80px" /></td>
                 </tr>
               </tbody>
               <tbody v-else>
-                <tr v-for="r in recentRuns" :key="r.id" style="cursor: pointer" @click="openRun(r)">
-                  <td class="col-cohort">{{ cohortLabel(r) }}</td>
-                  <td class="col-status"><VPill :tone="RUN_STATUS_TONE[r.status]">{{ r.status }}</VPill></td>
-                  <td class="col-when mono" style="color: var(--text-secondary)">{{ fmt(r.runAt ?? r.startedAt) }}</td>
+                <tr v-for="r in recentRuns" :key="r.id" class="row-click" @click="openRun(r)">
+                  <td class="cohort-cell">
+                    <span class="cohort-name">{{ cohortLabel(r) }}</span>
+                    <span v-if="cohortTerm(r)" class="cohort-term">{{ cohortTerm(r) }}</span>
+                  </td>
+                  <td>
+                    <span class="trigger-cell">
+                      <VIcon v-if="r.triggerType" :name="r.triggerType === 'SCHEDULED' ? 'calendar-clock' : 'user'" :size="14" class="trigger-ic" />
+                      <span>{{ triggerLabel(r) }} <span class="muted">· {{ triggerWho(r) }}</span></span>
+                    </span>
+                  </td>
+                  <td><VPill :tone="RUN_STATUS_TONE[r.status]">{{ STATUS_LABEL[r.status] }}</VPill></td>
+                  <td class="when-cell">
+                    <span class="when-date">{{ fmtDate(whenOf(r)) }}</span>
+                    <span v-if="whenOf(r)" class="when-time">{{ fmtTime(whenOf(r)) }}</span>
+                  </td>
                 </tr>
-                <tr v-if="recentRuns.length === 0"><td colspan="3" style="text-align: center; color: var(--text-secondary); padding: 24px">No runs yet.</td></tr>
+                <tr v-if="recentRuns.length === 0">
+                  <td colspan="4">
+                    <div class="tbl-empty"><VIcon name="inbox" :size="20" class="muted" /><span>No grading runs yet.</span></div>
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
         </div>
 
         <!-- Attention required -->
-        <div class="card card-pad">
-          <div class="att-head">
-            <VIcon name="alert-triangle" :size="22" color="#A83900" />
-            <h2 class="sec-title">Attention required</h2>
-          </div>
-          <p class="att-intro">Runs with a high failure rate, partial commits, or unresolved conflicts.</p>
-
-          <p v-if="!loading && attentionRuns.length === 0" class="att-empty">
-            <VIcon name="check-circle-2" :size="15" style="color: var(--success)" /> Nothing needs attention.
-          </p>
-
-          <div v-for="r in attentionRuns" :key="r.id" class="att-item">
-            <div class="att-row">
-              <span class="att-who">{{ cohortLabel(r) }}</span>
-              <VPill :tone="r.highFailure ? 'danger' : 'warning'">
-                {{ r.highFailure ? `${rejectPct(r)}% rejected` : r.status }}
-              </VPill>
+        <div class="card panel">
+          <div class="sec-head">
+            <div class="att-head">
+              <VIcon name="alert-triangle" :size="18" color="#A83900" />
+              <h2 class="sec-title">Attention required</h2>
             </div>
-            <div class="att-foot">
-              <span>{{ r.counts?.committedNew ?? 0 }} new · {{ r.counts?.skippedInvalid ?? 0 }} invalid · {{ r.counts?.conflicts ?? 0 }} conflicts</span>
-              <button class="link" @click="openRun(r)">Review →</button>
+            <button class="link" @click="router.push({ name: 'admin-runs' })">View all</button>
+          </div>
+
+          <div class="attn-list">
+            <p v-if="!loading && attentionItems.length === 0" class="attn-empty">
+              <VIcon name="check-circle-2" :size="16" style="color: var(--success)" /> Nothing needs attention right now.
+            </p>
+            <div v-for="a in attentionItems" :key="a.id" :class="['attn', `attn--${a.priority}`]">
+              <span :class="['attn-badge', `attn-badge--${a.priority}`]">{{ a.priority.toUpperCase() }}</span>
+              <div class="attn-body">
+                <span class="attn-title">{{ a.title }}</span>
+                <span class="attn-sub">{{ a.sub }}</span>
+              </div>
+              <button :class="['attn-action', `attn-action--${a.priority}`]" @click="openRun(a.run)">{{ a.action }}</button>
             </div>
           </div>
         </div>
@@ -161,13 +260,99 @@ function openRun(r: IngestionRun) {
 </template>
 
 <style scoped>
-@media (max-width: 1280px) {
-  .dash-grid { grid-template-columns: 1fr; }
+/* ── KPI row — 4 cards on one horizontal line ── */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  margin-bottom: 24px;
 }
-.uploads-scroll { overflow-x: auto; }
-.uploads-scroll .tbl { table-layout: fixed; }
-.col-cohort { width: 48%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.col-status { width: 24%; }
-.col-when { width: 28%; white-space: nowrap; }
-.att-empty { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 14px; }
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--dash-border, var(--border));
+  border-radius: var(--dash-radius, 16px);
+  box-shadow: var(--dash-shadow, var(--shadow-card));
+  padding: 20px 22px;
+  font-family: inherit;
+  cursor: default;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+.kpi--link { cursor: pointer; }
+.kpi--link:hover { transform: translateY(-3px); box-shadow: var(--dash-shadow-hover, var(--shadow-pop)); }
+.kpi-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.kpi-label { font-size: 13px; font-weight: 500; color: var(--text-secondary); }
+.kpi-chip { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0; }
+.kpi-num { font-family: var(--font-display); font-weight: 700; font-size: 34px; line-height: 1; letter-spacing: -0.5px; color: var(--navy); margin-top: 6px; }
+.kpi-sub { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--text-secondary); margin-top: 8px; }
+.kpi-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+
+.kpi--blue .kpi-chip { background: var(--chip-blue-bg); color: var(--chip-blue-fg); }
+.kpi--green .kpi-chip { background: var(--success-bg); color: var(--success); }
+.kpi--orange .kpi-chip { background: var(--chip-orange-bg); color: var(--chip-orange-fg); }
+.kpi--red .kpi-chip { background: var(--danger-bg); color: var(--danger); }
+.kpi--orange .kpi-dot { color: var(--orange); }
+.kpi--red .kpi-dot { color: var(--danger); }
+
+/* ── Panels ── */
+.panel { display: flex; flex-direction: column; }
+.att-head { display: inline-flex; align-items: center; gap: 9px; }
+
+/* ── Recent grading runs (design-system table, light header) ── */
+.recent-scroll { overflow-x: auto; }
+.recent-tbl { width: 100%; }
+.recent-tbl thead th {
+  background: var(--table-head-bg);
+  color: var(--navy);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  padding: 12px 20px;
+  white-space: nowrap;
+}
+.recent-tbl tbody td { padding: 12px 20px; border-top-color: var(--border-soft); }
+.recent-tbl tbody tr:hover { background: var(--bg); }
+.row-click { cursor: pointer; }
+.muted { color: var(--text-secondary); }
+
+.cohort-cell { min-width: 0; }
+.cohort-name { font-weight: 600; font-size: 14px; }
+.cohort-term { display: block; font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+
+.trigger-cell { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
+.trigger-ic { color: var(--text-secondary); flex-shrink: 0; }
+
+.when-cell { display: flex; flex-direction: column; gap: 2px; }
+.when-date { font-size: 13px; color: var(--text); }
+.when-time { font-size: 13px; color: var(--text-secondary); }
+
+.tbl-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 32px 16px; color: var(--text-secondary); font-size: 14px; text-align: center; }
+
+/* ── Attention required ── */
+.attn-list { padding: 16px 20px 20px; display: flex; flex-direction: column; gap: 12px; }
+.attn-empty { display: flex; align-items: center; gap: 7px; color: var(--text-secondary); font-size: 14px; padding: 8px 0; }
+.attn { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--border); }
+.attn--high { background: var(--danger-bg); border-color: #F3D2D2; }
+.attn--medium { background: var(--warning-bg); border-color: #F1E2BE; }
+.attn--low { background: var(--info-bg); border-color: #BFD9EF; }
+.attn-badge { flex-shrink: 0; font-size: 11px; font-weight: 700; letter-spacing: 0.4px; padding: 4px 9px; border-radius: var(--r-sm); }
+.attn-badge--high { background: var(--danger); color: #fff; }
+.attn-badge--medium { background: var(--warning); color: #fff; }
+.attn-badge--low { background: var(--info); color: #fff; }
+.attn-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.attn-title { font-size: 14px; font-weight: 600; color: var(--text); }
+.attn-sub { font-size: 13px; color: var(--text-secondary); }
+.attn-action { flex-shrink: 0; height: 34px; padding: 0 14px; border-radius: var(--r-md); background: #fff; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.attn-action--high { border: 1px solid var(--danger); color: var(--danger); }
+.attn-action--medium { border: 1px solid var(--warning); color: var(--warning); }
+.attn-action--low { border: 1px solid var(--info); color: var(--info); }
+.attn-action:hover { filter: brightness(0.97); }
+
+@media (max-width: 1180px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 1280px) { .dash-grid { grid-template-columns: 1fr; } }
+@media (max-width: 620px) { .kpi-row { grid-template-columns: 1fr; } }
 </style>

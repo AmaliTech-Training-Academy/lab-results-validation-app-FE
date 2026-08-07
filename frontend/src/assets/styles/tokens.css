@@ -15,6 +15,10 @@
   --bg:                 #F7F6F2;
   --surface:            #FFFFFF;
   --surface-alt:        #FFF8F6;
+  /* Very light, desaturated cool gray with a subtle blue-green undertone — table headers. */
+  --table-head-bg:      #EEF2F4;
+  /* The app canvas / page background (the grey the white cards float on). */
+  --bg-sunken:          #ECEDEF;
   --border:             #E2E0D8;
   --border-soft:        rgba(226, 224, 216, 0.5);
 

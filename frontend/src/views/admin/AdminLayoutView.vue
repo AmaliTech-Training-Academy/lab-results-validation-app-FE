@@ -39,6 +39,10 @@ const CRUMBS: Record<string, string> = {
 
 const activeId = computed(() => ROUTE_TO_NAV[route.name as string] ?? 'a-dashboard')
 const crumb = computed(() => CRUMBS[route.name as string] ?? 'Dashboard')
+
+// Routes whose content should fill the full canvas width (wide data tables).
+const WIDE_ROUTES = new Set(['admin-runs'])
+const wide = computed(() => WIDE_ROUTES.has(route.name as string))
 const displayRole = computed(() => {
   const r = auth.user?.role ?? ''
   return r.charAt(0).toUpperCase() + r.slice(1)
@@ -59,6 +63,7 @@ function onLogout() {
   <AppShell
     :active-id="activeId"
     :crumb="crumb"
+    :wide="wide"
     :user-name="auth.user?.name ?? ''"
     :user-role="displayRole"
     :user-initials="auth.user?.initials ?? ''"
