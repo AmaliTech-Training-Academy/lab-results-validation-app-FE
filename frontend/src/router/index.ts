@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteLocationNormalized, RouteLocationRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { reportUnhandledError } from '@/utils/reportUnhandledError'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -97,5 +98,9 @@ export function navigationGuard(to: RouteLocationNormalized): RouteLocationRaw |
 }
 
 router.beforeEach(navigationGuard)
+
+// Route-level component chunks can 404 after a new deploy invalidates a tab's old build —
+// vue-router routes that failure here rather than through Vue's component errorHandler.
+router.onError((error) => reportUnhandledError(error, 'router'))
 
 export default router

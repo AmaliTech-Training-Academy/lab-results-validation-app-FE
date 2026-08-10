@@ -25,6 +25,14 @@ const iconMap: Record<string, string> = {
       <div class="toast-text">
         <div class="toast-title">{{ toast.toast.title }}</div>
         <div v-if="toast.toast.body" class="toast-body">{{ toast.toast.body }}</div>
+        <button
+          v-if="toast.toast.action"
+          class="toast-action"
+          type="button"
+          @click="toast.toast.action.onClick()"
+        >
+          {{ toast.toast.action.label }}
+        </button>
       </div>
       <button class="toast-x" type="button" aria-label="Dismiss notification" @click="toast.dismiss()">
         <VIcon name="x" :size="16" />
