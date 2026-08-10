@@ -378,7 +378,7 @@ async function runSync() {
                 <VSortIcon :active="sortKey === 'when'" :dir="sortDir" />
               </button>
             </th>
-            <th class="col-kebab" aria-hidden="true"></th>
+            <th class="col-kebab">Actions</th>
           </tr>
         </thead>
 
