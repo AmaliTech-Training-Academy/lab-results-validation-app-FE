@@ -114,7 +114,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
   background: var(--bg);
 }
 .profile-btn:hover .avatar {
-  box-shadow: 0 0 0 3px var(--surface), 0 0 0 4px var(--orange);
+  box-shadow: 0 0 0 3px var(--surface), 0 0 0 4px var(--navy);
 }
 
 /* Give the initials avatar a bit of presence against the white topbar —

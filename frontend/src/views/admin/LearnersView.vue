@@ -424,7 +424,7 @@ function goToPage(page: number) {
       <!-- Column + export actions -->
       <div style="margin-left: auto; display: flex; align-items: center; gap: 10px">
         <VButton size="sm" variant="ghost" icon="columns-3" @click="toggleColMenu">Manage columns</VButton>
-        <VButton size="sm" variant="dark" icon="download" :disabled="exporting" @click="exportCsv">Export</VButton>
+        <VButton size="sm" variant="primary" icon="download" :disabled="exporting" @click="exportCsv">Export</VButton>
       </div>
     </div>
 

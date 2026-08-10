@@ -308,7 +308,7 @@ async function submit() {
       </div>
       <div class="tb-actions">
         <VButton size="sm" variant="ghost" icon="columns-3" @click="toggleColMenu">Manage columns</VButton>
-        <VButton size="sm" variant="dark" icon="plus" @click="openCreate">New cohort</VButton>
+        <VButton size="sm" variant="primary" icon="plus" @click="openCreate">New cohort</VButton>
       </div>
     </div>
 
@@ -634,19 +634,9 @@ async function submit() {
   color: var(--text);
   cursor: pointer;
 }
-.pgsize select:focus-visible {
-  outline: none;
-  border-color: var(--navy);
-  box-shadow: 0 0 0 3px rgba(8, 40, 59, 0.18);
-}
 .pg-arrow:disabled {
   opacity: 0.4;
   cursor: not-allowed;
-}
-/* Navy accents (replaces orange) for this page's controls */
-.tb-left .search:focus-within {
-  border-color: var(--navy);
-  box-shadow: 0 0 0 3px rgba(8, 40, 59, 0.18);
 }
 .pop-actions {
   padding: 4px;

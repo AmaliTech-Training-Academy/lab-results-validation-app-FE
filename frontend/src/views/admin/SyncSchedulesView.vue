@@ -364,7 +364,7 @@ async function submit() {
       </div>
       <div class="tb-actions">
         <VButton size="sm" variant="ghost" icon="columns-3" @click="toggleColMenu">Manage columns</VButton>
-        <VButton size="sm" variant="dark" icon="plus" @click="openCreate">New schedule</VButton>
+        <VButton size="sm" variant="primary" icon="plus" @click="openCreate">New schedule</VButton>
       </div>
     </div>
 
@@ -632,31 +632,6 @@ async function submit() {
   color: var(--danger);
 }
 
-/* Navy accents (design system) — override the orange defaults */
-.filter-btn.on {
-  border-color: var(--navy);
-  color: var(--navy);
-}
-.filter-badge {
-  background: var(--navy);
-}
-.pop-clear {
-  color: var(--navy);
-}
-.pop-clear:hover {
-  color: var(--navy-2);
-}
-.tb-left .search:focus-within {
-  border-color: var(--navy);
-  box-shadow: 0 0 0 3px rgba(8, 40, 59, 0.18);
-}
-.pgsize select:focus-visible {
-  border-color: var(--navy);
-  box-shadow: 0 0 0 3px rgba(8, 40, 59, 0.18);
-}
-.pop-row input[type='checkbox'] {
-  accent-color: var(--navy);
-}
 .pg-arrow:disabled {
   opacity: 0.4;
   cursor: not-allowed;

@@ -3,13 +3,18 @@
    ============================================================ */
 
 :root {
-  /* ---------- Brand & accent ---------- */
+  /* ---------- Brand & accent ----------
+     Navy is the app's single primary/interactive accent (buttons, links,
+     focus rings, active states). Orange is deprecated as a brand accent —
+     the two tokens below are kept only for the handful of pre-existing
+     semantic uses that aren't brand accents (password-strength "medium"
+     step, the Notifications settings chip, KPI category coloring). Do not
+     reach for them in new interactive/brand UI. */
   --orange:             #FF5A00;
   --orange-deep:        #A83900;
-  --orange-hover:       #E85100;
-  --orange-press:       #CC4800;
   --navy:               #08283B;
   --navy-2:             #0F3349;
+  --navy-press:         #051C29;
 
   /* ---------- Neutrals / structure ---------- */
   --bg:                 #F7F6F2;
@@ -63,7 +68,7 @@
   --shadow-card: 0px 1px 2px 0px rgba(0, 0, 0, 0.05);
   --shadow-stat: 0px 2px 4px 0px rgba(0, 0, 0, 0.02);
   --shadow-pop:  0px 8px 24px -6px rgba(8, 40, 59, 0.18);
-  --ring-focus:  0 0 0 3px rgba(255, 90, 0, 0.3);
+  --ring-focus:  0 0 0 3px rgba(8, 40, 59, 0.3);
 
   /* ---------- Spacing / layout ---------- */
   --sidebar-w:      220px;

@@ -443,7 +443,7 @@ async function submitForm() {
       <span class="tb-hint">{{ totalElements }} instructor{{ totalElements === 1 ? '' : 's' }}</span>
       <div class="tb-actions">
         <VButton size="sm" variant="ghost" icon="columns-3" @click="toggleColMenu">Manage columns</VButton>
-        <VButton size="sm" variant="dark" icon="download" :disabled="exporting" @click="exportCsv">Export</VButton>
+        <VButton size="sm" variant="primary" icon="download" :disabled="exporting" @click="exportCsv">Export</VButton>
       </div>
     </div>
 

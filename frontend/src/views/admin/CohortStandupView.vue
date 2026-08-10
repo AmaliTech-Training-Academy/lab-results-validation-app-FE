@@ -377,8 +377,8 @@ function fmtError(e: LocatedError): string {
   border-left: 3px solid transparent;
 }
 .step--running {
-  background: rgba(255, 90, 0, 0.05);
-  border-left-color: var(--orange);
+  background: rgba(8, 40, 59, 0.05);
+  border-left-color: var(--navy);
 }
 .step--passed .step-ic {
   color: var(--success);
@@ -391,7 +391,7 @@ function fmtError(e: LocatedError): string {
   color: var(--danger);
 }
 .step--running .step-ic {
-  color: var(--orange);
+  color: var(--navy);
 }
 .step--pending .step-ic,
 .step--not_run .step-ic {
@@ -420,7 +420,7 @@ function fmtError(e: LocatedError): string {
   color: var(--danger);
 }
 .state--running {
-  color: var(--orange);
+  color: var(--navy);
 }
 
 .polling-note {
@@ -444,8 +444,8 @@ function fmtError(e: LocatedError): string {
   background: var(--danger-bg);
 }
 .panel--accept {
-  border-left: 4px solid var(--orange);
-  background: rgba(255, 90, 0, 0.04);
+  border-left: 4px solid var(--navy);
+  background: rgba(8, 40, 59, 0.04);
 }
 .panel--info {
   border-left: 4px solid var(--success);

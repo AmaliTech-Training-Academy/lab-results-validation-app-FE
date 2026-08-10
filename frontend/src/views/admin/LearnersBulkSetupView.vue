@@ -126,7 +126,7 @@ async function handleDownloadTemplate() {
     <!-- Left: upload -->
     <div class="card card-pad bulk-upload">
       <div class="bulk-cardhead">
-        <VIcon name="file-up" :size="20" style="color: var(--orange-deep)" />
+        <VIcon name="file-up" :size="20" style="color: var(--navy)" />
         <h2 class="sec-title">Upload learners CSV</h2>
       </div>
       <div

@@ -73,7 +73,7 @@ function goToSchedules() {
     </div>
     <div class="head-actions">
       <VPill v-if="dirty" tone="warning">Unsaved changes</VPill>
-      <VButton size="sm" variant="dark" icon="check" :disabled="!dirty || store.saving" @click="save">
+      <VButton size="sm" variant="primary" icon="check" :disabled="!dirty || store.saving" @click="save">
         {{ store.saving ? 'Saving…' : 'Save changes' }}
       </VButton>
     </div>

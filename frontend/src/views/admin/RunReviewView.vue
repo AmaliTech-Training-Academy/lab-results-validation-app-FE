@@ -479,7 +479,7 @@ function recipientLabel(n: Notification): string {
               <option value="FAILED">Failed</option>
             </select>
           </label>
-          <VButton size="sm" variant="dark" icon="send" :disabled="!canSendAll" @click="sendAll">Send all held</VButton>
+          <VButton size="sm" variant="primary" icon="send" :disabled="!canSendAll" @click="sendAll">Send all held</VButton>
         </div>
       </div>
 
@@ -658,13 +658,13 @@ function recipientLabel(n: Notification): string {
 .fld { display: flex; flex-direction: column; gap: 4px; }
 .fld > span { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); }
 .fld select { height: 34px; border: 1px solid var(--border); border-radius: var(--r-sm, 4px); background: #fff; padding: 0 10px; font-family: inherit; font-size: 13px; color: var(--text); }
-.fld select:focus-visible { outline: none; border-color: var(--orange); box-shadow: var(--ring-focus); }
+.fld select:focus-visible { outline: none; border-color: var(--navy); box-shadow: var(--ring-focus); }
 .payload { margin-top: 8px; font-size: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 3px; padding: 8px 10px; max-width: 360px; overflow-x: auto; }
 details summary { cursor: pointer; font-size: 12.5px; color: var(--text-secondary); }
 
 .stale-banner { display: flex; align-items: center; gap: 6px; background: var(--info-bg, rgba(0, 90, 255, 0.06)); color: var(--text); border-radius: var(--r-sm, 4px); padding: 8px 12px; font-size: 13px; margin-bottom: 12px; }
-.link-btn { display: inline-flex; align-items: center; gap: 4px; border: none; background: none; padding: 0; margin-left: 4px; color: var(--orange, #ff5a00); font-weight: 600; font-size: 13px; cursor: pointer; text-decoration: underline; }
-.link-btn:hover { color: var(--orange-dark, #a83900); }
+.link-btn { display: inline-flex; align-items: center; gap: 4px; border: none; background: none; padding: 0; margin-left: 4px; color: var(--navy, #08283b); font-weight: 600; font-size: 13px; cursor: pointer; text-decoration: underline; }
+.link-btn:hover { color: var(--navy-2, #0f3349); }
 
 .notif-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
 .notif-head-actions { display: flex; align-items: flex-end; gap: 12px; }
@@ -679,6 +679,6 @@ details summary { cursor: pointer; font-size: 12.5px; color: var(--text-secondar
 .subject { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .danger-note { font-size: 11px; color: var(--danger); margin-top: 4px; max-width: 220px; }
 .policy-tag { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; padding: 2px 8px; border-radius: 3px; }
-.policy-tag.held { background: rgba(255, 90, 0, 0.12); color: var(--orange-dark, #a83900); }
+.policy-tag.held { background: var(--warning-bg); color: var(--warning); }
 .policy-tag.auto { background: var(--bg); color: var(--text-secondary); border: 1px solid var(--border); }
 </style>
