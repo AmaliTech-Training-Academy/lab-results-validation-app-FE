@@ -774,26 +774,6 @@ async function runSync() {
   cursor: not-allowed;
 }
 
-/* Empty */
-.empty-inline {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 48px 16px;
-  text-align: center;
-}
-.empty-title {
-  font-family: var(--font-display);
-  font-weight: 600;
-  margin: 0;
-}
-.empty-sub {
-  color: var(--text-secondary);
-  font-size: 14px;
-  margin: 0;
-}
-
 /* Popovers (teleported) */
 .pop {
   position: fixed;

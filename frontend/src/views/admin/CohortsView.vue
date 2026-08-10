@@ -642,27 +642,6 @@ async function submit() {
   padding: 4px;
 }
 
-/* Empty */
-.empty-inline {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 48px 16px;
-  text-align: center;
-}
-.empty-title {
-  font-family: var(--font-display);
-  font-weight: 600;
-  color: var(--text);
-  margin: 0;
-}
-.empty-sub {
-  color: var(--text-secondary);
-  font-size: 14px;
-  margin: 0 0 8px;
-}
-
 /* Popovers (teleported) */
 .pop {
   position: fixed;

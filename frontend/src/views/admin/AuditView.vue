@@ -524,9 +524,6 @@ function showTo(number: number, size: number, total: number): number {
 .pager-ctrls { display: flex; align-items: center; gap: 6px; }
 .pg-arrow:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.empty-inline { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 40px 16px; text-align: center; }
-.empty-sub { color: var(--text-secondary); font-size: 14px; }
-
 /* Row-actions popover */
 .pop { position: fixed; z-index: 1000; background: #fff; border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-pop); min-width: 180px; overflow: hidden; padding: 4px; }
 .pop-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border: none; background: none; border-radius: var(--r-sm); font-family: inherit; font-size: 14px; color: var(--text); cursor: pointer; text-align: left; }

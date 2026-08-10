@@ -237,6 +237,13 @@ table.tbl { width: 100%; border-collapse: collapse; font-family: var(--font-body
 .empty-title { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 17px; color: var(--text); }
 .empty-body { margin: 6px 0 0; font-size: 14px; }
 
+/* In-table variant: a full-width <td> in an otherwise-empty table, centered
+   both ways. Was previously copy-pasted (with drift) into Cohorts/Runs/Audit's
+   scoped styles and missing entirely from Sync Schedules, which left that
+   page's empty state unstyled/left-aligned — defined once here instead. */
+.empty-inline { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 48px 16px; text-align: center; }
+.empty-sub { margin: 0; color: var(--text-secondary); font-size: 14px; }
+
 /* ---------- Drawer ---------- */
 .drawer-scrim { position: fixed; inset: 0; background: rgba(8, 40, 59, 0.4); display: flex; justify-content: flex-end; z-index: 100; animation: scrim 0.15s ease; }
 .drawer { width: 460px; max-width: 92vw; background: #fff; height: 100vh; display: flex; flex-direction: column; box-shadow: var(--shadow-pop); }
