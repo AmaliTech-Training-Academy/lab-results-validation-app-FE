@@ -53,7 +53,7 @@ defineEmits<{ 'update:modelValue': [value: boolean] }>()
   transition: background 0.2s;
   flex-shrink: 0;
 }
-.vtoggle-track--on      { background: var(--orange); }
+.vtoggle-track--on      { background: var(--navy); }
 .vtoggle-track--warning { background: var(--warning); }
 .vtoggle-track--success { background: var(--success); }
 .vtoggle-track--danger  { background: var(--danger); }

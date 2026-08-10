@@ -716,7 +716,7 @@ async function submitForceEdit() {
           </tbody>
         </table>
         <div class="rd-note">
-          <VIcon name="info" :size="16" style="color: var(--orange-deep); flex-shrink: 0" />
+          <VIcon name="info" :size="16" style="color: var(--navy); flex-shrink: 0" />
           <span>
             Labs with results attached cannot be edited. Use force-edit to update with audit trail.
           </span>

@@ -260,7 +260,7 @@ function backToList() {
         <span class="tb-hint">{{ total }} upload{{ total === 1 ? '' : 's' }}</span>
         <div class="tb-actions">
           <VButton size="sm" variant="ghost" icon="columns-3" @click="toggleColMenu">Manage columns</VButton>
-          <VButton size="sm" variant="dark" icon="download" @click="exportCsv">Export</VButton>
+          <VButton size="sm" variant="primary" icon="download" @click="exportCsv">Export</VButton>
         </div>
       </div>
 

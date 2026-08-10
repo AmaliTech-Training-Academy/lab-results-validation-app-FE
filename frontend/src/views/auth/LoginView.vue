@@ -249,8 +249,8 @@ async function submit() {
   border-color: var(--navy);
   box-shadow: 0 0 0 3px rgba(8, 40, 59, 0.12);
 }
-/* The wrapper above shows the focus state — drop the inner field's orange
-   focus-visible outline so there's no double (orange) ring. */
+/* The wrapper above shows the focus state — drop the inner field's navy
+   focus-visible outline so there's no double (navy) ring. */
 .input input:focus-visible {
   outline: none;
 }
@@ -267,17 +267,14 @@ async function submit() {
 }
 .forgot-row .link:hover { color: var(--navy); }
 
-/* Dark-navy primary action button (overrides the orange .btn locally) */
+/* Full-width, larger primary action button for the auth card (color comes
+   from the shared .btn-primary default — no local override needed). */
 .auth-card :deep(.btn) {
   width: 100%;
   height: 52px;
   border-radius: 10px;
   font-size: 16px;
-  background: var(--navy);
-  color: #fff;
 }
-.auth-card :deep(.btn:hover) { background: var(--navy-2); }
-.auth-card :deep(.btn:disabled) { background: var(--navy); opacity: 0.5; }
 
 .auth-foot {
   margin-top: 20px;

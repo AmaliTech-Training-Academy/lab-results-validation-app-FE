@@ -485,13 +485,13 @@ function showTo(number: number, size: number, total: number): number {
 .fld > span { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
 .fld select, .fld input { height: 40px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--bg-sunken); padding: 0 12px; font-family: inherit; font-size: 14px; color: var(--text); cursor: pointer; }
 .fld input[type="date"] { font-family: var(--font-mono); }
-.fld select:focus-visible, .fld input:focus-visible { outline: none; border-color: var(--orange); box-shadow: var(--ring-focus); }
+.fld select:focus-visible, .fld input:focus-visible { outline: none; border-color: var(--navy); box-shadow: var(--ring-focus); }
 .af-reset { display: inline-flex; align-items: center; gap: 7px; height: 40px; padding: 0 12px; border: none; background: none; font-family: inherit; font-size: 14px; font-weight: 500; color: var(--text-secondary); cursor: pointer; }
-.af-reset:hover { color: var(--orange-deep); }
+.af-reset:hover { color: var(--navy); }
 
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
 .tab { background: none; border: none; padding: 10px 16px; font-family: inherit; font-size: 14px; font-weight: 500; color: var(--text-secondary); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; display: flex; align-items: center; gap: 8px; }
-.tab.on { color: var(--navy); border-bottom-color: var(--orange); }
+.tab.on { color: var(--navy); border-bottom-color: var(--navy); }
 .count-badge { font-size: 11px; background: var(--bg); border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; color: var(--text-secondary); }
 
 .col-actions { width: 80px; text-align: right; }
@@ -523,9 +523,6 @@ function showTo(number: number, size: number, total: number): number {
 /* Pager */
 .pager-ctrls { display: flex; align-items: center; gap: 6px; }
 .pg-arrow:disabled { opacity: 0.4; cursor: not-allowed; }
-
-.empty-inline { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 40px 16px; text-align: center; }
-.empty-sub { color: var(--text-secondary); font-size: 14px; }
 
 /* Row-actions popover */
 .pop { position: fixed; z-index: 1000; background: #fff; border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-pop); min-width: 180px; overflow: hidden; padding: 4px; }

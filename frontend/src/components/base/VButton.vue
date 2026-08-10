@@ -3,7 +3,7 @@ import VIcon from './VIcon.vue'
 
 withDefaults(
   defineProps<{
-    variant?: 'primary' | 'ghost' | 'danger' | 'dark'
+    variant?: 'primary' | 'ghost' | 'danger'
     size?: 'md' | 'sm'
     icon?: string
     iconRight?: string

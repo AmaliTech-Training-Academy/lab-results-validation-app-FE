@@ -338,7 +338,7 @@ async function runSync() {
       </div>
       <div class="tb-actions">
         <VButton size="sm" variant="ghost" icon="columns-3" @click="toggleColMenu">Manage columns</VButton>
-        <VButton size="sm" variant="dark" icon="refresh-cw" :disabled="runs.syncing" @click="runSync">
+        <VButton size="sm" variant="primary" icon="refresh-cw" :disabled="runs.syncing" @click="runSync">
           {{ runs.syncing ? 'Syncing…' : selectedCohortId ? 'Sync cohort' : 'Run sync now' }}
         </VButton>
       </div>
@@ -558,7 +558,7 @@ async function runSync() {
 }
 .cohort-select:focus-visible {
   outline: none;
-  border-color: var(--orange);
+  border-color: var(--navy);
   box-shadow: var(--ring-focus);
 }
 
@@ -621,7 +621,7 @@ async function runSync() {
   opacity: 0.5;
 }
 .th-caret.on {
-  color: var(--orange);
+  color: var(--navy);
   opacity: 1;
 }
 
@@ -766,32 +766,12 @@ async function runSync() {
 }
 .pgsize select:focus-visible {
   outline: none;
-  border-color: var(--orange);
+  border-color: var(--navy);
   box-shadow: var(--ring-focus);
 }
 .pg-arrow:disabled {
   opacity: 0.4;
   cursor: not-allowed;
-}
-
-/* Empty */
-.empty-inline {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 48px 16px;
-  text-align: center;
-}
-.empty-title {
-  font-family: var(--font-display);
-  font-weight: 600;
-  margin: 0;
-}
-.empty-sub {
-  color: var(--text-secondary);
-  font-size: 14px;
-  margin: 0;
 }
 
 /* Popovers (teleported) */
@@ -856,7 +836,7 @@ async function runSync() {
 .pop-row input[type='checkbox'] {
   width: 16px;
   height: 16px;
-  accent-color: var(--orange);
+  accent-color: var(--navy);
 }
 .pop-field {
   display: flex;
@@ -885,7 +865,7 @@ async function runSync() {
 }
 .pop-select:focus-visible {
   outline: none;
-  border-color: var(--orange);
+  border-color: var(--navy);
   box-shadow: var(--ring-focus);
 }
 </style>

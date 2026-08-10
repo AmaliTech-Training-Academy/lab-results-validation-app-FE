@@ -52,7 +52,7 @@ defineEmits<{
 }
 
 .vdp:focus-within {
-  border-color: var(--orange);
+  border-color: var(--navy);
   box-shadow: var(--ring-focus);
 }
 
