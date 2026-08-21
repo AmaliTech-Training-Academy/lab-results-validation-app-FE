@@ -38,19 +38,62 @@ jobs:
           docker push "$IMAGE:${{ github.sha }}"
           docker push "$IMAGE:dev"
 
-      - name: Deploy over SSH
+      - name: Deploy via SSM
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          INSTANCE_ID: ${{ secrets.DEPLOY_INSTANCE_ID }}
         run: |
           set -euo pipefail
-          mkdir -p ~/.ssh
-          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/key
-          chmod 600 ~/.ssh/key
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i $HOME/.ssh/key"
 
           ECR_TOKEN=$(aws ecr get-login-password --region "$AWS_REGION")
           echo "::add-mask::$ECR_TOKEN"
-          ssh $SSH_OPTS ubuntu@"$SSH_HOST" \
-            "echo '$ECR_TOKEN' | docker login --username AWS --password-stdin '$REGISTRY' && cd /opt/app && docker compose pull frontend && docker compose up -d frontend && docker image prune -f"
+
+          SCRIPT=$(cat <<EOF
+          set -eu
+          echo '$ECR_TOKEN' | docker login --username AWS --password-stdin '$REGISTRY'
+          cd /opt/app
+          docker compose pull frontend
+          docker compose up -d frontend
+          docker image prune -f
+          EOF
+          )
+
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --parameters "{\"commands\":[$(jq -Rs . <<< "$SCRIPT")]}" \
+            --query "Command.CommandId" \
+            --output text)
+
+          echo "SSM command: $COMMAND_ID"
+
+          STATUS="Pending"
+          for i in $(seq 1 30); do
+            sleep 5
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$INSTANCE_ID" \
+              --query "Status" \
+              --output text 2>/dev/null || echo "Pending")
+
+            case "$STATUS" in
+              Success) break ;;
+              Failed|Cancelled|TimedOut)
+                echo "SSM command ended with status: $STATUS"
+                aws ssm get-command-invocation \
+                  --command-id "$COMMAND_ID" \
+                  --instance-id "$INSTANCE_ID" \
+                  --query "StandardErrorContent" \
+                  --output text
+                exit 1
+                ;;
+              *) ;;
+            esac
+          done
+
+          if [ "$STATUS" != "Success" ]; then
+            echo "SSM command did not complete in time (last status: $STATUS)"
+            exit 1
+          fi
+
+          echo "Deploy succeeded"
