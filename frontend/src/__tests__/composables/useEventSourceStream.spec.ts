@@ -13,8 +13,8 @@ function withScope() {
 describe('useEventSourceStream — withGiveUp', () => {
   it('calls onError for each failure below the threshold, never onGiveUp', () => {
     const { stream } = withScope()
-    const onError = vi.fn()
-    const onGiveUp = vi.fn()
+    const onError = vi.fn<() => void>()
+    const onGiveUp = vi.fn<() => void>()
     const handler = stream.withGiveUp(onError, onGiveUp)
 
     handler()
@@ -28,8 +28,8 @@ describe('useEventSourceStream — withGiveUp', () => {
 
   it('gives up after 5 consecutive failures and stops calling onError', () => {
     const { stream } = withScope()
-    const onError = vi.fn()
-    const onGiveUp = vi.fn()
+    const onError = vi.fn<() => void>()
+    const onGiveUp = vi.fn<() => void>()
     const handler = stream.withGiveUp(onError, onGiveUp)
 
     for (let i = 0; i < 5; i++) handler()
@@ -43,8 +43,8 @@ describe('useEventSourceStream — withGiveUp', () => {
 
   it('resets the failure streak once the connection opens successfully', () => {
     const { stream } = withScope()
-    const onError = vi.fn()
-    const onGiveUp = vi.fn()
+    const onError = vi.fn<() => void>()
+    const onGiveUp = vi.fn<() => void>()
     const handler = stream.withGiveUp(onError, onGiveUp)
 
     handler()
@@ -73,8 +73,8 @@ describe('useEventSourceStream — withGiveUp', () => {
 
   it('ignores further failures once the owning scope is disposed', () => {
     const { stream, dispose } = withScope()
-    const onError = vi.fn()
-    const onGiveUp = vi.fn()
+    const onError = vi.fn<() => void>()
+    const onGiveUp = vi.fn<() => void>()
     const handler = stream.withGiveUp(onError, onGiveUp)
 
     dispose()

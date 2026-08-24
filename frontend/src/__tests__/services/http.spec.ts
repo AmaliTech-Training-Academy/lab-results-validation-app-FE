@@ -56,7 +56,7 @@ describe('http GET cache + in-flight de-dupe', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ message: 'nope' }, false, 500))
     fetchMock.mockResolvedValueOnce(jsonResponse({ id: '1' }))
 
-    await expect(http.get('/cohorts/1', { ttl: 10_000 })).rejects.toThrow()
+    await expect(http.get('/cohorts/1', { ttl: 10_000 })).rejects.toThrow('nope')
     const result = await http.get('/cohorts/1', { ttl: 10_000 })
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
