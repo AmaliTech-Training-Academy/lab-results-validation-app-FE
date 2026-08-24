@@ -111,9 +111,13 @@ function openRunReview(r: IngestionRun) {
 const runs = computed(() => audit.runsPage?.content ?? [])
 const events = computed(() => audit.eventsPage?.content ?? [])
 
+// Built once instead of scanning cohorts.list per row inside cohortLabel — this page sorts on
+// every column click, and each sort re-runs cohortLabel for the whole (already-paginated) page.
+const cohortById = computed(() => new Map(cohorts.list.map((c) => [c.id, c])))
+
 /** Neither the real grading-runs nor audit-events endpoint denormalizes the cohort name — look it up. */
 function cohortLabel(r: { cohortId: string | null; cohortName?: string }): string {
-  return r.cohortName ?? cohorts.list.find((c) => c.id === r.cohortId)?.name ?? r.cohortId ?? '—'
+  return r.cohortName ?? cohortById.value.get(r.cohortId ?? '')?.name ?? r.cohortId ?? '—'
 }
 
 // ── Client-side sort (over the current server page) ─────────────────────────

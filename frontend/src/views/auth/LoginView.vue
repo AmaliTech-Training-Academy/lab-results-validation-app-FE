@@ -8,9 +8,9 @@ import { useAllowedEmailDomain } from '@/composables/useAllowedEmailDomain'
 import { usePasswordVisibility } from '@/composables/usePasswordVisibility'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
-import logoUrl from '@/assets/validata-logo.png'
+import logoUrl from '@/assets/validata-logo.webp'
 import amaliLogoUrl from '@/assets/amalitech-logo.svg'
-import bgUrl from '@/assets/signup-picture.png'
+import bgUrl from '@/assets/signup-picture.webp'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -79,7 +79,7 @@ async function submit() {
       <div class="brand-stack">
         <img :src="amaliLogoUrl" alt="AmaliTech" class="brand-amali" />
         <span class="brand-divider" aria-hidden="true" />
-        <img :src="logoUrl" alt="Validata" class="brand-logo" />
+        <img :src="logoUrl" alt="Validata" class="brand-logo" width="1172" height="220" />
       </div>
 
       <h1 class="auth-title">Sign In</h1>

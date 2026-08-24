@@ -28,6 +28,8 @@ export interface SyncRunStream {
   overall: Ref<SyncRunOverall>
   isPolling: Ref<boolean>
   error: Ref<string | null>
+  /** True once reconnect attempts are exhausted — the stream has given up and needs a manual `start()`. */
+  disconnected: Ref<boolean>
   start: () => void
   stop: () => void
   reset: () => void
@@ -56,6 +58,7 @@ export function useSyncRunStream(cohortId: string, runId: string, options: UseSy
   const overall = ref<SyncRunOverall>('idle')
   const isPolling = ref(false)
   const error = ref<string | null>(null)
+  const disconnected = ref(false)
 
   const eventSource = useEventSourceStream()
 
@@ -72,6 +75,7 @@ export function useSyncRunStream(cohortId: string, runId: string, options: UseSy
     folderErrors.value = []
     summary.value = null
     error.value = null
+    disconnected.value = false
   }
 
   function findFileIndex(data: { file?: string; itemId?: string }): number {
@@ -140,10 +144,15 @@ export function useSyncRunStream(cohortId: string, runId: string, options: UseSy
     eventSource.bindEvent<SyncFileArchiveFailedData>('file.archive_failed', handleArchiveFailed, onMalformed)
     eventSource.bindEvent<SyncFolderFailedData>('folder.failed', handleFolderFailed, onMalformed)
     eventSource.bindEvent<SyncDoneData>('sync.done', handleDone, onMalformed)
-    source.onerror = () => {
+    source.onerror = eventSource.withGiveUp(
       // EventSource reconnects on its own (Last-Event-ID replay) — just surface a soft warning.
-      if (!eventSource.isDisposed()) error.value = 'Connection to the sync stream was interrupted — reconnecting…'
-    }
+      () => { error.value = 'Connection to the sync stream was interrupted — reconnecting…' },
+      () => {
+        isPolling.value = false
+        disconnected.value = true
+        error.value = 'Lost connection to the sync stream.'
+      },
+    )
   }
 
   function finishMock(mockRuns: (typeof import('@/services/mock/fixtures'))['runs']) {
@@ -202,6 +211,7 @@ export function useSyncRunStream(cohortId: string, runId: string, options: UseSy
     if (isPolling.value || eventSource.isDisposed()) return
     isPolling.value = true
     error.value = null
+    disconnected.value = false
     overall.value = 'running'
     files.value = []
     folderErrors.value = []
@@ -213,5 +223,5 @@ export function useSyncRunStream(cohortId: string, runId: string, options: UseSy
     }
   }
 
-  return { files, folderErrors, summary, overall, isPolling, error, start, stop, reset }
+  return { files, folderErrors, summary, overall, isPolling, error, disconnected, start, stop, reset }
 }

@@ -1,6 +1,6 @@
 // Run-Review: conflict queue + staged-notification moderation
 // (PRD Epic B B10, Epic C C7, FE strategy §8).
-import { http, BASE_URL, getToken } from './http'
+import { http, BASE_URL, getToken, invalidateCache } from './http'
 import type {
   ConflictListFilters,
   IngestionConflict,
@@ -16,6 +16,9 @@ import type { LocatedError, Paged } from '@/types/common.types'
 import { USE_MOCKS } from './mock/useMocks'
 import { getInstructor } from './instructors.service'
 import { getUser } from './users.service'
+
+const CONFLICTS_TTL_MS = 10_000 // short — resolving a conflict should be reflected quickly, but this collapses the dashboard's per-cohort conflict-total fan-out from re-firing on rapid re-renders
+const NOTIFICATIONS_TTL_MS = 10_000
 
 const OVERVIEW_STATUS_MAP: Record<CohortSyncJobStatus, RunStatus> = {
   RUNNING: 'processing',
@@ -74,7 +77,10 @@ export async function getRunReview(cohortId: string, runId: string): Promise<Run
       notifications: notifications.filter((n) => n.ingestionRunId === runId),
     })
   }
-  const dto = await http.get<GradingSyncOverviewResponse>(`/cohorts/${cohortId}/sync/runs/${runId}/overview`)
+  const dto = await http.get<GradingSyncOverviewResponse>(
+    `/cohorts/${cohortId}/sync/runs/${runId}/overview`,
+    { ttl: CONFLICTS_TTL_MS },
+  )
   return mapOverview(dto)
 }
 
@@ -104,6 +110,36 @@ export async function listConflicts(
   }
   return http.get<Paged<IngestionConflictResponse>>(
     `/cohorts/${cohortId}/sync/runs/${runId}/conflicts${buildConflictsQuery(filters)}`,
+    { ttl: CONFLICTS_TTL_MS },
+  )
+}
+
+/** Cohort-wide conflicts (across every ingestion run), used to total up "Open Conflicts" on the admin dashboard. */
+export async function listCohortConflicts(
+  cohortId: string,
+  filters: ConflictListFilters = {},
+): Promise<Paged<IngestionConflictResponse>> {
+  if (USE_MOCKS) {
+    const { mockDelay, ingestionConflictResponses } = await import('./mock/fixtures')
+    const list = ingestionConflictResponses
+      .filter((c) => c.cohortId === cohortId && (!filters.status || c.status === filters.status))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    const size = filters.size ?? 20
+    const page = filters.page ?? 0
+    const start = page * size
+    const content = list.slice(start, start + size)
+    return mockDelay({
+      content,
+      number: page,
+      size,
+      totalElements: list.length,
+      totalPages: Math.max(1, Math.ceil(list.length / size)),
+      last: start + size >= list.length,
+    })
+  }
+  return http.get<Paged<IngestionConflictResponse>>(
+    `/cohorts/${cohortId}/conflicts${buildConflictsQuery(filters)}`,
+    { ttl: CONFLICTS_TTL_MS },
   )
 }
 
@@ -132,7 +168,12 @@ export async function resolveConflict(
     c.resolvedAt = new Date().toISOString()
     return mockDelay(c)
   }
-  return http.patch<IngestionConflictResponse>(`/cohorts/${cohortId}/conflicts/${conflictId}/resolve`, payload)
+  const resolved = await http.patch<IngestionConflictResponse>(
+    `/cohorts/${cohortId}/conflicts/${conflictId}/resolve`,
+    payload,
+  )
+  invalidateCache(`/cohorts/${cohortId}`) // both the run-scoped and cohort-wide conflict lists/totals for this cohort
+  return resolved
 }
 
 export async function dismissConflict(id: string): Promise<IngestionConflict> {
@@ -143,7 +184,9 @@ export async function dismissConflict(id: string): Promise<IngestionConflict> {
     c.status = 'DISMISSED'
     return mockDelay(c)
   }
-  return http.post<IngestionConflict>(`/conflicts/${id}/dismiss`)
+  const dismissed = await http.post<IngestionConflict>(`/conflicts/${id}/dismiss`)
+  invalidateCache('/cohorts') // no cohortId in scope here — bust all cached conflict lists/totals rather than serve stale counts
+  return dismissed
 }
 
 /** The real endpoint reports recipients as ids only — `enrichRecipients` fills in `recipientName`/`recipientEmail` via GET /instructors/{id}. */
@@ -257,7 +300,10 @@ export async function listNotifications(filters: NotificationListFilters = {}): 
       last: start + size >= list.length,
     })
   }
-  const page = await http.get<Paged<NotificationResponse>>(`/notifications${buildNotificationsQuery(filters)}`)
+  const page = await http.get<Paged<NotificationResponse>>(
+    `/notifications${buildNotificationsQuery(filters)}`,
+    { ttl: NOTIFICATIONS_TTL_MS },
+  )
   return { ...page, content: await enrichRecipients(page.content.map(mapNotification)) }
 }
 
@@ -272,7 +318,9 @@ export async function sendNotification(id: string): Promise<Notification> {
     }
     return mockDelay(n)
   }
-  return enrichRecipient(mapNotification(await http.post<NotificationResponse>(`/notifications/${id}/send`)))
+  const sent = await http.post<NotificationResponse>(`/notifications/${id}/send`)
+  invalidateCache('/notifications')
+  return enrichRecipient(mapNotification(sent))
 }
 
 /**
@@ -291,7 +339,9 @@ export async function sendAllNotifications(runId: string): Promise<number> {
     })
     return mockDelay(affected.length)
   }
-  return http.post<number>(`/notifications/send-all?syncJobId=${encodeURIComponent(runId)}`)
+  const count = await http.post<number>(`/notifications/send-all?syncJobId=${encodeURIComponent(runId)}`)
+  invalidateCache('/notifications')
+  return count
 }
 
 export async function dismissNotification(id: string): Promise<Notification> {
@@ -302,5 +352,7 @@ export async function dismissNotification(id: string): Promise<Notification> {
     if (n.status === 'PENDING') n.status = 'SKIPPED'
     return mockDelay(n)
   }
-  return enrichRecipient(mapNotification(await http.post<NotificationResponse>(`/notifications/${id}/dismiss`)))
+  const dismissed = await http.post<NotificationResponse>(`/notifications/${id}/dismiss`)
+  invalidateCache('/notifications')
+  return enrichRecipient(mapNotification(dismissed))
 }

@@ -5,7 +5,7 @@ import { toErrorMessage } from '@/utils/errors'
 import { useAllowedEmailDomain } from '@/composables/useAllowedEmailDomain'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
-import logoUrl from '@/assets/validata-logo.png'
+import logoUrl from '@/assets/validata-logo.webp'
 import mailboxUrl from '@/assets/mailbox.jpeg'
 
 const email = ref('')
@@ -38,7 +38,7 @@ async function submit() {
   <div class="auth-page">
     <div class="auth-card">
       <!-- Logo, top middle -->
-      <img :src="logoUrl" alt="Validata" class="brand-logo" />
+      <img :src="logoUrl" alt="Validata" class="brand-logo" width="1172" height="220" />
 
       <!-- Success state -->
       <template v-if="submitted">

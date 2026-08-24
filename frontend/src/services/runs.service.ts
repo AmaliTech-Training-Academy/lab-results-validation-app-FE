@@ -1,9 +1,11 @@
 // Weekly grading ingestion runs (PRD Epic B, FE strategy §8).
-import { http, BASE_URL, getToken } from './http'
+import { http, BASE_URL, getToken, invalidateCache } from './http'
 import type { IngestionRun, RunStatus, SyncRun, SyncRunResponse, SyncRunStatus, SyncTriggerPayload, SyncTriggerResponse } from '@/types/run.types'
 import type { Paged } from '@/types/common.types'
 import { USE_MOCKS } from './mock/useMocks'
 import { getUser } from './users.service'
+
+const RUNS_LIST_TTL_MS = 15_000 // short — runs are actively progressing, but this collapses the dashboard/RunsView mount-time duplicate fetch of the same cohort's runs
 
 const SYNC_STATUS_MAP: Record<SyncRunStatus, RunStatus> = {
   PENDING: 'processing',
@@ -42,7 +44,7 @@ export async function listRuns(cohortId: string): Promise<IngestionRun[]> {
     const list = runs.filter((r) => r.cohortId === cohortId)
     return mockDelay([...list].sort((a, b) => (b.runAt ?? '').localeCompare(a.runAt ?? '')))
   }
-  const page = await http.get<Paged<SyncRun>>(`/cohorts/${cohortId}/sync/runs`)
+  const page = await http.get<Paged<SyncRun>>(`/cohorts/${cohortId}/sync/runs`, { ttl: RUNS_LIST_TTL_MS })
   return Promise.all(page.content.map(mapSyncRun))
 }
 
@@ -86,7 +88,9 @@ export async function triggerSync(cohortId: string, payload: SyncTriggerPayload 
     mockSyncRun(cohortId, mocks)
     return mocks.mockDelay({ triggered: 1, skipped: 0, triggeredCohortIds: [cohortId] })
   }
-  return http.post<SyncTriggerResponse>(`/cohorts/${cohortId}/sync`, payload)
+  const result = await http.post<SyncTriggerResponse>(`/cohorts/${cohortId}/sync`, payload)
+  invalidateCache(`/cohorts/${cohortId}/sync/runs`)
+  return result
 }
 
 /** Manual sync fanned out across every eligible cohort (B1 AC2) — no request body, no created runs in the response either. */
@@ -97,7 +101,9 @@ export async function triggerSyncAll(): Promise<SyncTriggerResponse> {
     eligible.forEach((c) => mockSyncRun(c.id, mocks))
     return mocks.mockDelay({ triggered: eligible.length, skipped: 0, triggeredCohortIds: eligible.map((c) => c.id) })
   }
-  return http.post<SyncTriggerResponse>('/cohorts/sync')
+  const result = await http.post<SyncTriggerResponse>('/cohorts/sync')
+  invalidateCache('/cohorts') // triggered across every eligible cohort — bust every cached runs list, not just one
+  return result
 }
 
 /**

@@ -1,16 +1,22 @@
 // Cohort lifecycle + stand-up (PRD Epic A, FE strategy §8). Base path /api/v1.
-import { http, BASE_URL, getToken } from './http'
+import { http, BASE_URL, getToken, invalidateCache } from './http'
 import type { Cohort, CohortReference, CreateCohortPayload } from '@/types/domain.types'
 import type { AttachSharePointLinkPayload, Gate4Job, StandupStatus } from '@/types/standup.types'
 import type { Paged } from '@/types/common.types'
 import { USE_MOCKS } from './mock/useMocks'
+
+// Short TTL: long enough to collapse the duplicate `GET /cohorts` that fires when the dashboard/runs
+// views mount several stores in parallel (each independently checking "do I have cohorts yet?"), short
+// enough that a lock/create elsewhere is visible again well within a normal page visit.
+const COHORT_LIST_TTL_MS = 20_000
+const COHORT_REFERENCE_TTL_MS = 60_000 // frozen once a cohort is stood up — changes far less often than the list
 
 export async function listCohorts(): Promise<Cohort[]> {
   if (USE_MOCKS) {
     const { mockDelay, cohorts } = await import('./mock/fixtures')
     return mockDelay(cohorts)
   }
-  const page = await http.get<Paged<Cohort>>('/cohorts')
+  const page = await http.get<Paged<Cohort>>('/cohorts', { ttl: COHORT_LIST_TTL_MS })
   return page.content
 }
 
@@ -21,7 +27,7 @@ export async function getCohort(id: string): Promise<Cohort> {
     if (!c) throw new Error('Cohort not found')
     return mockDelay(c)
   }
-  return http.get<Cohort>(`/cohorts/${id}`)
+  return http.get<Cohort>(`/cohorts/${id}`, { ttl: COHORT_LIST_TTL_MS })
 }
 
 /** The committed, frozen reference hierarchy for a stood-up cohort (§6.3). */
@@ -30,7 +36,7 @@ export async function getCohortReference(id: string): Promise<CohortReference> {
     const { mockDelay, referenceByCohort, buildReference } = await import('./mock/fixtures')
     return mockDelay(referenceByCohort[id] ?? buildReference(id))
   }
-  return http.get<CohortReference>(`/cohorts/${id}/reference`)
+  return http.get<CohortReference>(`/cohorts/${id}/reference`, { ttl: COHORT_REFERENCE_TTL_MS })
 }
 
 export async function createCohort(payload: CreateCohortPayload): Promise<Cohort> {
@@ -57,7 +63,9 @@ export async function createCohort(payload: CreateCohortPayload): Promise<Cohort
     cohorts.unshift(cohort)
     return mockDelay(cohort)
   }
-  return http.post<Cohort>('/cohorts', payload)
+  const created = await http.post<Cohort>('/cohorts', payload)
+  invalidateCache('/cohorts')
+  return created
 }
 
 /**
@@ -73,6 +81,7 @@ export async function attachSharePointLink(id: string, payload: AttachSharePoint
     return mockDelay(undefined)
   }
   await http.patch<void>(`/cohorts/${id}/sharepoint-link`, payload)
+  invalidateCache('/cohorts')
 }
 
 /**
@@ -101,6 +110,7 @@ export async function triggerGate4(id: string): Promise<void> {
     return mockDelay(undefined)
   }
   await http.post<Gate4Job>(`/cohorts/${id}/gate4`)
+  invalidateCache('/cohorts')
 }
 
 /**
@@ -119,7 +129,8 @@ export async function acceptCohortReference(id: string): Promise<void> {
     acceptReference(id)
     return mockDelay(undefined)
   }
-  return http.post<void>(`/cohorts/${id}/accept`)
+  await http.post<void>(`/cohorts/${id}/accept`)
+  invalidateCache('/cohorts')
 }
 
 export async function discardCohortReference(id: string): Promise<void> {
@@ -129,7 +140,8 @@ export async function discardCohortReference(id: string): Promise<void> {
     discardReference(id)
     return mockDelay(undefined)
   }
-  return http.delete<void>(`/cohorts/${id}/accept`)
+  await http.delete<void>(`/cohorts/${id}/accept`)
+  invalidateCache('/cohorts')
 }
 
 export async function lockCohort(id: string): Promise<void> {
@@ -139,7 +151,8 @@ export async function lockCohort(id: string): Promise<void> {
     if (c) c.locked = true
     return mockDelay(undefined)
   }
-  return http.patch<void>(`/cohorts/${id}/lock`)
+  await http.patch<void>(`/cohorts/${id}/lock`)
+  invalidateCache('/cohorts')
 }
 
 export async function unlockCohort(id: string): Promise<void> {
@@ -149,5 +162,6 @@ export async function unlockCohort(id: string): Promise<void> {
     if (c) c.locked = false
     return mockDelay(undefined)
   }
-  return http.patch<void>(`/cohorts/${id}/unlock`)
+  await http.patch<void>(`/cohorts/${id}/unlock`)
+  invalidateCache('/cohorts')
 }

@@ -12,6 +12,8 @@ export interface UseNotificationStreamOptions {
 export interface NotificationStream {
   isConnected: Ref<boolean>
   error: Ref<string | null>
+  /** True once reconnect attempts are exhausted — the stream has given up and needs a manual `start()`. */
+  disconnected: Ref<boolean>
   start: () => void
   stop: () => void
 }
@@ -30,6 +32,7 @@ export interface NotificationStream {
 export function useNotificationStream(options: UseNotificationStreamOptions = {}): NotificationStream {
   const isConnected = ref(false)
   const error = ref<string | null>(null)
+  const disconnected = ref(false)
 
   const eventSource = useEventSourceStream()
 
@@ -52,19 +55,25 @@ export function useNotificationStream(options: UseNotificationStreamOptions = {}
     }
     const source = eventSource.open(notificationStreamUrl())
     eventSource.bindEvent<NotificationResponse>('notification.updated', handleUpdated, onMalformed)
-    source.onerror = () => {
+    source.onerror = eventSource.withGiveUp(
       // EventSource reconnects on its own (Last-Event-ID replay) — just surface a soft warning.
-      if (!eventSource.isDisposed()) error.value = 'Connection to the notifications stream was interrupted — reconnecting…'
-    }
+      () => { error.value = 'Connection to the notifications stream was interrupted — reconnecting…' },
+      () => {
+        isConnected.value = false
+        disconnected.value = true
+        error.value = 'Lost connection to the notifications stream. Live updates are paused.'
+      },
+    )
   }
 
   function start() {
     if (isConnected.value || eventSource.isDisposed()) return
     error.value = null
+    disconnected.value = false
     if (USE_MOCKS) return
     isConnected.value = true
     openRealStream()
   }
 
-  return { isConnected, error, start, stop }
+  return { isConnected, error, disconnected, start, stop }
 }

@@ -107,12 +107,16 @@ function delay(ms: number) {
 // ---------------------------------------------------------------------------
 
 export async function getModuleLabResults(moduleId: string): Promise<LabResultItem[]> {
-  const result = await http.get<LabResultItem[] | { content: LabResultItem[] }>(`/lab-results/modules/${moduleId}`)
+  // Short TTL: this is called once per assigned module by getInstructorModules() below just to count
+  // rows, so caching collapses repeat dashboard visits without risking a long-stale submission count.
+  const result = await http.get<LabResultItem[] | { content: LabResultItem[] }>(`/lab-results/modules/${moduleId}`, {
+    ttl: 15_000,
+  })
   return Array.isArray(result) ? result : (result.content ?? [])
 }
 
 export async function getInstructorModules(instructorId: string): Promise<AssignedModule[]> {
-  const response = await http.get<PagedModuleItems>(`/admin/instructors/${instructorId}/modules`)
+  const response = await http.get<PagedModuleItems>(`/admin/instructors/${instructorId}/modules`, { ttl: 15_000 })
   const items = response.content ?? []
 
   const counts = await Promise.allSettled(

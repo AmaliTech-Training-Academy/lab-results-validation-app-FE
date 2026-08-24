@@ -306,6 +306,13 @@ function recipientLabel(n: Notification): string {
     <p v-if="stream.error.value" class="inline-error"><VIcon name="alert-circle" :size="14" /> {{ stream.error.value }}</p>
   </div>
 
+  <div v-else-if="stream.disconnected.value" class="load-error-state">
+    <div class="load-error-icon"><VIcon name="wifi-off" :size="28" /></div>
+    <p class="load-error-title">Lost connection to the sync stream</p>
+    <p class="load-error-sub">{{ stream.error.value }}</p>
+    <VButton variant="ghost" icon="rotate-ccw" @click="stream.start()">Reconnect</VButton>
+  </div>
+
   <div v-else-if="store.loading" class="muted">Loading run…</div>
 
   <div v-else-if="store.error" class="load-error-state">
@@ -488,7 +495,10 @@ function recipientLabel(n: Notification): string {
         New notification activity for this run.
         <button type="button" class="link-btn" @click="refreshNotifications">Refresh<VIcon name="refresh-cw" :size="12" /></button>
       </div>
-      <p v-if="notifStream.error.value" class="inline-error"><VIcon name="alert-circle" :size="14" /> {{ notifStream.error.value }}</p>
+      <p v-if="notifStream.error.value" class="inline-error">
+        <VIcon name="alert-circle" :size="14" /> {{ notifStream.error.value }}
+        <button v-if="notifStream.disconnected.value" type="button" class="link-btn" @click="notifStream.start()">Reconnect</button>
+      </p>
 
       <div v-if="store.notificationsLoading" class="muted">Loading notifications…</div>
       <p v-else-if="store.notificationsError" class="inline-error"><VIcon name="alert-circle" :size="14" /> {{ store.notificationsError }}</p>

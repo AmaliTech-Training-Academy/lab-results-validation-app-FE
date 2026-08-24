@@ -24,6 +24,8 @@ export interface Gate4Stream {
   errors: ComputedRef<LocatedError[]>
   isPolling: Ref<boolean>
   error: Ref<string | null>
+  /** True once reconnect attempts are exhausted — the stream has given up and needs a manual `start()`. */
+  disconnected: Ref<boolean>
   start: () => void
   stop: () => void
   reset: () => void
@@ -43,6 +45,7 @@ export function useGate4Stream(cohortId: string, options: UseGate4StreamOptions 
   const overall = ref<Gate4Overall>('idle')
   const isPolling = ref(false)
   const error = ref<string | null>(null)
+  const disconnected = ref(false)
 
   const eventSource = useEventSourceStream()
 
@@ -57,6 +60,7 @@ export function useGate4Stream(cohortId: string, options: UseGate4StreamOptions 
     overall.value = 'idle'
     files.value = []
     error.value = null
+    disconnected.value = false
   }
 
   function upsertFile(file: string, patch: Partial<FileGateResult>) {
@@ -95,10 +99,15 @@ export function useGate4Stream(cohortId: string, options: UseGate4StreamOptions 
     eventSource.bindEvent<FilePassedData>('file.passed', handlePassed, onMalformed)
     eventSource.bindEvent<FileFailedData>('file.failed', handleFailed, onMalformed)
     eventSource.bindEvent<Gate4DoneData>('gate4.done', handleDone, onMalformed)
-    source.onerror = () => {
+    source.onerror = eventSource.withGiveUp(
       // EventSource reconnects on its own (Last-Event-ID replay) — just surface a soft warning.
-      if (!eventSource.isDisposed()) error.value = 'Connection to the validation stream was interrupted — reconnecting…'
-    }
+      () => { error.value = 'Connection to the validation stream was interrupted — reconnecting…' },
+      () => {
+        isPolling.value = false
+        disconnected.value = true
+        error.value = 'Lost connection to the validation stream.'
+      },
+    )
   }
 
   const MOCK_FILES = ['Backend_Scores.xlsx', 'Frontend_Scores.xlsx']
@@ -127,6 +136,7 @@ export function useGate4Stream(cohortId: string, options: UseGate4StreamOptions 
     if (isPolling.value || eventSource.isDisposed()) return
     isPolling.value = true
     error.value = null
+    disconnected.value = false
     overall.value = 'running'
     files.value = []
     if (USE_MOCKS) {
@@ -138,5 +148,5 @@ export function useGate4Stream(cohortId: string, options: UseGate4StreamOptions 
 
   const errors = computed<LocatedError[]>(() => files.value.flatMap((f) => f.errors))
 
-  return { files, overall, errors, isPolling, error, start, stop, reset }
+  return { files, overall, errors, isPolling, error, disconnected, start, stop, reset }
 }

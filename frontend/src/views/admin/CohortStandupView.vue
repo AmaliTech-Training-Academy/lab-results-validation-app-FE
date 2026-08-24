@@ -306,6 +306,19 @@ function fmtError(e: LocatedError): string {
         </div>
       </div>
     </template>
+
+    <!-- Neither stream retries forever — after a give-up, surface it with a manual way back in rather
+         than leaving the stepper looking silently stuck on "Running". -->
+    <div v-else-if="stream.disconnected.value || gate4.disconnected.value" class="panel panel--error">
+      <div class="panel-head">
+        <VIcon name="wifi-off" :size="18" />
+        <strong>Connection lost</strong>
+      </div>
+      <p class="panel-note">{{ stream.disconnected.value ? stream.error.value : gate4.error.value }}</p>
+      <div class="card-actions">
+        <VButton variant="primary" icon="rotate-ccw" @click="stream.disconnected.value ? stream.start() : gate4.start()">Reconnect</VButton>
+      </div>
+    </div>
   </section>
 </template>
 

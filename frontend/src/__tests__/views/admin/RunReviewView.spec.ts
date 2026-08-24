@@ -337,8 +337,8 @@ describe('RunReviewView', () => {
     expect(reviewSvc.sendAllNotifications).toHaveBeenCalledWith('run-1')
     expect(reviewSvc.listNotifications).toHaveBeenCalledTimes(2)
     const toast = useToastStore(pinia)
-    expect(toast.toast?.title).toBe('Held notifications queued')
-    expect(toast.toast?.body).toContain('1 notification queued')
+    expect(toast.toasts[toast.toasts.length - 1]?.title).toBe('Held notifications queued')
+    expect(toast.toasts[toast.toasts.length - 1]?.body).toContain('1 notification queued')
   })
 
   it('keeps "Send all held" enabled when the pending items are on another page than the one currently shown', async () => {
@@ -482,7 +482,7 @@ describe('RunReviewView', () => {
     await flushPromises()
 
     const toast = useToastStore(pinia)
-    expect(toast.toast?.title).toBe('Notification failed')
-    expect(toast.toast?.body).toContain('Provider timed out')
+    expect(toast.toasts[toast.toasts.length - 1]?.title).toBe('Notification failed')
+    expect(toast.toasts[toast.toasts.length - 1]?.body).toContain('Provider timed out')
   })
 })
