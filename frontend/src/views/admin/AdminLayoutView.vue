@@ -71,6 +71,13 @@ function onLogout() {
     @navigate="onNavigate"
     @logout="onLogout"
   >
-    <RouterView />
+    <!--
+      Keyed on the path (not fullPath — query-only changes, e.g. RunReviewView's ?cohortId, shouldn't force
+      a remount): without this, navigating between two routes that share the same matched record but differ
+      only in a dynamic segment (e.g. /admin/runs/A → /admin/runs/B) reuses the existing component instance.
+      onMounted never re-fires, so any state captured once from route.params at setup — RunReviewView's
+      runId/cohortId, and the SSE streams opened from them — would keep pointing at the old run.
+    -->
+    <RouterView :key="route.path" />
   </AppShell>
 </template>

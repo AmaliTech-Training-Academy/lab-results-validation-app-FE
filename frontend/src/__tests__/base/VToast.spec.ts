@@ -120,7 +120,7 @@ describe('VToast', () => {
       expect(document.body.querySelector('[role="alert"]')).toBeNull()
     })
 
-    it('resets the timer when a new toast arrives while one is visible', async () => {
+    it('stacks a new toast alongside one already visible, each on its own timer', async () => {
       const { wrapper, store } = mountToast()
       store.show({ tone: 'success', title: 'First' }, 5000)
       await nextTick()
@@ -128,16 +128,47 @@ describe('VToast', () => {
       vi.advanceTimersByTime(3000)
       store.show({ tone: 'warning', title: 'Second' }, 5000)
       await nextTick()
+      expect(document.body.querySelectorAll('[role="alert"]')).toHaveLength(2)
 
-      // 3 s into the second toast's window — should still be visible
-      vi.advanceTimersByTime(3000)
-      await wrapper.vm.$nextTick()
-      expect(document.body.querySelector('[role="alert"]')).not.toBeNull()
-
-      // Advance to complete the 5 s window of the second toast
+      // First's 5 s window elapses (3 s already spent + 2 more) — Second still has 3 s left of its own window
       vi.advanceTimersByTime(2000)
       await wrapper.vm.$nextTick()
+      const remaining = document.body.querySelectorAll('[role="alert"]')
+      expect(remaining).toHaveLength(1)
+      expect(remaining[0]?.querySelector('.toast-title')?.textContent).toBe('Second')
+
+      // Second's window completes 3 s later
+      vi.advanceTimersByTime(3000)
+      await wrapper.vm.$nextTick()
       expect(document.body.querySelector('[role="alert"]')).toBeNull()
+    })
+
+    it('drops the oldest toast once more than the visible cap are queued', async () => {
+      const { wrapper, store } = mountToast()
+      store.show({ tone: 'info', title: 'One' }, 0)
+      store.show({ tone: 'info', title: 'Two' }, 0)
+      store.show({ tone: 'info', title: 'Three' }, 0)
+      await nextTick()
+      expect(document.body.querySelectorAll('[role="alert"]')).toHaveLength(3)
+
+      store.show({ tone: 'info', title: 'Four' }, 0)
+      await wrapper.vm.$nextTick()
+
+      const titles = [...document.body.querySelectorAll('.toast-title')].map((el) => el.textContent)
+      expect(titles).toEqual(['Two', 'Three', 'Four'])
+    })
+
+    it('dismissing one toast leaves the others untouched', async () => {
+      const { wrapper, store } = mountToast()
+      store.show({ tone: 'success', title: 'Keep me' }, 0)
+      const secondId = store.show({ tone: 'danger', title: 'Dismiss me' }, 0)
+      await nextTick()
+
+      store.dismiss(secondId)
+      await wrapper.vm.$nextTick()
+
+      const titles = [...document.body.querySelectorAll('.toast-title')].map((el) => el.textContent)
+      expect(titles).toEqual(['Keep me'])
     })
   })
 

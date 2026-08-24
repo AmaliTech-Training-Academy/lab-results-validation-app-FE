@@ -14,29 +14,27 @@ const iconMap: Record<string, string> = {
 
 <template>
   <Teleport to="body">
-    <div
-      v-if="toast.toast"
-      :class="['toast', `toast-${toast.toast.tone}`]"
-      role="alert"
-      aria-live="assertive"
-      aria-atomic="true"
-    >
-      <VIcon :name="iconMap[toast.toast.tone] ?? 'info'" :size="20" />
-      <div class="toast-text">
-        <div class="toast-title">{{ toast.toast.title }}</div>
-        <div v-if="toast.toast.body" class="toast-body">{{ toast.toast.body }}</div>
-        <button
-          v-if="toast.toast.action"
-          class="toast-action"
-          type="button"
-          @click="toast.toast.action.onClick()"
-        >
-          {{ toast.toast.action.label }}
+    <div class="toast-stack">
+      <div
+        v-for="t in toast.toasts"
+        :key="t.id"
+        :class="['toast', `toast-${t.tone}`]"
+        role="alert"
+        aria-live="assertive"
+        aria-atomic="true"
+      >
+        <VIcon :name="iconMap[t.tone] ?? 'info'" :size="20" />
+        <div class="toast-text">
+          <div class="toast-title">{{ t.title }}</div>
+          <div v-if="t.body" class="toast-body">{{ t.body }}</div>
+          <button v-if="t.action" class="toast-action" type="button" @click="t.action.onClick()">
+            {{ t.action.label }}
+          </button>
+        </div>
+        <button class="toast-x" type="button" aria-label="Dismiss notification" @click="toast.dismiss(t.id)">
+          <VIcon name="x" :size="16" />
         </button>
       </div>
-      <button class="toast-x" type="button" aria-label="Dismiss notification" @click="toast.dismiss()">
-        <VIcon name="x" :size="16" />
-      </button>
     </div>
   </Teleport>
 </template>

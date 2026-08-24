@@ -254,14 +254,20 @@ function fmtTime(iso?: string): string {
 }
 
 const SEASONS = ['Winter', 'Winter', 'Spring', 'Spring', 'Spring', 'Summer', 'Summer', 'Summer', 'Autumn', 'Autumn', 'Autumn', 'Winter']
+
+// `filtered`/`sorted` re-run cohortLabel/cohortTerm for every row on every keystroke/sort/filter
+// change — a linear cohorts.list.find() per call turns that into O(runs × cohorts) per re-render.
+// Build the id→cohort lookup once and keep it current as the cohorts store updates.
+const cohortById = computed(() => new Map(cohorts.list.map((c) => [c.id, c])))
+
 /** Resolve a run's cohort display name from the cohorts store (the cohort list's `name` attribute). */
 function cohortLabel(r: IngestionRun): string {
-  return r.cohortName ?? cohorts.list.find((c) => c.id === r.cohortId)?.name ?? '—'
+  return r.cohortName ?? cohortById.value.get(r.cohortId)?.name ?? '—'
 }
 
 /** Derive a readable term (e.g. "Autumn 2025") from the cohort's start date. */
 function cohortTerm(cohortId: string): string {
-  const c = cohorts.list.find((x) => x.id === cohortId)
+  const c = cohortById.value.get(cohortId)
   if (!c?.startDate) return ''
   const d = new Date(c.startDate)
   if (Number.isNaN(d.getTime())) return ''

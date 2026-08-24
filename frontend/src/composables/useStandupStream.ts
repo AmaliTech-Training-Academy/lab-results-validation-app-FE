@@ -55,6 +55,8 @@ export interface StandupStream {
   errors: ComputedRef<LocatedError[]>
   isPolling: Ref<boolean>
   error: Ref<string | null>
+  /** True once reconnect attempts are exhausted — the stream has given up and needs a manual `start()`. */
+  disconnected: Ref<boolean>
   start: () => void
   stop: () => void
   reset: () => void
@@ -64,6 +66,7 @@ export function useStandupStream(cohortId: string): StandupStream {
   const status = ref<StandupStatus | null>(null) as Ref<StandupStatus | null>
   const isPolling = ref(false)
   const error = ref<string | null>(null)
+  const disconnected = ref(false)
 
   const eventSource = useEventSourceStream()
 
@@ -77,6 +80,7 @@ export function useStandupStream(cohortId: string): StandupStream {
     stop()
     status.value = null
     error.value = null
+    disconnected.value = false
   }
 
   function setGate(id: GateId, patch: Partial<Gate>) {
@@ -133,10 +137,15 @@ export function useStandupStream(cohortId: string): StandupStream {
     eventSource.bindEvent<GatePassedData>('gate.passed', handlePassed, onMalformed)
     eventSource.bindEvent<GateFailedData>('gate.failed', handleFailed, onMalformed)
     eventSource.bindEvent<PipelineDoneData>('pipeline.done', handleDone, onMalformed)
-    source.onerror = () => {
+    source.onerror = eventSource.withGiveUp(
       // EventSource reconnects on its own (Last-Event-ID replay) — just surface a soft warning.
-      if (!eventSource.isDisposed()) error.value = 'Connection to the validation stream was interrupted — reconnecting…'
-    }
+      () => { error.value = 'Connection to the validation stream was interrupted — reconnecting…' },
+      () => {
+        isPolling.value = false
+        disconnected.value = true
+        error.value = 'Lost connection to the validation stream.'
+      },
+    )
   }
 
   function mockTick() {
@@ -163,6 +172,7 @@ export function useStandupStream(cohortId: string): StandupStream {
     if (isPolling.value || eventSource.isDisposed()) return
     isPolling.value = true
     error.value = null
+    disconnected.value = false
     status.value = { overall: 'running', gates: emptyGates() }
     if (USE_MOCKS) {
       mockTick()
@@ -174,5 +184,5 @@ export function useStandupStream(cohortId: string): StandupStream {
   const gates = computed<Gate[]>(() => status.value?.gates ?? [])
   const errors = computed<LocatedError[]>(() => gates.value.flatMap((g) => g.errors))
 
-  return { status, gates, errors, isPolling, error, start, stop, reset }
+  return { status, gates, errors, isPolling, error, disconnected, start, stop, reset }
 }

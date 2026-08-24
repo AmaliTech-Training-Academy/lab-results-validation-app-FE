@@ -1,7 +1,9 @@
 // User-defined recurring schedules that trigger score-sheet sync runs. Base path /api/v1.
-import { http } from './http'
+import { http, invalidateCache } from './http'
 import type { SyncSchedulePayload, SyncScheduleResponse } from '@/types/syncSchedule.types'
 import { USE_MOCKS } from './mock/useMocks'
+
+const SYNC_SCHEDULES_TTL_MS = 30_000 // low-churn admin config — avoids a full re-list on every Settings ↔ Sync Schedules navigation
 
 // NB: /sync-schedules returns a plain List<T>, not a Spring Page — unlike /cohorts.
 export async function listSyncSchedules(): Promise<SyncScheduleResponse[]> {
@@ -9,7 +11,7 @@ export async function listSyncSchedules(): Promise<SyncScheduleResponse[]> {
     const { mockDelay, syncSchedules } = await import('./mock/fixtures')
     return mockDelay(syncSchedules)
   }
-  return http.get<SyncScheduleResponse[]>('/sync-schedules')
+  return http.get<SyncScheduleResponse[]>('/sync-schedules', { ttl: SYNC_SCHEDULES_TTL_MS })
 }
 
 export async function getSyncSchedule(id: string): Promise<SyncScheduleResponse> {
@@ -19,7 +21,7 @@ export async function getSyncSchedule(id: string): Promise<SyncScheduleResponse>
     if (!s) throw new Error('Sync schedule not found')
     return mockDelay(s)
   }
-  return http.get<SyncScheduleResponse>(`/sync-schedules/${id}`)
+  return http.get<SyncScheduleResponse>(`/sync-schedules/${id}`, { ttl: SYNC_SCHEDULES_TTL_MS })
 }
 
 export async function createSyncSchedule(payload: SyncSchedulePayload): Promise<SyncScheduleResponse> {
@@ -41,7 +43,9 @@ export async function createSyncSchedule(payload: SyncSchedulePayload): Promise<
     syncSchedules.unshift(created)
     return mockDelay(created)
   }
-  return http.post<SyncScheduleResponse>('/sync-schedules', payload)
+  const created = await http.post<SyncScheduleResponse>('/sync-schedules', payload)
+  invalidateCache('/sync-schedules')
+  return created
 }
 
 /** PUT is a full replace, including the `enabled` flag. */
@@ -62,7 +66,9 @@ export async function updateSyncSchedule(id: string, payload: SyncSchedulePayloa
     })
     return mockDelay(s)
   }
-  return http.put<SyncScheduleResponse>(`/sync-schedules/${id}`, payload)
+  const updated = await http.put<SyncScheduleResponse>(`/sync-schedules/${id}`, payload)
+  invalidateCache('/sync-schedules')
+  return updated
 }
 
 export async function removeSyncSchedule(id: string): Promise<void> {
@@ -73,4 +79,5 @@ export async function removeSyncSchedule(id: string): Promise<void> {
     return mockDelay(undefined)
   }
   await http.delete<void>(`/sync-schedules/${id}`)
+  invalidateCache('/sync-schedules')
 }

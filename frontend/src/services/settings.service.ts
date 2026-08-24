@@ -1,7 +1,9 @@
 // Admin settings (PRD Epic C C2, FE strategy §8).
-import { http } from './http'
+import { http, invalidateCache } from './http'
 import type { Settings } from '@/types/settings.types'
 import { USE_MOCKS } from './mock/useMocks'
+
+const SETTINGS_TTL_MS = 30_000
 
 /** backend: NotificationController, mounted under /notifications — not a standalone /settings resource. */
 export async function getSettings(): Promise<Settings> {
@@ -9,7 +11,7 @@ export async function getSettings(): Promise<Settings> {
     const { mockDelay, settings } = await import('./mock/fixtures')
     return mockDelay(settings)
   }
-  return http.get<Settings>('/notifications/settings')
+  return http.get<Settings>('/notifications/settings', { ttl: SETTINGS_TTL_MS })
 }
 
 export async function updateSettings(patch: Partial<Settings>): Promise<Settings> {
@@ -18,5 +20,7 @@ export async function updateSettings(patch: Partial<Settings>): Promise<Settings
     Object.assign(settings, patch)
     return mockDelay(settings)
   }
-  return http.patch<Settings>('/notifications/settings', patch)
+  const updated = await http.patch<Settings>('/notifications/settings', patch)
+  invalidateCache('/notifications/settings')
+  return updated
 }

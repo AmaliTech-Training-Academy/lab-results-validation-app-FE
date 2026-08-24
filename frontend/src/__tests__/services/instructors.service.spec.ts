@@ -16,7 +16,7 @@ describe('instructors.service — real API', () => {
     const { getInstructor } = await import('@/services/instructors.service')
     const result = await getInstructor('ins-abc')
 
-    expect(get).toHaveBeenCalledWith('/instructors/ins-abc')
+    expect(get).toHaveBeenCalledWith('/instructors/ins-abc', expect.objectContaining({ ttl: expect.any(Number) }))
     expect(result).toEqual(instructor)
   })
 })

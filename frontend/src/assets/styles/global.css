@@ -268,7 +268,9 @@ table.tbl { width: 100%; border-collapse: collapse; font-family: var(--font-body
 .modal-error { padding: 10px 24px; border-top: 1px solid var(--danger-bg); background: var(--danger-bg); display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--danger); line-height: 1.4; }
 
 /* ---------- Toast ---------- */
-.toast { position: fixed; right: 28px; bottom: 28px; z-index: 200; display: flex; align-items: flex-start; gap: 12px; min-width: 320px; max-width: 420px; background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--success); border-radius: var(--r-md); box-shadow: var(--shadow-pop); padding: 16px 18px; animation: toastin 0.2s ease; }
+/* .toast-stack (VToast.vue) owns the fixed viewport corner; individual .toast rows stack inside it via flex. */
+.toast-stack { position: fixed; right: 28px; bottom: 28px; z-index: 200; display: flex; flex-direction: column; gap: 12px; align-items: flex-end; }
+.toast { display: flex; align-items: flex-start; gap: 12px; min-width: 320px; max-width: 420px; background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--success); border-radius: var(--r-md); box-shadow: var(--shadow-pop); padding: 16px 18px; animation: toastin 0.2s ease; }
 .toast-success { border-left-color: var(--success); color: var(--success); }
 .toast-warning { border-left-color: var(--warning); color: var(--warning); }
 .toast-info    { border-left-color: var(--info);    color: var(--info); }

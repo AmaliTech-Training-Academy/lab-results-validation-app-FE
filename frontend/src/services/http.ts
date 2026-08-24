@@ -132,12 +132,56 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
 }
 
+// ── GET cache + in-flight de-dupe ────────────────────────────────────────────
+// This app fans out a lot of per-row/per-cohort GETs (conflict totals, run lists,
+// user/instructor lookups for display names…). Two things make that cheap instead
+// of a request storm:
+//  1. In-flight de-dupe: concurrent callers for the same path share one fetch —
+//     kills races like two stores both kicking off `GET /cohorts` on the same mount.
+//  2. A short result cache (opt-in via `ttl`): a path resolved recently is served
+//     from memory instead of re-hitting the network — kills refetch-on-every-mount
+//     for data that rarely changes within a session (e.g. a user's email).
+// GETs default to ttl 0 (de-dupe only, no stale reads); callers opt into caching
+// for slow-changing data. Mutations should call `invalidateCache(prefix)` so the
+// next read after a write isn't served a stale cached value.
+const inFlightGets = new Map<string, Promise<unknown>>()
+const getResultCache = new Map<string, { expiresAt: number; value: unknown }>()
+
+function cachedGet<T>(path: string, ttlMs: number): Promise<T> {
+  const cached = getResultCache.get(path)
+  if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.value as T)
+
+  const pending = inFlightGets.get(path)
+  if (pending) return pending as Promise<T>
+
+  const promise = request<T>('GET', path)
+    .then((value) => {
+      if (ttlMs > 0) getResultCache.set(path, { expiresAt: Date.now() + ttlMs, value })
+      return value
+    })
+    .finally(() => inFlightGets.delete(path))
+
+  inFlightGets.set(path, promise)
+  return promise
+}
+
+/** Drops cached/in-flight GETs whose path starts with `prefix`. Call after a mutation that makes them stale. */
+export function invalidateCache(prefix: string) {
+  for (const key of getResultCache.keys()) {
+    if (key.startsWith(prefix)) getResultCache.delete(key)
+  }
+  for (const key of inFlightGets.keys()) {
+    if (key.startsWith(prefix)) inFlightGets.delete(key)
+  }
+}
+
 export const http = {
   async post<T>(path: string, body?: unknown): Promise<T> {
     return request<T>('POST', path, body)
   },
-  async get<T>(path: string): Promise<T> {
-    return request<T>('GET', path)
+  /** `ttl` (ms) opts into caching the resolved result for reuse by later calls to the same path; omitted/0 still de-dupes concurrent in-flight calls but never serves a stale result. */
+  async get<T>(path: string, opts?: { ttl?: number }): Promise<T> {
+    return cachedGet<T>(path, opts?.ttl ?? 0)
   },
   async put<T>(path: string, body?: unknown): Promise<T> {
     return request<T>('PUT', path, body)

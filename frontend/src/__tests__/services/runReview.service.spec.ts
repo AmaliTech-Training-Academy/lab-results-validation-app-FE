@@ -143,7 +143,7 @@ describe('listNotifications (instructor recipient enrichment)', () => {
 
     const result = await listNotifications({ cohortId: 'c1' })
 
-    expect(http.get).toHaveBeenCalledWith('/instructors/ins-abc')
+    expect(http.get).toHaveBeenCalledWith('/instructors/ins-abc', expect.objectContaining({ ttl: expect.any(Number) }))
     expect(result.content[0]?.recipientName).toBe('Sarah Jenkins')
     expect(result.content[0]?.recipientEmail).toBe('sarah.jenkins@amalitech.com')
   })

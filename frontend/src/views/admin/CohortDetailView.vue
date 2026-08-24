@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
@@ -17,6 +17,7 @@ const toast = useToastStore()
 const cohortId = route.params.id as string
 const cohort = computed(() => cohorts.current)
 const ref_ = computed(() => reference.reference)
+const loadError = computed(() => reference.error ?? cohorts.error)
 
 const chip = computed(() => (cohort.value ? COHORT_STATE_CHIP[cohortDisplayState(cohort.value)] : null))
 
@@ -40,10 +41,27 @@ const counts = computed(() => {
   }
 })
 
-onMounted(() => {
-  cohorts.fetchCohort(cohortId)
-  reference.fetchReference(cohortId)
-})
+// The reference endpoint returns the whole learner/instructor roster in one payload (no server
+// pagination) — a large cohort would otherwise render every row as unvirtualized DOM. Page it
+// client-side instead; each table gets its own page cursor.
+const PAGE_SIZE = 25
+function usePage<T>(items: () => T[]) {
+  const page = ref(0)
+  const total = computed(() => items().length)
+  const totalPages = computed(() => Math.max(1, Math.ceil(total.value / PAGE_SIZE)))
+  const safePage = computed(() => Math.min(page.value, totalPages.value - 1))
+  const paged = computed(() => items().slice(safePage.value * PAGE_SIZE, (safePage.value + 1) * PAGE_SIZE))
+  const showingFrom = computed(() => (total.value === 0 ? 0 : safePage.value * PAGE_SIZE + 1))
+  const showingTo = computed(() => Math.min((safePage.value + 1) * PAGE_SIZE, total.value))
+  return { totalPages, safePage, paged, showingFrom, showingTo, total, goTo: (p: number) => (page.value = p) }
+}
+const learnersPage = usePage(() => ref_.value?.learners ?? [])
+const instructorsPage = usePage(() => ref_.value?.instructors ?? [])
+
+async function loadCohort() {
+  await Promise.all([cohorts.fetchCohort(cohortId), reference.fetchReference(cohortId)])
+}
+onMounted(loadCohort)
 
 async function toggleLock() {
   if (!cohort.value) return
@@ -81,6 +99,13 @@ async function toggleLock() {
   </div>
 
   <div v-if="reference.loading" class="muted">Loading reference data…</div>
+
+  <div v-else-if="loadError" class="load-error-state">
+    <div class="load-error-icon"><VIcon name="wifi-off" :size="28" /></div>
+    <p class="load-error-title">Could not load this cohort</p>
+    <p class="load-error-sub">{{ loadError }}</p>
+    <VButton variant="ghost" icon="rotate-ccw" @click="loadCohort">Try again</VButton>
+  </div>
 
   <template v-else-if="ref_">
     <!-- Summary counts -->
@@ -126,7 +151,7 @@ async function toggleLock() {
             <tr><th>Name</th><th>Email</th><th>Specialization</th><th style="text-align: center">Status</th></tr>
           </thead>
           <tbody>
-            <tr v-for="l in ref_.learners" :key="l.id">
+            <tr v-for="l in learnersPage.paged.value" :key="l.id">
               <td style="font-weight: 500">{{ l.fullName }}</td>
               <td class="mono muted">{{ l.email }}</td>
               <td>{{ specName[l.specializationId] ?? '—' }}</td>
@@ -134,8 +159,41 @@ async function toggleLock() {
                 <VPill :tone="l.status === 'active' ? 'success' : 'info'">{{ l.status === 'active' ? 'Active' : 'Archived' }}</VPill>
               </td>
             </tr>
+            <tr v-if="learnersPage.paged.value.length === 0">
+              <td colspan="4">
+                <div class="empty-inline">
+                  <VIcon name="users" :size="28" class="muted" />
+                  <p class="empty-title">No learners yet</p>
+                  <p class="empty-sub">This cohort's reference data has no learner roster.</p>
+                </div>
+              </td>
+            </tr>
           </tbody>
         </table>
+
+        <div v-if="learnersPage.total.value > 0" class="pager">
+          <span class="pager-count">
+            Showing <span class="pg-strong">{{ learnersPage.showingFrom.value }}</span> to
+            <span class="pg-strong">{{ learnersPage.showingTo.value }}</span> of
+            <span class="pg-strong">{{ learnersPage.total.value }}</span> Entries
+          </span>
+          <div class="pager-ctrls">
+            <button class="pg-arrow" aria-label="Previous" :disabled="learnersPage.safePage.value === 0" @click="learnersPage.goTo(learnersPage.safePage.value - 1)">
+              <VIcon name="chevron-left" :size="16" />
+            </button>
+            <button
+              v-for="p in learnersPage.totalPages.value"
+              :key="p"
+              :class="['pg-num', { on: learnersPage.safePage.value === p - 1 }]"
+              @click="learnersPage.goTo(p - 1)"
+            >
+              {{ p }}
+            </button>
+            <button class="pg-arrow" aria-label="Next" :disabled="learnersPage.safePage.value === learnersPage.totalPages.value - 1" @click="learnersPage.goTo(learnersPage.safePage.value + 1)">
+              <VIcon name="chevron-right" :size="16" />
+            </button>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -148,15 +206,48 @@ async function toggleLock() {
             <tr><th>Name</th><th>Email</th><th style="text-align: center">Status</th></tr>
           </thead>
           <tbody>
-            <tr v-for="ins in ref_.instructors" :key="ins.id">
+            <tr v-for="ins in instructorsPage.paged.value" :key="ins.id">
               <td style="font-weight: 500">{{ ins.fullName }}</td>
               <td class="mono muted">{{ ins.email }}</td>
               <td style="text-align: center">
                 <VPill :tone="ins.active ? 'success' : 'info'">{{ ins.active ? 'Active' : 'Inactive' }}</VPill>
               </td>
             </tr>
+            <tr v-if="instructorsPage.paged.value.length === 0">
+              <td colspan="3">
+                <div class="empty-inline">
+                  <VIcon name="user-round" :size="28" class="muted" />
+                  <p class="empty-title">No instructor contacts yet</p>
+                  <p class="empty-sub">This cohort's reference data has no instructor contacts.</p>
+                </div>
+              </td>
+            </tr>
           </tbody>
         </table>
+
+        <div v-if="instructorsPage.total.value > 0" class="pager">
+          <span class="pager-count">
+            Showing <span class="pg-strong">{{ instructorsPage.showingFrom.value }}</span> to
+            <span class="pg-strong">{{ instructorsPage.showingTo.value }}</span> of
+            <span class="pg-strong">{{ instructorsPage.total.value }}</span> Entries
+          </span>
+          <div class="pager-ctrls">
+            <button class="pg-arrow" aria-label="Previous" :disabled="instructorsPage.safePage.value === 0" @click="instructorsPage.goTo(instructorsPage.safePage.value - 1)">
+              <VIcon name="chevron-left" :size="16" />
+            </button>
+            <button
+              v-for="p in instructorsPage.totalPages.value"
+              :key="p"
+              :class="['pg-num', { on: instructorsPage.safePage.value === p - 1 }]"
+              @click="instructorsPage.goTo(p - 1)"
+            >
+              {{ p }}
+            </button>
+            <button class="pg-arrow" aria-label="Next" :disabled="instructorsPage.safePage.value === instructorsPage.totalPages.value - 1" @click="instructorsPage.goTo(instructorsPage.safePage.value + 1)">
+              <VIcon name="chevron-right" :size="16" />
+            </button>
+          </div>
+        </div>
       </div>
     </section>
   </template>

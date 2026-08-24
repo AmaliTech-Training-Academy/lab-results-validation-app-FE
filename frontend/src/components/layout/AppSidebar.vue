@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import VIcon from '@/components/base/VIcon.vue'
-import logoUrl from '@/assets/validata-logo.png'
-import iconUrl from '@/assets/validata-icon.png'
+import logoUrl from '@/assets/validata-logo.webp'
+import iconUrl from '@/assets/validata-icon.webp'
 
 withDefaults(
   defineProps<{
@@ -49,8 +49,8 @@ const ADMIN_FOOTER: NavItem[] = [
     </button>
     <div>
       <div class="brand">
-        <img :src="logoUrl" alt="Validata" class="brand-logo" />
-        <img :src="iconUrl" alt="Validata" class="brand-icon" />
+        <img :src="logoUrl" alt="Validata" class="brand-logo" width="1172" height="220" />
+        <img :src="iconUrl" alt="Validata" class="brand-icon" width="766" height="610" />
       </div>
       <nav class="nav" aria-label="Main menu">
         <button

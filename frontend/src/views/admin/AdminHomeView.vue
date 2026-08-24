@@ -7,19 +7,29 @@ import VPill from '@/components/base/VPill.vue'
 import { RUN_STATUS_TONE, type IngestionRun, type RunStatus } from '@/types/run.types'
 import { useCohortsStore } from '@/stores/cohorts'
 import { useRunsStore } from '@/stores/runs'
+import { useConflictsStore } from '@/stores/conflicts'
 import '@/assets/styles/dashboard.css'
 
 const router = useRouter()
 const cohorts = useCohortsStore()
 const runs = useRunsStore()
+const conflicts = useConflictsStore()
 
-const loading = computed(() => cohorts.loading || runs.loading)
-const error = computed(() => cohorts.error || runs.error)
+const loading = computed(() => cohorts.loading || runs.loading || conflicts.loading)
+const error = computed(() => cohorts.error || runs.error || conflicts.error)
 
-onMounted(() => {
-  cohorts.fetchList()
-  runs.fetchList()
-})
+/**
+ * Cohort/run lists load in parallel; the cohort-scoped conflicts totals need cohort ids first, so they
+ * fetch once that list lands — narrowed to STOOD_UP cohorts, since draft/reference-accepted cohorts have
+ * no ingestion runs yet and can't have conflicts, so querying them would just be wasted requests.
+ */
+async function loadDashboard() {
+  await Promise.all([cohorts.fetchList(), runs.fetchList()])
+  const eligibleIds = cohorts.list.filter((c) => c.lifecycleState === 'STOOD_UP').map((c) => c.id)
+  await conflicts.fetchTotalOpen(eligibleIds)
+}
+
+onMounted(loadDashboard)
 
 const STATUS_LABEL: Record<RunStatus, string> = {
   completed: 'Completed', partial: 'Partial', failed: 'Failed', skipped: 'Skipped', processing: 'Processing',
@@ -42,7 +52,7 @@ const recentRuns = computed(() => runs.list.slice(0, 5))
 const attentionRuns = computed(() =>
   runs.list.filter((r) => r.highFailure || r.status === 'partial' || r.status === 'failed' || (r.counts?.conflicts ?? 0) > 0),
 )
-const openConflicts = computed(() => runs.list.reduce((n, r) => n + (r.counts?.conflicts ?? 0), 0))
+const openConflicts = computed(() => conflicts.totalOpen)
 
 // ── KPI cards ────────────────────────────────────────────────────────────────
 type Tone = 'blue' | 'green' | 'orange' | 'red'
@@ -153,7 +163,7 @@ function go(to?: string) {
       <div class="load-error-icon"><VIcon name="wifi-off" :size="28" /></div>
       <p class="load-error-title">Could not load the dashboard</p>
       <p class="load-error-sub">{{ error }}</p>
-      <VButton variant="ghost" icon="rotate-ccw" @click="() => { cohorts.fetchList(); runs.fetchList() }">Try again</VButton>
+      <VButton variant="ghost" icon="rotate-ccw" @click="loadDashboard">Try again</VButton>
     </div>
 
     <template v-else>

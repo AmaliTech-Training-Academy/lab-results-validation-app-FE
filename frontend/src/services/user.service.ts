@@ -1,9 +1,9 @@
 import type { InstructorUser, ModuleGroup, InstructorPayload, CreateInstructorPayload, CreatedInstructor, AssignModulesResponse, RemoveModulesResponse, PagedInstructors } from '@/types/user.types'
 import { getAllSpecializations, getModules } from './reference.service'
-import { http } from './http'
+import { http, invalidateCache } from './http'
 
 export async function getInstructors(page = 0, size = 10): Promise<PagedInstructors> {
-  return http.get<PagedInstructors>(`/admin/users/instructors?page=${page}&size=${size}`)
+  return http.get<PagedInstructors>(`/admin/users/instructors?page=${page}&size=${size}`, { ttl: 15_000 })
 }
 
 export async function getModuleGroups(): Promise<ModuleGroup[]> {
@@ -22,17 +22,25 @@ export async function getModuleGroups(): Promise<ModuleGroup[]> {
 }
 
 export async function addInstructor(payload: CreateInstructorPayload): Promise<CreatedInstructor> {
-  return http.post<CreatedInstructor>('/admin/users/instructors', payload)
+  const created = await http.post<CreatedInstructor>('/admin/users/instructors', payload)
+  invalidateCache('/admin/users/instructors')
+  return created
 }
 
 export async function assignInstructorModules(instructorId: string, moduleIds: string[]): Promise<AssignModulesResponse> {
-  return http.post<AssignModulesResponse>(`/admin/instructors/${instructorId}/modules`, { moduleIds })
+  const result = await http.post<AssignModulesResponse>(`/admin/instructors/${instructorId}/modules`, { moduleIds })
+  invalidateCache(`/admin/instructors/${instructorId}/modules`)
+  return result
 }
 
 export async function updateInstructor(instructorId: string, payload: InstructorPayload): Promise<InstructorUser> {
-  return http.patch<InstructorUser>(`/admin/users/instructors/${instructorId}`, payload)
+  const updated = await http.patch<InstructorUser>(`/admin/users/instructors/${instructorId}`, payload)
+  invalidateCache('/admin/users/instructors')
+  return updated
 }
 
 export async function removeInstructorModules(instructorId: string, moduleIds: string[]): Promise<RemoveModulesResponse> {
-  return http.delete<RemoveModulesResponse>(`/admin/instructors/${instructorId}/modules`, { moduleIds })
+  const result = await http.delete<RemoveModulesResponse>(`/admin/instructors/${instructorId}/modules`, { moduleIds })
+  invalidateCache(`/admin/instructors/${instructorId}/modules`)
+  return result
 }

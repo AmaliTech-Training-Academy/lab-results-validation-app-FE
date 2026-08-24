@@ -8,8 +8,8 @@ import { useToastStore } from '@/stores/toast'
 import { usePasswordVisibility } from '@/composables/usePasswordVisibility'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
-import logoUrl from '@/assets/validata-logo.png'
-import patternUrl from '@/assets/reset-pattern.png'
+import logoUrl from '@/assets/validata-logo.webp'
+import patternUrl from '@/assets/reset-pattern.webp'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -104,7 +104,7 @@ async function submit() {
     <!-- Form side -->
     <main class="reset-main">
       <form class="reset-form" novalidate @submit.prevent="submit">
-        <img :src="logoUrl" alt="Validata" class="brand-logo" />
+        <img :src="logoUrl" alt="Validata" class="brand-logo" width="1172" height="220" />
 
         <h1 class="auth-title">{{ isResetFlow ? 'Reset your password' : 'Set your password' }}</h1>
         <p class="auth-sub">{{ isResetFlow ? 'Enter a new password for your account.' : 'This is your first login. Choose a secure password to continue.' }}</p>
