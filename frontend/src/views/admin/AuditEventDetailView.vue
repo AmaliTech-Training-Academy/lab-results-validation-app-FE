@@ -116,6 +116,7 @@ onMounted(() => {
         <dd class="mono">{{ fmt(event.occurredAt) }}</dd>
       </div>
     </dl>
+    <p v-if="cohorts.error && event.cohortId" class="inline-error" style="margin: -16px 0 24px"><VIcon name="alert-circle" :size="14" /> {{ cohorts.error }}</p>
 
     <h2 class="block-title">Payload</h2>
     <div v-if="payloadEntries.length" class="tbl-wrap">

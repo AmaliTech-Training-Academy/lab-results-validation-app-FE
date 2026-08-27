@@ -6,6 +6,7 @@ import VIcon from '@/components/base/VIcon.vue'
 import VPill from '@/components/base/VPill.vue'
 import VDrawer from '@/components/base/VDrawer.vue'
 import { useToastStore } from '@/stores/toast'
+import { toErrorMessage } from '@/utils/errors'
 import { getLearners, addLearner, updateLearner, setLearnerStatus } from '@/services/learner.service'
 import { getCohorts } from '@/services/cohort.service'
 import { getSpecializations } from '@/services/reference.service'
@@ -116,8 +117,8 @@ async function exportCsv() {
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
     toast.show({ tone: 'success', title: 'Export ready', body: `${all.content.length} learner${all.content.length === 1 ? '' : 's'} exported to CSV.` })
-  } catch {
-    toast.show({ tone: 'warning', title: 'Export failed', body: 'Could not export learners.' })
+  } catch (e) {
+    toast.show({ tone: 'warning', title: 'Export failed', body: toErrorMessage(e, 'Could not export learners.') })
   } finally {
     exporting.value = false
   }
@@ -163,8 +164,14 @@ async function loadInitialData() {
   try {
     const cohortsResult = await getCohorts(0, 100)
     cohortOptions.value = cohortsResult.content
-  } catch {
-    // cohort options failing doesn't block the table
+  } catch (e) {
+    // Cohort options failing doesn't block the table, but it should be visible — an empty filter
+    // dropdown is confusing without a reason.
+    toast.show({
+      tone: 'warning',
+      title: 'Could not load cohorts',
+      body: e instanceof Error ? e.message : 'The cohort filter is unavailable.',
+    })
   }
   await loadLearners(0)
 }
@@ -189,7 +196,11 @@ watch(filterCohortId, async (id) => {
   filterSpecId.value = null
   filterSpecOptions.value = []
   if (id) {
-    filterSpecOptions.value = (await getSpecializations(id)).content
+    try {
+      filterSpecOptions.value = (await getSpecializations(id)).content
+    } catch (e) {
+      toast.show({ tone: 'warning', title: 'Could not load specializations', body: toErrorMessage(e, 'Please try again.') })
+    }
   }
   currentPage.value = 0
   loadLearners(0)
@@ -251,7 +262,11 @@ async function openEdit(learner: Learner) {
     status: learner.status,
     error: '',
   }
-  formSpecOptions.value = (await getSpecializations(learner.cohortId)).content
+  try {
+    formSpecOptions.value = (await getSpecializations(learner.cohortId)).content
+  } catch (e) {
+    toast.show({ tone: 'warning', title: 'Could not load specializations', body: toErrorMessage(e, 'Please try again.') })
+  }
   form.value.specId = learner.specializationId
   showDrawer.value = true
 }
@@ -268,7 +283,11 @@ async function onFormCohortChange(event: Event) {
   form.value.specId = null
   formSpecOptions.value = []
   if (form.value.cohortId) {
-    formSpecOptions.value = (await getSpecializations(form.value.cohortId)).content
+    try {
+      formSpecOptions.value = (await getSpecializations(form.value.cohortId)).content
+    } catch (e) {
+      toast.show({ tone: 'warning', title: 'Could not load specializations', body: toErrorMessage(e, 'Please try again.') })
+    }
   }
 }
 

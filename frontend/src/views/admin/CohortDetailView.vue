@@ -7,6 +7,7 @@ import VPill from '@/components/base/VPill.vue'
 import { useCohortsStore } from '@/stores/cohorts'
 import { useReferenceStore } from '@/stores/reference'
 import { useToastStore } from '@/stores/toast'
+import { toErrorMessage } from '@/utils/errors'
 import { cohortDisplayState, COHORT_STATE_CHIP } from '@/types/domain.types'
 
 const route = useRoute()
@@ -17,7 +18,10 @@ const toast = useToastStore()
 const cohortId = route.params.id as string
 const cohort = computed(() => cohorts.current)
 const ref_ = computed(() => reference.reference)
-const loadError = computed(() => reference.error ?? cohorts.error)
+const loadError = computed(() => {
+  const errors = [reference.error, cohorts.error].filter((e): e is string => !!e)
+  return errors.length ? errors.join(' ') : null
+})
 
 const chip = computed(() => (cohort.value ? COHORT_STATE_CHIP[cohortDisplayState(cohort.value)] : null))
 
@@ -70,8 +74,8 @@ async function toggleLock() {
     if (wasLocked) await cohorts.unlock(cohortId)
     else await cohorts.lock(cohortId)
     toast.show({ tone: 'success', title: wasLocked ? 'Cohort unlocked' : 'Cohort locked' })
-  } catch {
-    toast.show({ tone: 'warning', title: 'Action failed', body: 'Please try again.' })
+  } catch (e) {
+    toast.show({ tone: 'warning', title: 'Action failed', body: toErrorMessage(e, 'Please try again.') })
   }
 }
 </script>

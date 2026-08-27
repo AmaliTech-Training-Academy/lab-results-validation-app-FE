@@ -5,6 +5,7 @@ import VIcon from '@/components/base/VIcon.vue'
 import VPill from '@/components/base/VPill.vue'
 import VDrawer from '@/components/base/VDrawer.vue'
 import { useToastStore } from '@/stores/toast'
+import { toErrorMessage } from '@/utils/errors'
 import { getInstructors, getModuleGroups, addInstructor, assignInstructorModules, removeInstructorModules, updateInstructor } from '@/services/user.service'
 import type { InstructorUser, ModuleGroup, AssignModulesResponse } from '@/types/user.types'
 
@@ -78,8 +79,8 @@ async function exportCsv() {
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
     toast.show({ tone: 'success', title: 'Export ready', body: `${all.content.length} instructor${all.content.length === 1 ? '' : 's'} exported to CSV.` })
-  } catch {
-    toast.show({ tone: 'warning', title: 'Export failed', body: 'Could not export instructors.' })
+  } catch (e) {
+    toast.show({ tone: 'warning', title: 'Export failed', body: toErrorMessage(e, 'Could not export instructors.') })
   } finally {
     exporting.value = false
   }
@@ -161,7 +162,13 @@ async function loadInstructors(page = 0) {
 async function loadData() {
   const groupsPromise = getModuleGroups()
     .then((g) => { moduleGroups.value = g })
-    .catch(() => {})
+    .catch((e) => {
+      toast.show({
+        tone: 'warning',
+        title: 'Could not load module groups',
+        body: e instanceof Error ? e.message : 'Module assignment options are unavailable.',
+      })
+    })
   await Promise.all([loadInstructors(0), groupsPromise])
 }
 

@@ -17,13 +17,54 @@ const toast = useToastStore()
 
 const selectedCohortId = ref('')
 
+/**
+ * `runs.list` (the shallow per-cohort job endpoint) never carries counts/failure data (§ FND-39) —
+ * that comes from `runs.fetchStats`, which needs the STOOD_UP cohort ids first, so it fetches once
+ * both lists have landed.
+ */
+async function refreshStats() {
+  const eligibleIds = cohorts.list.filter((c) => c.lifecycleState === 'STOOD_UP').map((c) => c.id)
+  await runs.fetchStats(eligibleIds)
+}
+
+async function loadRuns() {
+  await Promise.all([runs.fetchList(), cohorts.fetchList()])
+  await refreshStats()
+  pollIfNeeded()
+}
+
+// ── Live-ish status (§ FND-38) ────────────────────────────────────────────────
+// There's no SSE stream for the whole runs list (only a single in-progress run gets one, on its own
+// review page) — so a row stuck on "Processing" never becomes "Completed"/"Failed" here without a
+// manual reload. Silently re-poll on an interval while any row is still processing, and stop the
+// moment none are — this only ever runs while there's actually something to wait on.
+const POLL_INTERVAL_MS = 8000
+let pollTimer: ReturnType<typeof setTimeout> | null = null
+
+function stopPolling() {
+  if (pollTimer) {
+    clearTimeout(pollTimer)
+    pollTimer = null
+  }
+}
+
+function pollIfNeeded() {
+  stopPolling()
+  if (!runs.list.some((r) => r.status === 'processing')) return
+  pollTimer = setTimeout(async () => {
+    await Promise.all([runs.fetchList(undefined, { silent: true }), cohorts.fetchList()])
+    await refreshStats()
+    pollIfNeeded()
+  }, POLL_INTERVAL_MS)
+}
+
 onMounted(() => {
-  runs.fetchList()
-  cohorts.fetchList()
+  loadRuns()
   window.addEventListener('click', closeAllMenus)
 })
 
 onUnmounted(() => {
+  stopPolling()
   window.removeEventListener('click', closeAllMenus)
 })
 
@@ -135,8 +176,10 @@ function sortValue(r: IngestionRun, key: SortKey): string | number {
       return r.triggerType ?? ''
     case 'status':
       return STATUS_ORDER[r.status]
-    case 'results':
-      return (r.counts?.committedNew ?? 0) + (r.counts?.updated ?? 0)
+    case 'results': {
+      const c = runs.stats.get(r.id)?.counts
+      return (c?.committedNew ?? 0) + (c?.updated ?? 0)
+    }
     case 'when':
       return whenOf(r) ?? ''
   }
@@ -278,6 +321,12 @@ function triggerWho(r: IngestionRun): string {
   return r.triggerType === 'SCHEDULED' ? 'System' : (r.triggeredByEmail ?? 'Admin')
 }
 
+/** Real counts for a run (§ FND-39) — `r.counts` itself is never populated by `runs.list`'s own
+ *  endpoint; `runs.stats` (from the audit log, fetched in `loadRuns`) has it. */
+function resultsFor(r: IngestionRun) {
+  return runs.stats.get(r.id)?.counts
+}
+
 // ── Row actions ───────────────────────────────────────────────────────────────
 function openRun(r: IngestionRun) {
   router.push({ name: 'admin-run-review', params: { id: r.id }, query: { cohortId: r.cohortId } })
@@ -303,8 +352,10 @@ async function runSync() {
   try {
     await runs.sync(selectedCohortId.value || undefined)
     toast.show({ tone: 'success', title: 'Sync triggered', body: 'A new run has started.' })
+    await refreshStats()
+    pollIfNeeded() // the newly triggered run starts out "processing" — start watching for it to finish
   } catch {
-    toast.show({ tone: 'warning', title: 'Sync failed', body: runs.error ?? 'Please try again.' })
+    toast.show({ tone: 'warning', title: 'Sync failed', body: runs.actionError ?? 'Please try again.' })
   }
 }
 </script>
@@ -318,12 +369,19 @@ async function runSync() {
     </div>
   </div>
 
+  <!-- Cohort lookup or stats enrichment failed: stats/filtering degrade quietly, so surface it
+       instead of silently omitting the STOOD_UP-based "needs attention" columns and cohort dropdown data. -->
+  <div v-if="(cohorts.error || runs.statsError) && !runs.error && !runs.loading" class="load-slow-banner" style="margin-bottom: 16px">
+    <VIcon name="alert-circle" :size="15" />
+    {{ cohorts.error ? `Could not load cohorts: ${cohorts.error}` : `Run statistics unavailable: ${runs.statsError}` }}
+  </div>
+
   <!-- Load error -->
   <div v-if="runs.error && !runs.loading" class="load-error-state">
     <div class="load-error-icon"><VIcon name="wifi-off" :size="28" /></div>
     <p class="load-error-title">Could not load runs</p>
     <p class="load-error-sub">{{ runs.error }}</p>
-    <VButton variant="ghost" icon="rotate-ccw" @click="runs.fetchList()">Try again</VButton>
+    <VButton variant="ghost" icon="rotate-ccw" @click="loadRuns">Try again</VButton>
   </div>
 
   <!-- Runs card -->
@@ -430,13 +488,13 @@ async function runSync() {
             <!-- Results -->
             <td v-if="cols.results">
               <span class="counts">
-                <span class="c-new">{{ r.counts?.committedNew ?? 0 }} new</span>
+                <span class="c-new">{{ resultsFor(r)?.committedNew ?? 0 }} new</span>
                 <span class="sep">·</span>
-                <span>{{ r.counts?.updated ?? 0 }} upd</span>
+                <span>{{ resultsFor(r)?.updated ?? 0 }} upd</span>
                 <span class="sep">·</span>
-                <span :class="{ 'c-bad': (r.counts?.skippedInvalid ?? 0) > 0 }">{{ r.counts?.skippedInvalid ?? 0 }} invalid</span>
+                <span :class="{ 'c-bad': (resultsFor(r)?.skippedInvalid ?? 0) > 0 }">{{ resultsFor(r)?.skippedInvalid ?? 0 }} invalid</span>
                 <span class="sep">·</span>
-                <span :class="{ 'c-conflict': (r.counts?.conflicts ?? 0) > 0 }">{{ r.counts?.conflicts ?? 0 }} conflict</span>
+                <span :class="{ 'c-conflict': (resultsFor(r)?.conflicts ?? 0) > 0 }">{{ resultsFor(r)?.conflicts ?? 0 }} conflict</span>
               </span>
             </td>
 
