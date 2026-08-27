@@ -175,6 +175,19 @@ export function invalidateCache(prefix: string) {
   }
 }
 
+/**
+ * Low-level fetch for bodies the JSON `http` wrapper can't express (FormData uploads, CSV template
+ * text/blob downloads) — prints the auth header the same way `request` would but returns the raw
+ * `Response` so the caller controls how non-JSON payloads are consumed. Error text is left to the
+ * caller; use `parseHttpError` to turn a non-OK response into a backend-friendly message.
+ */
+export async function fetchWithAuth(path: string, init: Omit<RequestInit, 'headers'> & { headers?: Record<string, string> } = {}): Promise<Response> {
+  const headers: Record<string, string> = { ...init.headers }
+  const token = getToken()
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  return fetch(`${BASE_URL}${path}`, { ...init, headers, credentials: 'include' })
+}
+
 export const http = {
   async post<T>(path: string, body?: unknown): Promise<T> {
     return request<T>('POST', path, body)

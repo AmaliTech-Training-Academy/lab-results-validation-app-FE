@@ -57,10 +57,17 @@ export interface GatePassedData {
   quizReferencePresent?: boolean // Gate 3
 }
 
-/** `gate.failed` event data (§9b). Pipeline stops at the first failing gate. */
+/**
+ * `gate.failed` event data (§9b). Pipeline stops at the first failing gate.
+ * `errors` is the backend's `GateError` record verbatim ({file, location, rule, message}) — NOT plain
+ * strings. `location` carries the field's actual context per gate: the raw SharePoint URL for Gate 1's
+ * G1-INVALID-URL, `"row N"` for most Gate 3 rules, or null. Unlike Gate 4's `file.failed` (which the
+ * backend pre-flattens into strings before emitting), gates 1-3 send the structured object straight
+ * through — matches `LocatedError` already, so no separate type is needed.
+ */
 export interface GateFailedData {
   gate: StreamGateNumber
-  errors: string[]
+  errors: LocatedError[]
 }
 
 /** `pipeline.done` event data (§9b) — always the last event on the stream. */
