@@ -1,5 +1,5 @@
 import { ref, computed, type Ref, type ComputedRef } from 'vue'
-import { toErrorMessage } from '@/utils/errors'
+import { toErrorMessage, toLocatedErrors } from '@/utils/errors'
 import type { LocatedError } from '@/types/common.types'
 import type { ReferenceBundleSummary } from '@/types/domain.types'
 import type {
@@ -111,7 +111,7 @@ export function useStandupStream(cohortId: string): StandupStream {
 
   function handleFailed(data: GateFailedData) {
     const id = gateIdFor(data.gate)
-    setGate(id, { status: 'failed', errors: data.errors.map((message) => ({ message })) })
+    setGate(id, { status: 'failed', errors: toLocatedErrors(data.errors) })
     markNotRun(id)
   }
 

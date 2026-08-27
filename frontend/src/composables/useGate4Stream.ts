@@ -1,5 +1,6 @@
 import { ref, computed, type Ref, type ComputedRef } from 'vue'
 import type { LocatedError } from '@/types/common.types'
+import { toLocatedErrors } from '@/utils/errors'
 import type {
   FileFailedData,
   FileGateResult,
@@ -81,7 +82,7 @@ export function useGate4Stream(cohortId: string, options: UseGate4StreamOptions 
   }
 
   function handleFailed(data: FileFailedData) {
-    upsertFile(data.file, { status: 'failed', errors: data.errors.map((message) => ({ message })) })
+    upsertFile(data.file, { status: 'failed', errors: toLocatedErrors(data.errors) })
   }
 
   function handleDone(data: Gate4DoneData) {

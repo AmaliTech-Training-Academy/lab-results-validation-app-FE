@@ -57,10 +57,14 @@ export interface GatePassedData {
   quizReferencePresent?: boolean // Gate 3
 }
 
-/** `gate.failed` event data (§9b). Pipeline stops at the first failing gate. */
+/**
+ * `gate.failed` event data (§9b). Pipeline stops at the first failing gate.
+ * `errors` is usually bare strings (Gate 1/2), but Gate 3 can send
+ * already-structured `LocatedError`s (file/row/rule) — see `toLocatedErrors`.
+ */
 export interface GateFailedData {
   gate: StreamGateNumber
-  errors: string[]
+  errors: Array<string | LocatedError>
 }
 
 /** `pipeline.done` event data (§9b) — always the last event on the stream. */
@@ -92,10 +96,10 @@ export interface FilePassedData {
   rows: number
 }
 
-/** `file.failed` event data (§9d). */
+/** `file.failed` event data (§9d). `errors` may be bare strings or structured `LocatedError`s (row/rule) — see `toLocatedErrors`. */
 export interface FileFailedData {
   file: string
-  errors: string[]
+  errors: Array<string | LocatedError>
 }
 
 /** `gate4.done` event data (§9d) — always the last event on the stream. */

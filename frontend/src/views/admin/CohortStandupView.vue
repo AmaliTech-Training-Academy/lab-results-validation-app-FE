@@ -3,13 +3,13 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
+import VGateErrorList from '@/components/base/VGateErrorList.vue'
 import { useCohortsStore } from '@/stores/cohorts'
 import { useStandupStore } from '@/stores/standup'
 import { useToastStore } from '@/stores/toast'
 import { useStandupStream } from '@/composables/useStandupStream'
 import { useGate4Stream } from '@/composables/useGate4Stream'
 import type { FileGateStatus, GateStatus } from '@/types/standup.types'
-import type { LocatedError } from '@/types/common.types'
 
 const route = useRoute()
 const router = useRouter()
@@ -142,10 +142,6 @@ const FILE_ICON: Record<FileGateStatus, string> = {
   failed: 'x-circle',
 }
 
-function fmtError(e: LocatedError): string {
-  const loc = [e.file, e.sheet, e.row != null ? `row ${e.row}` : '', e.rule].filter(Boolean).join(' · ')
-  return loc ? `${loc} — ${e.message}` : e.message
-}
 </script>
 
 <template>
@@ -214,9 +210,7 @@ function fmtError(e: LocatedError): string {
         <VIcon name="alert-triangle" :size="18" />
         <strong>{{ failedGate.label }} failed</strong>
       </div>
-      <ul class="err-list">
-        <li v-for="(e, i) in failedGate.errors" :key="i" class="err-item mono">{{ fmtError(e) }}</li>
-      </ul>
+      <VGateErrorList :errors="failedGate.errors" />
       <p class="panel-note">Fix the source data in SharePoint, then retry — or change the link and start over.</p>
       <div class="card-actions">
         <VButton variant="ghost" icon="pencil" @click="startOver">Change link</VButton>
@@ -267,9 +261,7 @@ function fmtError(e: LocatedError): string {
             <span v-if="f.status === 'passed'" class="file-meta">{{ f.rows }} rows</span>
           </li>
         </ul>
-        <ul class="err-list">
-          <li v-for="(e, i) in gate4.errors.value" :key="i" class="err-item mono">{{ fmtError(e) }}</li>
-        </ul>
+        <VGateErrorList :errors="gate4.errors.value" />
         <p class="panel-note">Fix the flagged score sheets in SharePoint, then retry.</p>
         <div class="card-actions">
           <VButton variant="ghost" icon="rotate-ccw" @click="discard">Discard / reset</VButton>
@@ -474,21 +466,6 @@ function fmtError(e: LocatedError): string {
   font-size: 13px;
   margin-bottom: 12px;
 }
-.err-list {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 8px 0;
-}
-.err-item {
-  font-size: 12.5px;
-  color: var(--danger);
-  background: rgba(255, 255, 255, 0.5);
-  padding: 6px 10px;
-  border-radius: 3px;
-}
-
 .file-list {
   list-style: none;
   display: flex;
