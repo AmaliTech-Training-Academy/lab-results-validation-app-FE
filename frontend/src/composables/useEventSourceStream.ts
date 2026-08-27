@@ -34,14 +34,19 @@ export function useEventSourceStream() {
     consecutiveErrors = 0
   }
 
-  /** Closes any existing source and opens a fresh one at `url`. */
-  function open(url: string): EventSource {
+  /**
+   * Closes any existing source and opens a fresh one at `url`. `onReconnect` fires whenever the
+   * browser (re)connects — including a reconnect the browser made on its own after a drop — so the
+   * caller can clear transient "reconnecting…" state once the stream is live again.
+   */
+  function open(url: string, onReconnect?: () => void): EventSource {
     closeSource()
     consecutiveErrors = 0
     source = new EventSource(url)
     // A successful (re)connect — including one the browser made on its own — clears the failure streak.
     source.addEventListener('open', () => {
       consecutiveErrors = 0
+      onReconnect?.()
     })
     return source
   }

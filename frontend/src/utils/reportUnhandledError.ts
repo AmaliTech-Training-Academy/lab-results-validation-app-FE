@@ -42,9 +42,13 @@ export function reportUnhandledError(error: unknown, context: string): void {
     return
   }
 
+  // `message` is already the backend's own explanation when there is one — `http.ts`'s
+  // `parseHttpError` pulls it out of the JSON error body before this ever gets thrown. Only fall
+  // back to a generic line when there's nothing useful to show (a non-Error throw, or a blank message).
+  const hasRealMessage = error instanceof Error && message.trim().length > 0
   toast.show({
     tone: 'danger',
     title: 'Something went wrong',
-    body: 'An unexpected error occurred. Please try again, and contact support if it keeps happening.',
+    body: hasRealMessage ? message : 'An unexpected error occurred. Please try again, and contact support if it keeps happening.',
   })
 }

@@ -58,15 +58,25 @@ function review(): RunReview {
   return { run, conflicts: [], notifications: [] }
 }
 
+function conflictRow(over: Partial<IngestionConflictResponse> = {}): IngestionConflictResponse {
+  return {
+    id: 'cf-1', ingestionRunId: 'run-1', cohortId: 'c1', learnerId: 'DEG-1', learnerName: 'Ama Boateng',
+    labId: 'lab-1', labTitle: 'FE State Management',
+    conflictKind: 'in_file_duplicate', existingResultId: null, existingResult: null,
+    candidates: [
+      { index: 0, fileName: 'FEM01.xlsx', sheetName: 'FEM01', rowNum: 12, nspName: 'Ama Boateng', score: 90, submittedOn: '2026-07-19', instructorContactId: 'ins-1', reviewerName: 'Kwame Asante', payloadIntact: true },
+    ],
+    incomingPayload: { score: [90] },
+    remediation: 'Duplicate row for Ama Boateng / FE State Management — sheet FEM01, row 12.',
+    status: 'PENDING', resolvedBy: null, resolvedAt: null, resolutionNote: null,
+    createdAt: '2026-07-21T08:01:00Z', updatedAt: '2026-07-21T08:01:00Z',
+    ...over,
+  }
+}
+
 function conflictsPage(overrides: Partial<Paged<IngestionConflictResponse>> = {}): Paged<IngestionConflictResponse> {
   return {
-    content: [{
-      id: 'cf-1', ingestionRunId: 'run-1', cohortId: 'c1', learnerId: 'DEG-1', labId: 'lab-1',
-      conflictKind: 'in_file_duplicate', existingResultId: null,
-      incomingPayload: { score: [90, 85] },
-      status: 'PENDING', resolvedBy: null, resolvedAt: null, resolutionNote: null,
-      createdAt: '2026-07-21T08:01:00Z', updatedAt: '2026-07-21T08:01:00Z',
-    }],
+    content: [conflictRow()],
     number: 0, size: 20, totalElements: 1, totalPages: 1, last: true,
     ...overrides,
   }
@@ -118,12 +128,21 @@ beforeEach(async () => {
   router.push({ name: 'admin-run-review', params: { id: 'run-1' }, query: { cohortId: 'c1' } })
   await router.isReady()
 })
-afterEach(() => vi.restoreAllMocks())
+let activeWrapper: ReturnType<typeof mount> | null = null
+afterEach(() => {
+  // Teleport (kebab popovers, the conflict resolution drawer) renders into document.body, outside
+  // the wrapper's own element — if left mounted, its DOM (and live event handlers) leak into the
+  // next test. Unmount explicitly rather than relying on each test to close what it opened.
+  activeWrapper?.unmount()
+  activeWrapper = null
+  vi.restoreAllMocks()
+})
 
 function mountView() {
   const pinia = createPinia()
   setActivePinia(pinia)
   const wrapper = mount(RunReviewView, { global: { plugins: [pinia, router] } })
+  activeWrapper = wrapper
   return { wrapper, pinia }
 }
 
@@ -151,7 +170,7 @@ describe('RunReviewView', () => {
     expect(text).toContain('Conflict queue')
     expect(text).toContain('Notifications')
     expect(text).toContain('High failure rate')
-    expect(text).toContain('DEG-1')
+    expect(text).toContain('Ama Boateng')
     expect(text).toContain('Sarah')
   })
 
@@ -221,18 +240,22 @@ describe('RunReviewView', () => {
     await flushPromises()
     await completeSync()
 
-    // Keep incoming lives in the conflict row's ⋮ kebab, whose menu teleports to <body>.
-    await wrapper.find('button[aria-label="Row actions"]').trigger('click')
+    // "Review" opens the resolution drawer, which teleports to <body>.
+    const reviewBtn = wrapper.findAll('button').find((b) => b.text() === 'Review')
+    await reviewBtn!.trigger('click')
     await flushPromises()
-    const keepIncoming = Array.from(document.body.querySelectorAll('button')).find((b) => b.textContent?.includes('Keep incoming'))
-    keepIncoming!.click()
+    const candidateCard = Array.from(document.body.querySelectorAll('.compare-card')).find((el) => el.textContent?.includes('90'))
+    ;(candidateCard as HTMLElement).click()
+    await flushPromises()
+    const keepBtn = Array.from(document.body.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Keep selected')
+    keepBtn!.click()
     await flushPromises()
 
-    expect(reviewSvc.resolveConflict).toHaveBeenCalledWith('c1', 'cf-1', { action: 'KEEP_INCOMING' })
+    expect(reviewSvc.resolveConflict).toHaveBeenCalledWith('c1', 'cf-1', { action: 'KEEP_INCOMING', chosenRowIndex: 0 })
     expect(wrapper.text()).toContain('RESOLVED')
   })
 
-  it('hides the Keep existing button when there is no existing result to keep', async () => {
+  it('disables picking the existing row in the drawer when there is no existing result to keep', async () => {
     vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
     vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
     vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage())
@@ -241,11 +264,145 @@ describe('RunReviewView', () => {
     await flushPromises()
     await completeSync()
 
-    await wrapper.find('button[aria-label="Row actions"]').trigger('click')
+    const reviewBtn = wrapper.findAll('button').find((b) => b.text() === 'Review')
+    await reviewBtn!.trigger('click')
     await flushPromises()
-    const popoverButtons = Array.from(document.body.querySelectorAll('button')).map((b) => b.textContent?.trim())
-    expect(popoverButtons).not.toContain('Keep existing')
-    expect(popoverButtons.some((t) => t?.includes('Keep incoming'))).toBe(true)
+    const cards = document.body.querySelectorAll('.compare-card')
+    expect(cards[0]?.textContent).toContain('Existing')
+    expect(cards[0]?.hasAttribute('disabled')).toBe(true)
+    expect(cards[1]?.hasAttribute('disabled')).toBe(false)
+  })
+
+  it('shows the trainee name, lab title and both marks for a duplicate with two candidates, not raw ids/JSON', async () => {
+    vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
+    vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
+    vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage({
+      content: [conflictRow({
+        candidates: [
+          { index: 0, fileName: 'FEM01.xlsx', sheetName: 'FEM01', rowNum: 12, nspName: 'Ama Boateng', score: 90, submittedOn: '2026-07-19', instructorContactId: 'ins-1', reviewerName: 'Kwame Asante', payloadIntact: true },
+          { index: 1, fileName: 'FEM01.xlsx', sheetName: 'FEM01', rowNum: 21, nspName: 'Ama Boateng', score: 85, submittedOn: '2026-07-19', instructorContactId: 'ins-1', reviewerName: 'Kwame Asante', payloadIntact: true },
+        ],
+      })],
+    }))
+    vi.mocked(reviewSvc.listNotifications).mockResolvedValue(notificationsPage())
+    const { wrapper } = mountView()
+    await flushPromises()
+    await completeSync()
+
+    // Names, not raw ids — and both marks are visible right in the collapsed row, not just after a click.
+    expect(wrapper.text()).toContain('Ama Boateng')
+    expect(wrapper.text()).toContain('FE State Management')
+    expect(wrapper.text()).not.toContain('DEG-1')
+    expect(wrapper.text()).toContain('90')
+    expect(wrapper.text()).toContain('85')
+
+    // Full location detail lives in the resolution drawer.
+    const reviewBtn = wrapper.findAll('button').find((b) => b.text() === 'Review')
+    await reviewBtn!.trigger('click')
+    await flushPromises()
+    const bodyText = document.body.textContent ?? ''
+    expect(bodyText).toContain('sheet FEM01 row 12')
+    expect(bodyText).toContain('sheet FEM01 row 21')
+  })
+
+  it('resolves KEEP_INCOMING with the chosen candidate index when a conflict has more than one candidate', async () => {
+    vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
+    vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
+    vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage({
+      content: [conflictRow({
+        candidates: [
+          { index: 0, fileName: 'FEM01.xlsx', sheetName: 'FEM01', rowNum: 12, nspName: 'Ama Boateng', score: 90, submittedOn: '2026-07-19', instructorContactId: 'ins-1', reviewerName: 'Kwame Asante', payloadIntact: true },
+          { index: 1, fileName: 'FEM01.xlsx', sheetName: 'FEM01', rowNum: 21, nspName: 'Ama Boateng', score: 85, submittedOn: '2026-07-19', instructorContactId: 'ins-1', reviewerName: 'Kwame Asante', payloadIntact: true },
+        ],
+      })],
+    }))
+    vi.mocked(reviewSvc.listNotifications).mockResolvedValue(notificationsPage())
+    vi.mocked(reviewSvc.resolveConflict).mockResolvedValue({ ...conflictsPage().content[0]!, status: 'RESOLVED' })
+    const { wrapper } = mountView()
+    await flushPromises()
+    await completeSync()
+
+    const reviewBtn = wrapper.findAll('button').find((b) => b.text() === 'Review')
+    await reviewBtn!.trigger('click')
+    await flushPromises()
+
+    // Pick the second candidate (row 21, score 85) — not the first — to prove the index actually threads through.
+    const candidateCard = Array.from(document.body.querySelectorAll('.compare-card')).find((el) => el.textContent?.includes('row 21'))
+    ;(candidateCard as HTMLElement).click()
+    await flushPromises()
+    const keepBtn = Array.from(document.body.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Keep selected')
+    keepBtn!.click()
+    await flushPromises()
+
+    expect(reviewSvc.resolveConflict).toHaveBeenCalledWith('c1', 'cf-1', { action: 'KEEP_INCOMING', chosenRowIndex: 1 })
+  })
+
+  it('sends an optional resolution note along with the decision', async () => {
+    vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
+    vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
+    vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage())
+    vi.mocked(reviewSvc.listNotifications).mockResolvedValue(notificationsPage())
+    vi.mocked(reviewSvc.resolveConflict).mockResolvedValue({ ...conflictsPage().content[0]!, status: 'RESOLVED', resolutionNote: 'Later submission is correct' })
+    const { wrapper } = mountView()
+    await flushPromises()
+    await completeSync()
+
+    const reviewBtn = wrapper.findAll('button').find((b) => b.text() === 'Review')
+    await reviewBtn!.trigger('click')
+    await flushPromises()
+    ;(document.body.querySelector('.compare-card:not(:disabled)') as HTMLElement).click()
+    const textarea = document.body.querySelector('textarea') as HTMLTextAreaElement
+    textarea.value = 'Later submission is correct'
+    textarea.dispatchEvent(new Event('input'))
+    await flushPromises()
+    const keepBtn = Array.from(document.body.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Keep selected')
+    keepBtn!.click()
+    await flushPromises()
+
+    expect(reviewSvc.resolveConflict).toHaveBeenCalledWith('c1', 'cf-1', { action: 'KEEP_INCOMING', chosenRowIndex: 0, note: 'Later submission is correct' })
+  })
+
+  it('rejects both rows from the resolution drawer', async () => {
+    vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
+    vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
+    vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage())
+    vi.mocked(reviewSvc.listNotifications).mockResolvedValue(notificationsPage())
+    vi.mocked(reviewSvc.resolveConflict).mockResolvedValue({ ...conflictsPage().content[0]!, status: 'DISMISSED' })
+    const { wrapper } = mountView()
+    await flushPromises()
+    await completeSync()
+
+    const reviewBtn = wrapper.findAll('button').find((b) => b.text() === 'Review')
+    await reviewBtn!.trigger('click')
+    await flushPromises()
+    const rejectBtn = Array.from(document.body.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Reject both')
+    rejectBtn!.click()
+    await flushPromises()
+
+    expect(reviewSvc.resolveConflict).toHaveBeenCalledWith('c1', 'cf-1', { action: 'REJECT' })
+    expect(wrapper.text()).toContain('DISMISSED')
+  })
+
+  it('shows the backend error inline in the drawer and keeps it open when resolving fails', async () => {
+    vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
+    vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
+    vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage())
+    vi.mocked(reviewSvc.listNotifications).mockResolvedValue(notificationsPage())
+    vi.mocked(reviewSvc.resolveConflict).mockRejectedValue(new Error('Conflict was already resolved by another admin'))
+    const { wrapper } = mountView()
+    await flushPromises()
+    await completeSync()
+
+    const reviewBtn = wrapper.findAll('button').find((b) => b.text() === 'Review')
+    await reviewBtn!.trigger('click')
+    await flushPromises()
+    ;(document.body.querySelector('.compare-card:not(:disabled)') as HTMLElement).click()
+    await flushPromises()
+    const keepBtn = Array.from(document.body.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Keep selected')
+    keepBtn!.click()
+    await flushPromises()
+
+    expect(document.body.textContent).toContain('Conflict was already resolved by another admin')
   })
 
   it('fetches notifications for the run and paginates via the Next button', async () => {
@@ -292,9 +449,9 @@ describe('RunReviewView', () => {
     await flushPromises()
     await completeSync()
 
-    // Notify lives in the notification row's ⋮ kebab — the second one on the page, since the conflict
-    // queue's pending row renders one too — whose menu teleports to <body>.
-    await wrapper.findAll('button[aria-label="Row actions"]')[1]!.trigger('click')
+    // Notify lives in the notification row's ⋮ kebab, whose menu teleports to <body>. The conflict
+    // queue has no kebab of its own (resolution happens in the drawer), so this is the only one.
+    await wrapper.findAll('button[aria-label="Row actions"]')[0]!.trigger('click')
     await flushPromises()
     const notify = Array.from(document.body.querySelectorAll('button')).find((b) => b.textContent?.includes('Notify'))
     notify!.click()
@@ -303,6 +460,50 @@ describe('RunReviewView', () => {
     expect(reviewSvc.sendNotification).toHaveBeenCalledWith('nt-1')
     expect(wrapper.text()).toContain('Sent')
     expect(wrapper.text()).toContain('Sent 2026-07-21 08:05')
+  })
+
+  it('shows the real backend error when sending a notification fails, not a silent title-only toast', async () => {
+    vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
+    vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
+    vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage())
+    vi.mocked(reviewSvc.listNotifications).mockResolvedValue(notificationsPage())
+    vi.mocked(reviewSvc.sendNotification).mockRejectedValue(new Error('Notification provider rate limit exceeded'))
+    const { wrapper, pinia } = mountView()
+    await flushPromises()
+    await completeSync()
+
+    await wrapper.findAll('button[aria-label="Row actions"]')[0]!.trigger('click')
+    await flushPromises()
+    const notify = Array.from(document.body.querySelectorAll('button')).find((b) => b.textContent?.includes('Notify'))
+    notify!.click()
+    await flushPromises()
+
+    const toast = useToastStore(pinia)
+    const last = toast.toasts[toast.toasts.length - 1]
+    expect(last?.title).toBe('Could not queue send')
+    expect(last?.body).toBe('Notification provider rate limit exceeded')
+  })
+
+  it('shows the real backend error when dismissing a notification fails', async () => {
+    vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
+    vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
+    vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage())
+    vi.mocked(reviewSvc.listNotifications).mockResolvedValue(notificationsPage())
+    vi.mocked(reviewSvc.dismissNotification).mockRejectedValue(new Error('Notification already sent'))
+    const { wrapper, pinia } = mountView()
+    await flushPromises()
+    await completeSync()
+
+    await wrapper.findAll('button[aria-label="Row actions"]')[0]!.trigger('click')
+    await flushPromises()
+    const dismiss = Array.from(document.body.querySelectorAll('button')).find((b) => b.textContent?.includes('Dismiss'))
+    dismiss!.click()
+    await flushPromises()
+
+    const toast = useToastStore(pinia)
+    const last = toast.toasts[toast.toasts.length - 1]
+    expect(last?.title).toBe('Could not dismiss')
+    expect(last?.body).toBe('Notification already sent')
   })
 
   it('blanks the notifications row-actions kebab once a notification is sent', async () => {
@@ -316,9 +517,8 @@ describe('RunReviewView', () => {
     await flushPromises()
     await completeSync()
 
-    // Only the conflict queue's pending row has a kebab — the sent notification has no actions left,
-    // so its cell falls back to a dash instead of a ⋮ button.
-    expect(wrapper.findAll('button[aria-label="Row actions"]')).toHaveLength(1)
+    // The sent notification has no actions left, so its cell falls back to a dash instead of a ⋮ button.
+    expect(wrapper.findAll('button[aria-label="Row actions"]')).toHaveLength(0)
   })
 
   it('send-all queues held notifications (202 + count) and refreshes the page, reporting the count as queued not sent', async () => {
@@ -398,9 +598,9 @@ describe('RunReviewView', () => {
     await flushPromises()
     await completeSync()
 
-    // Notify lives in the notification row's ⋮ kebab — the second one on the page, since the conflict
-    // queue's pending row renders one too — whose menu teleports to <body>.
-    await wrapper.findAll('button[aria-label="Row actions"]')[1]!.trigger('click')
+    // Notify lives in the notification row's ⋮ kebab, whose menu teleports to <body>. The conflict
+    // queue has no kebab of its own (resolution happens in the drawer), so this is the only one.
+    await wrapper.findAll('button[aria-label="Row actions"]')[0]!.trigger('click')
     await flushPromises()
     const notify = Array.from(document.body.querySelectorAll('button')).find((b) => b.textContent?.includes('Notify'))
     notify!.click()

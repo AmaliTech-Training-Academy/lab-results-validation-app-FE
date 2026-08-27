@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import VButton from '@/components/base/VButton.vue'
+import VDrawer from '@/components/base/VDrawer.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import VPill from '@/components/base/VPill.vue'
 import { useRunReviewStore } from '@/stores/runReview'
@@ -98,7 +99,6 @@ const notifications = computed(() => store.notificationsPage?.content ?? [])
 // ids never collide, so one shared state covers both tables on this page.
 const activeKebabId = ref<string | null>(null)
 const kebabPos = ref<{ top: number; left: number } | null>(null)
-const activeKebabConflict = computed(() => conflictRows.value.find((c) => c.id === activeKebabId.value) ?? null)
 const activeKebabNotification = computed(() => notifications.value.find((n) => n.id === activeKebabId.value) ?? null)
 
 function toggleKebab(event: MouseEvent, id: string) {
@@ -223,18 +223,66 @@ function refreshNotifications() {
   store.fetchNotifications(cohortId, runId, store.notificationsPage?.number ?? 0)
 }
 
+// ── Conflict resolution drawer — replaces per-button table actions with a single "Review" entry
+// point that opens a merge-style comparison (existing vs. every incoming candidate), a pick, an
+// optional note, then one explicit confirm. Safer than firing the resolve call straight off a table
+// button, and it's the only place `note` (previously dead — no UI ever set it) gets surfaced.
+const reviewingConflict = ref<IngestionConflictResponse | null>(null)
+/** 'existing' keeps the committed row; a number is the chosen `ConflictCandidate.index`. */
+const selectedChoice = ref<'existing' | number | null>(null)
+const resolutionNote = ref('')
+const resolveBusy = ref(false)
+const resolveError = ref<string | null>(null)
+
 const RESOLVE_TOAST_TITLE: Record<ConflictResolutionAction, string> = {
   KEEP_EXISTING: 'Kept the existing row',
   KEEP_INCOMING: 'Kept the incoming row',
   REJECT: 'Conflict rejected',
 }
 
-async function resolveConflictRow(c: IngestionConflictResponse, action: ConflictResolutionAction) {
+function openReview(c: IngestionConflictResponse) {
   closeKebab()
-  await withToast(() => store.resolveConflict(cohortId, c.id, { action }), {
-    success: { tone: 'success', title: RESOLVE_TOAST_TITLE[action] },
-    error: { tone: 'warning', title: 'Could not resolve conflict' },
-  })
+  reviewingConflict.value = c
+  selectedChoice.value = null
+  resolutionNote.value = ''
+  resolveError.value = null
+}
+function closeReview() {
+  reviewingConflict.value = null
+}
+function selectChoice(choice: 'existing' | number) {
+  if (reviewingConflict.value?.status !== 'PENDING') return
+  selectedChoice.value = choice
+}
+function candidateLocation(cand: IngestionConflictResponse['candidates'][number]): string {
+  return [cand.sheetName ? `sheet ${cand.sheetName}` : '', cand.rowNum != null ? `row ${cand.rowNum}` : ''].filter(Boolean).join(' ') || cand.fileName
+}
+
+async function confirmResolve(action: ConflictResolutionAction) {
+  const c = reviewingConflict.value
+  if (!c) return
+  resolveBusy.value = true
+  resolveError.value = null
+  try {
+    await store.resolveConflict(cohortId, c.id, {
+      action,
+      chosenRowIndex: typeof selectedChoice.value === 'number' ? selectedChoice.value : undefined,
+      note: resolutionNote.value.trim() || undefined,
+    })
+    toast.show({ tone: 'success', title: RESOLVE_TOAST_TITLE[action] })
+    closeReview()
+  } catch (e) {
+    resolveError.value = toErrorMessage(e, 'Could not resolve conflict')
+  } finally {
+    resolveBusy.value = false
+  }
+}
+function confirmKeep() {
+  if (selectedChoice.value == null) return
+  confirmResolve(selectedChoice.value === 'existing' ? 'KEEP_EXISTING' : 'KEEP_INCOMING')
+}
+function confirmReject() {
+  confirmResolve('REJECT')
 }
 
 async function sendOne(n: Notification) {
@@ -415,33 +463,28 @@ function recipientLabel(n: Notification): string {
               <tr>
                 <th>Learner</th>
                 <th>Lab</th>
-                <th>Existing result</th>
+                <th>Marks</th>
                 <th style="text-align: center">Status</th>
-                <th>Incoming payload</th>
-                <th>Resolution</th>
                 <th>Created</th>
                 <th style="text-align: right">Actions</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="c in conflictRows" :key="c.id">
-                <td class="mono">{{ c.learnerId ?? '—' }}</td>
-                <td class="mono">{{ c.labId ?? '—' }}</td>
-                <td class="mono muted">{{ c.existingResultId ?? '— (new row)' }}</td>
-                <td style="text-align: center"><VPill :tone="CONFLICT_STATUS_TONE[c.status] ?? 'info'">{{ c.status }}</VPill></td>
+                <td>{{ c.learnerName ?? c.learnerId ?? '—' }}</td>
+                <td>{{ c.labTitle ?? c.labId ?? '—' }}</td>
                 <td>
-                  <details>
-                    <summary class="mono">payload</summary>
-                    <pre class="mono payload">{{ JSON.stringify(c.incomingPayload, null, 2) }}</pre>
-                  </details>
+                  <div class="marks-summary">
+                    <span v-if="c.existingResult" class="mark-chip mark-chip--existing" title="Existing (committed)">{{ c.existingResult.score }}</span>
+                    <span v-for="cand in c.candidates" :key="cand.index" class="mark-chip" :class="{ 'mark-chip--corrupt': !cand.payloadIntact }" :title="candidateLocation(cand)">
+                      {{ cand.score ?? '—' }}
+                    </span>
+                  </div>
                 </td>
-                <td class="muted">{{ c.resolutionNote ?? '—' }}</td>
+                <td style="text-align: center"><VPill :tone="CONFLICT_STATUS_TONE[c.status] ?? 'info'">{{ c.status }}</VPill></td>
                 <td class="mono muted">{{ formatRunAt(c.createdAt) }}</td>
                 <td style="text-align: right">
-                  <button v-if="c.status === 'PENDING'" class="kebab" aria-label="Row actions" @click="toggleKebab($event, c.id)">
-                    <VIcon name="more-vertical" :size="18" />
-                  </button>
-                  <span v-else class="muted">—</span>
+                  <VButton size="sm" variant="ghost" icon="git-merge" @click="openReview(c)">{{ c.status === 'PENDING' ? 'Review' : 'View' }}</VButton>
                 </td>
               </tr>
             </tbody>
@@ -581,23 +624,82 @@ function recipientLabel(n: Notification): string {
     </section>
   </template>
 
-  <!-- Conflict row actions popover -->
-  <Teleport to="body">
-    <div v-if="activeKebabConflict && kebabPos" class="pop" :style="{ top: `${kebabPos.top}px`, left: `${kebabPos.left}px` }" @click.stop>
-      <button v-if="activeKebabConflict.existingResultId" class="pop-item" @click="resolveConflictRow(activeKebabConflict, 'KEEP_EXISTING')">
-        <VIcon name="check" :size="15" />
-        Keep existing
-      </button>
-      <button class="pop-item" @click="resolveConflictRow(activeKebabConflict, 'KEEP_INCOMING')">
-        <VIcon name="check-circle-2" :size="15" />
-        Keep incoming
-      </button>
-      <button class="pop-item danger" @click="resolveConflictRow(activeKebabConflict, 'REJECT')">
-        <VIcon name="x-circle" :size="15" />
-        Reject
-      </button>
-    </div>
-  </Teleport>
+  <!-- Conflict resolution drawer — merge-style comparison: pick existing or a candidate, add an
+       optional note, then one explicit confirm. Read-only (no picking) once already resolved/dismissed. -->
+  <VDrawer
+    :open="!!reviewingConflict"
+    :title="reviewingConflict ? (reviewingConflict.learnerName ?? reviewingConflict.learnerId ?? 'Conflict') : ''"
+    :subtitle="reviewingConflict?.labTitle ?? reviewingConflict?.labId ?? undefined"
+    :error="resolveError || undefined"
+    @close="closeReview"
+  >
+    <template v-if="reviewingConflict">
+      <p v-if="reviewingConflict.remediation" class="remediation-note">{{ reviewingConflict.remediation }}</p>
+
+      <div class="compare-grid" role="radiogroup" aria-label="Which row to keep">
+        <button
+          type="button"
+          class="compare-card"
+          :class="{ 'compare-card--pickable': reviewingConflict.status === 'PENDING' && reviewingConflict.existingResult, 'compare-card--selected': selectedChoice === 'existing' }"
+          :disabled="reviewingConflict.status !== 'PENDING' || !reviewingConflict.existingResult"
+          role="radio"
+          :aria-checked="selectedChoice === 'existing'"
+          @click="selectChoice('existing')"
+        >
+          <VIcon v-if="selectedChoice === 'existing'" name="check-circle-2" :size="16" class="compare-check" />
+          <div class="compare-label">Existing (committed)</div>
+          <template v-if="reviewingConflict.existingResult">
+            <div class="compare-score mono">{{ reviewingConflict.existingResult.score }}</div>
+            <div class="compare-meta">{{ reviewingConflict.existingResult.reviewerName ?? '—' }} · {{ reviewingConflict.existingResult.submittedOn }}</div>
+          </template>
+          <div v-else class="compare-empty">No committed row yet</div>
+        </button>
+        <button
+          v-for="cand in reviewingConflict.candidates"
+          :key="cand.index"
+          type="button"
+          class="compare-card"
+          :class="{ 'compare-card--pickable': reviewingConflict.status === 'PENDING' && cand.payloadIntact, 'compare-card--selected': selectedChoice === cand.index }"
+          :disabled="reviewingConflict.status !== 'PENDING' || !cand.payloadIntact"
+          role="radio"
+          :aria-checked="selectedChoice === cand.index"
+          @click="selectChoice(cand.index)"
+        >
+          <VIcon v-if="selectedChoice === cand.index" name="check-circle-2" :size="16" class="compare-check" />
+          <div class="compare-label mono">{{ candidateLocation(cand) }}</div>
+          <div class="compare-score mono">{{ cand.score ?? '—' }}</div>
+          <div class="compare-meta">{{ cand.reviewerName ?? '—' }} · {{ cand.submittedOn ?? '—' }}</div>
+          <p v-if="!cand.payloadIntact" class="compare-warn"><VIcon name="alert-triangle" :size="12" /> Incomplete row — can't be kept</p>
+        </button>
+      </div>
+
+      <template v-if="reviewingConflict.status === 'PENDING'">
+        <label class="ff" style="margin-top: 16px">
+          <span class="ff-label">Note (optional)</span>
+          <span class="ff-input" style="height: auto; padding: 10px 14px">
+            <textarea v-model="resolutionNote" rows="2" placeholder="Why this decision — shown in the audit log" style="border: none; outline: none; resize: vertical; width: 100%; font-family: inherit; font-size: 14px; background: transparent" />
+          </span>
+        </label>
+      </template>
+      <template v-else>
+        <p class="resolution-meta">
+          <strong>{{ reviewingConflict.status === 'DISMISSED' ? 'Rejected' : 'Resolved' }}</strong>
+          <template v-if="reviewingConflict.resolvedAt"> {{ formatRunAt(reviewingConflict.resolvedAt) }}</template>
+          <template v-if="reviewingConflict.resolutionNote"> — {{ reviewingConflict.resolutionNote }}</template>
+        </p>
+      </template>
+    </template>
+
+    <template v-if="reviewingConflict?.status === 'PENDING'" #footer>
+      <VButton variant="danger" :disabled="resolveBusy" @click="confirmReject">Reject both</VButton>
+      <VButton variant="primary" :disabled="selectedChoice == null || resolveBusy" @click="confirmKeep">
+        {{ resolveBusy ? 'Saving…' : 'Keep selected' }}
+      </VButton>
+    </template>
+    <template v-else #footer>
+      <VButton variant="ghost" @click="closeReview">Close</VButton>
+    </template>
+  </VDrawer>
 
   <!-- Notification row actions popover -->
   <Teleport to="body">
@@ -669,8 +771,30 @@ function recipientLabel(n: Notification): string {
 .fld > span { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); }
 .fld select { height: 34px; border: 1px solid var(--border); border-radius: var(--r-sm, 4px); background: #fff; padding: 0 10px; font-family: inherit; font-size: 13px; color: var(--text); }
 .fld select:focus-visible { outline: none; border-color: var(--navy); box-shadow: var(--ring-focus); }
-.payload { margin-top: 8px; font-size: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 3px; padding: 8px 10px; max-width: 360px; overflow-x: auto; }
 details summary { cursor: pointer; font-size: 12.5px; color: var(--text-secondary); }
+
+/* Conflict queue — collapsed-row "Marks" chips */
+.marks-summary { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.mark-chip { font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-sm, 4px); padding: 2px 8px; }
+.mark-chip--existing { background: var(--info-bg); color: var(--info); border-color: transparent; }
+.mark-chip--corrupt { color: var(--danger); background: var(--danger-bg); border-color: transparent; text-decoration: line-through; }
+
+/* Conflict resolution drawer — merge-style comparison */
+.remediation-note { font-size: 12.5px; color: var(--text-secondary); background: var(--bg); border-radius: var(--r-sm, 4px); padding: 8px 10px; margin: 0 0 14px; }
+.compare-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+.compare-card { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md, 6px); padding: 12px; display: flex; flex-direction: column; gap: 4px; text-align: left; font-family: inherit; cursor: default; }
+.compare-card--pickable { cursor: pointer; }
+.compare-card--pickable:hover { border-color: var(--navy); }
+.compare-card--pickable:focus-visible { outline: none; box-shadow: var(--ring-focus); }
+.compare-card--selected { border-color: var(--navy); background: var(--info-bg); box-shadow: 0 0 0 1px var(--navy); }
+.compare-card:disabled { opacity: 0.6; }
+.compare-check { position: absolute; top: 10px; right: 10px; color: var(--navy); }
+.compare-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); padding-right: 20px; }
+.compare-score { font-size: 22px; font-weight: 600; color: var(--text); }
+.compare-meta { font-size: 12px; color: var(--text-secondary); }
+.compare-empty { font-size: 12.5px; color: var(--text-secondary); font-style: italic; }
+.compare-warn { display: flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--danger); margin: 4px 0 0; }
+.resolution-meta { font-size: 13px; color: var(--text-secondary); margin-top: 14px; }
 
 .stale-banner { display: flex; align-items: center; gap: 6px; background: var(--info-bg, rgba(0, 90, 255, 0.06)); color: var(--text); border-radius: var(--r-sm, 4px); padding: 8px 12px; font-size: 13px; margin-bottom: 12px; }
 .link-btn { display: inline-flex; align-items: center; gap: 4px; border: none; background: none; padding: 0; margin-left: 4px; color: var(--navy, #08283b); font-weight: 600; font-size: 13px; cursor: pointer; text-decoration: underline; }
@@ -679,10 +803,6 @@ details summary { cursor: pointer; font-size: 12.5px; color: var(--text-secondar
 .notif-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
 .notif-head-actions { display: flex; align-items: flex-end; gap: 12px; }
 
-/* Danger action in the row-actions popover (Reject) — matches SyncSchedulesView's kebab-menu treatment */
-.pop-item.danger { color: var(--danger); }
-.pop-item.danger:hover { background: var(--danger-bg); }
-.pop-item.danger svg { color: var(--danger); }
 .notif-tbl-scroll { overflow-x: auto; }
 .cell-title { font-weight: 500; }
 .sub { font-size: 12px; }

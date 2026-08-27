@@ -38,6 +38,13 @@ export type ConflictResolutionAction = 'KEEP_EXISTING' | 'KEEP_INCOMING' | 'REJE
 /** Body for PATCH /cohorts/{id}/conflicts/{conflictId}/resolve. */
 export interface ResolveConflictPayload {
   action: ConflictResolutionAction
+  /**
+   * The 0-based `ConflictCandidate.index` the admin picked. Required for KEEP_INCOMING whenever the
+   * conflict holds more than one candidate — the backend has no other way to know which of the ≥2
+   * conflicting incoming rows should become authoritative. May be omitted only when the conflict holds
+   * exactly one candidate (auto-selected server-side). Ignored for KEEP_EXISTING/REJECT.
+   */
+  chosenRowIndex?: number
   note?: string
 }
 
@@ -49,21 +56,58 @@ export const CONFLICT_STATUS_TONE: Record<ConflictStatus, 'success' | 'warning' 
 }
 
 /**
+ * One conflicting incoming row held for manual resolution — one duplicate = one conflict with N
+ * candidates (post the "hold a duplicated row as one conflict with one decision" fix), each candidate
+ * being a spreadsheet row that disagreed with the others. `index` is the value `ResolveConflictPayload
+ * .chosenRowIndex` must reference to pick this candidate for KEEP_INCOMING.
+ */
+export interface ConflictCandidate {
+  index: number
+  fileName: string
+  sheetName: string
+  rowNum: number | null
+  nspName: string | null
+  score: number | null
+  submittedOn: string | null // ISO date
+  instructorContactId: string | null
+  reviewerName: string | null
+  /** False for a corrupt/incomplete row (e.g. missing score or submittedOn) — not committable, so KEEP_INCOMING on it is rejected server-side. */
+  payloadIntact: boolean
+}
+
+/** The already-committed row a conflict's candidates are competing against, if one exists yet. */
+export interface ExistingResultView {
+  id: string
+  score: number
+  submittedOn: string // ISO date
+  instructorContactId: string | null
+  reviewerName: string | null
+}
+
+/**
  * GET /cohorts/{id}/sync/runs/{jobId}/conflicts response row — backend: IngestionConflictResponse
- * record (B10). This is the raw/normalized shape straight off the
- * ingestion_conflicts table — unlike `IngestionConflict` above, it has no
- * denormalized row values (`existingResultId` is just an id, `incomingPayload`
- * is the raw column map), plus the resolution audit fields.
+ * record (B10, post duplicate-conflict-grouping rework). `learnerName`/`labTitle`/`existingResult`/
+ * each candidate's `reviewerName` are denormalized server-side by IngestionConflictViewAssembler —
+ * always populated on the real HTTP response (may be null if the underlying learner/instructor record
+ * is gone). `incomingPayload` is the raw verbatim column map kept for a "raw JSON" debug view — prefer
+ * `candidates` for display.
  */
 export interface IngestionConflictResponse {
   id: string
   ingestionRunId: string
   cohortId: string
   learnerId: string | null
+  learnerName: string | null
   labId: string | null
+  labTitle: string | null
   conflictKind: ConflictKind
   existingResultId: string | null
+  existingResult: ExistingResultView | null
+  /** The ≥1 conflicting incoming rows held for manual resolution — pick one via `ResolveConflictPayload.chosenRowIndex`. */
+  candidates: ConflictCandidate[]
   incomingPayload: Record<string, unknown>
+  /** Human-readable pointer to where the duplicate physically lives in the sheet, for the admin. */
+  remediation: string | null
   status: ConflictStatus
   resolvedBy: string | null
   resolvedAt: string | null

@@ -162,6 +162,11 @@ export async function resolveConflict(
     const { mockDelay, ingestionConflictResponses } = await import('./mock/fixtures')
     const c = ingestionConflictResponses.find((x) => x.id === conflictId)
     if (!c) throw new Error('Conflict not found')
+    // Mirrors the backend's selectCandidate validation: KEEP_INCOMING needs to know which of ≥2
+    // candidates was chosen — only auto-selectable when there's exactly one.
+    if (payload.action === 'KEEP_INCOMING' && c.candidates.length > 1 && payload.chosenRowIndex == null) {
+      throw new Error('chosenRowIndex is required when a conflict has more than one candidate')
+    }
     c.status = payload.action === 'REJECT' ? 'DISMISSED' : 'RESOLVED'
     c.resolutionNote = payload.note ?? null
     c.resolvedBy = 'you@amalitech.com'

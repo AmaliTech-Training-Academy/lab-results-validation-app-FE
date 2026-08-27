@@ -9,6 +9,7 @@ import VDrawer from '@/components/base/VDrawer.vue'
 import VDatePicker from '@/components/base/VDatePicker.vue'
 import { useCohortsStore } from '@/stores/cohorts'
 import { useToastStore } from '@/stores/toast'
+import { toErrorMessage } from '@/utils/errors'
 import { cohortDisplayState, type Cohort, type CohortDisplayState } from '@/types/domain.types'
 
 const router = useRouter()
@@ -268,7 +269,7 @@ async function submit() {
     showDrawer.value = false
     router.push({ name: 'admin-cohort-standup', params: { id: cohort.id } })
   } catch (e) {
-    formError.value = e instanceof Error ? e.message : 'Failed to create cohort. Please try again.'
+    formError.value = toErrorMessage(e, 'Failed to create cohort. Please try again.')
   } finally {
     submitting.value = false
   }

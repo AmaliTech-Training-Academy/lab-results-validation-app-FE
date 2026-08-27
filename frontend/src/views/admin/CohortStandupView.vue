@@ -80,25 +80,58 @@ async function runValidation() {
     localError.value = 'Enter the SharePoint folder link.'
     return
   }
-  await standup.start(cohortId, linkInput.value.trim())
+  try {
+    await standup.start(cohortId, linkInput.value.trim())
+  } catch {
+    // start()'s failure is captured in standup.error and rendered inline below — catching here (and
+    // stopping) keeps the stream from being kicked off for a stand-up that never started.
+    return
+  }
   stream.start() // drives Gates 1-3 over SSE
 }
 
 async function accept() {
-  await standup.accept(cohortId)
+  try {
+    await standup.accept(cohortId)
+  } catch {
+    // standup.error is already set by the store and rendered inline below — stop here rather than
+    // letting the rejection go unhandled (which would trigger the generic "Something went wrong"
+    // toast and swallow the backend's real explanation) or chaining into Gate 4 on a failed accept.
+    return
+  }
   acceptDone.value = true
   await cohorts.fetchCohort(cohortId)
-  await standup.runGate4(cohortId)
+  try {
+    await standup.runGate4(cohortId)
+  } catch {
+    // The commit itself succeeded (acceptDone stays true) but triggering Gate 4 failed — same
+    // silent-failure shape as accept() above. standup.error is rendered inline in the "accepted"
+    // panel below; don't start a stream that was never actually kicked off on the backend.
+    return
+  }
   gate4.start() // drives Gate 4 over its own SSE
 }
 
 async function retryGate4() {
-  await standup.runGate4(cohortId)
+  try {
+    await standup.runGate4(cohortId)
+  } catch {
+    // runGate4()'s failure is set on standup.error and rendered in the "could not start Gate 4"
+    // panel above — catching stops the unhandled rejection (which would otherwise surface a generic
+    // toast) and prevents starting a stream for a validation that never kicked off.
+    return
+  }
   gate4.start()
 }
 
 async function discard() {
-  await standup.discard(cohortId)
+  try {
+    await standup.discard(cohortId)
+  } catch {
+    // Failure is captured in standup.error (rendered wherever the panel is); if the discard didn't
+    // take, leave the current state intact rather than resetting the local UI or claiming success.
+    return
+  }
   stream.reset()
   gate4.reset()
   acceptDone.value = false
@@ -142,8 +175,10 @@ const FILE_ICON: Record<FileGateStatus, string> = {
   failed: 'x-circle',
 }
 
+/** Gate 1-3/Gate 4 errors only ever populate file/location/rule — location carries the real context
+ *  (a raw SharePoint URL for Gate 1, "row N" for most Gate 3 rules), sheet/row are never set here. */
 function fmtError(e: LocatedError): string {
-  const loc = [e.file, e.sheet, e.row != null ? `row ${e.row}` : '', e.rule].filter(Boolean).join(' · ')
+  const loc = [e.file, e.location, e.rule].filter(Boolean).join(' · ')
   return loc ? `${loc} — ${e.message}` : e.message
 }
 </script>
@@ -159,6 +194,8 @@ function fmtError(e: LocatedError): string {
     </div>
   </div>
 
+  <p v-if="cohorts.error" class="inline-error" style="margin: -8px 0 16px"><VIcon name="alert-circle" :size="14" /> {{ cohorts.error }}</p>
+
   <!-- Intake: submit the SharePoint folder link -->
   <section v-if="!started && cohort?.lifecycleState !== 'REFERENCE_ACCEPTED'" class="card">
     <h2 class="card-title">SharePoint folder link</h2>
@@ -172,6 +209,7 @@ function fmtError(e: LocatedError): string {
       </span>
     </label>
     <p v-if="localError" class="inline-error"><VIcon name="alert-circle" :size="14" /> {{ localError }}</p>
+    <p v-if="standup.error" class="inline-error"><VIcon name="alert-circle" :size="14" /> {{ standup.error }}</p>
     <div class="card-actions">
       <VButton variant="primary" icon-right="arrow-right" :disabled="standup.busy" @click="runValidation">
         {{ standup.busy ? 'Starting…' : 'Run validation' }}
@@ -188,6 +226,7 @@ function fmtError(e: LocatedError): string {
         <p class="card-sub">This cohort's reference bundle is committed and frozen. Continue by re-running, or discard to redo.</p>
       </div>
     </div>
+    <p v-if="standup.error" class="inline-error"><VIcon name="alert-circle" :size="14" /> {{ standup.error }}</p>
     <div class="card-actions">
       <VButton variant="ghost" icon="rotate-ccw" @click="discard">Discard / reset</VButton>
       <VButton variant="primary" icon-right="arrow-right" @click="runValidation">Re-run stand-up</VButton>
@@ -245,6 +284,7 @@ function fmtError(e: LocatedError): string {
         />
         Quiz reference file {{ summary.quizReferencePresent ? 'found' : 'not found' }}
       </p>
+      <p v-if="standup.error" class="inline-error"><VIcon name="alert-circle" :size="14" /> {{ standup.error }}</p>
       <div class="card-actions">
         <VButton variant="ghost" @click="startOver">Cancel</VButton>
         <VButton variant="primary" icon="check" :disabled="standup.busy" @click="accept">
@@ -255,7 +295,21 @@ function fmtError(e: LocatedError): string {
 
     <!-- Accepted: Gate 4 (empty score-sheet validation), streamed file by file -->
     <template v-else-if="accepted">
-      <div v-if="gate4.overall.value === 'failed'" class="panel panel--error">
+      <!-- The commit itself succeeded, but triggering Gate 4 failed outright (never started) — a
+           distinct case from a Gate 4 run that started and then failed validation, below. -->
+      <div v-if="standup.error && gate4.overall.value === 'idle'" class="panel panel--error">
+        <div class="panel-head">
+          <VIcon name="alert-triangle" :size="18" />
+          <strong>Could not start Gate 4 validation</strong>
+        </div>
+        <p class="panel-note">{{ standup.error }}</p>
+        <div class="card-actions">
+          <VButton variant="ghost" icon="rotate-ccw" @click="discard">Discard / reset</VButton>
+          <VButton variant="primary" icon="rotate-ccw" :disabled="standup.busy" @click="retryGate4">Retry Gate 4</VButton>
+        </div>
+      </div>
+
+      <div v-else-if="gate4.overall.value === 'failed'" class="panel panel--error">
         <div class="panel-head">
           <VIcon name="alert-triangle" :size="18" />
           <strong>Gate 4 failed</strong>

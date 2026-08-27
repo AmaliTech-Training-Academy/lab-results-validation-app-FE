@@ -135,7 +135,12 @@ export function useSyncRunStream(cohortId: string, runId: string, options: UseSy
     const onMalformed = () => {
       error.value = 'Received a malformed message from the sync stream.'
     }
-    const source = eventSource.open(syncRunStreamUrl(cohortId))
+    const source = eventSource.open(syncRunStreamUrl(cohortId), () => {
+      // A browser-initiated reconnect succeeded (or this is the first connect) — drop any stale
+      // "interrupted — reconnecting…" message now that the stream is live again.
+      error.value = null
+      disconnected.value = false
+    })
     eventSource.bindEvent<SyncFileDiscoveredData>('file.discovered', handleDiscovered, onMalformed)
     eventSource.bindEvent<SyncFileUnchangedData>('file.unchanged', handleUnchanged, onMalformed)
     eventSource.bindEvent<SyncFileChangedData>('file.changed', handleChanged, onMalformed)
@@ -184,7 +189,15 @@ export function useSyncRunStream(cohortId: string, runId: string, options: UseSy
   }
 
   async function runMock() {
-    const { runs: mockRuns } = await import('@/services/mock/fixtures')
+    let mockRuns: typeof import('@/services/mock/fixtures').runs
+    try {
+      ;({ runs: mockRuns } = await import('@/services/mock/fixtures'))
+    } catch {
+      error.value = 'Mock mode failed to load. Please try again.'
+      disconnected.value = false
+      overall.value = 'failed'
+      return
+    }
     const steps: Array<() => void> = [
       () => handleDiscovered({ file: 'BE_Lab_Grading.xlsx', itemId: 'item-1', versionId: '1.0', quickXorHash: 'hash-1' }),
       () => handleUnchanged({ file: 'BE_Lab_Grading.xlsx' }),

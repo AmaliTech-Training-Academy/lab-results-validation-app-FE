@@ -16,8 +16,12 @@ const colsLoading = ref(true)
 onMounted(async () => {
   try {
     templateCols.value = await fetchLearnerTemplateHeaders()
-  } catch {
-    // silently fall back to empty — the toggle simply won't show columns
+  } catch (e) {
+    toast.show({
+      tone: 'warning',
+      title: 'Could not load template columns',
+      body: e instanceof Error ? e.message : 'The column toggle is unavailable for this template.',
+    })
   } finally {
     colsLoading.value = false
   }

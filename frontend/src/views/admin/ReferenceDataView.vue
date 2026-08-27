@@ -38,6 +38,7 @@ const selectedModId = ref<string | null>(null)
 
 // ── Loading ──────────────────────────────────────────────────────────────────
 const loading = ref({ specs: false, mods: false, labs: false })
+const cohortError = ref<string | null>(null)
 const loadErrors = ref({ specs: null as string | null, mods: null as string | null, labs: null as string | null })
 const submitting = ref(false)
 
@@ -177,8 +178,14 @@ watch(selectedModId, async (id) => {
 
 // ── Mount ────────────────────────────────────────────────────────────────────
 onMounted(async () => {
-  const result = await getCohorts(0, 100)
-  cohorts.value = result.content
+  try {
+    const result = await getCohorts(0, 100)
+    cohorts.value = result.content
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    cohortError.value = msg || 'Failed to load cohorts. Please try again.'
+    return
+  }
   const queryCohortId = route.query.cohortId as string | undefined
   if (queryCohortId && cohorts.value.some((c) => c.id === queryCohortId)) {
     selectedCohortId.value = queryCohortId
@@ -522,6 +529,7 @@ async function submitForceEdit() {
         />
       </div>
     </div>
+    <p v-else-if="cohortError" class="inline-error" style="margin: 0"><VIcon name="alert-circle" :size="14" /> {{ cohortError }}</p>
   </div>
 
   <!-- Miller columns -->

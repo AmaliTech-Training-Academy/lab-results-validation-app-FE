@@ -94,7 +94,12 @@ export function useGate4Stream(cohortId: string, options: UseGate4StreamOptions 
     const onMalformed = () => {
       error.value = 'Received a malformed message from the validation stream.'
     }
-    const source = eventSource.open(gate4StreamUrl(cohortId))
+    const source = eventSource.open(gate4StreamUrl(cohortId), () => {
+      // A browser-initiated reconnect succeeded (or this is the first connect) — drop any stale
+      // "interrupted — reconnecting…" message now that the stream is live again.
+      error.value = null
+      disconnected.value = false
+    })
     eventSource.bindEvent<FileProcessingData>('file.processing', handleProcessing, onMalformed)
     eventSource.bindEvent<FilePassedData>('file.passed', handlePassed, onMalformed)
     eventSource.bindEvent<FileFailedData>('file.failed', handleFailed, onMalformed)

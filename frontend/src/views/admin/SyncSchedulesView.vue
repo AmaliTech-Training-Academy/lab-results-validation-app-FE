@@ -152,7 +152,7 @@ async function toggleEnabled(s: SyncScheduleResponse) {
     await store.update(s.id, { ...payloadFromRow(s), enabled: !s.enabled })
     toast.show({ tone: 'success', title: s.enabled ? 'Sync schedule paused' : 'Sync schedule enabled' })
   } catch {
-    toast.show({ tone: 'warning', title: 'Could not update sync schedule', body: store.error ?? 'Please try again.' })
+    toast.show({ tone: 'warning', title: 'Could not update sync schedule', body: store.actionError ?? 'Please try again.' })
   }
 }
 
@@ -163,7 +163,7 @@ async function onDelete(s: SyncScheduleResponse) {
     await store.remove(s.id)
     toast.show({ tone: 'success', title: 'Sync schedule deleted' })
   } catch {
-    toast.show({ tone: 'warning', title: 'Could not delete sync schedule', body: store.error ?? 'Please try again.' })
+    toast.show({ tone: 'warning', title: 'Could not delete sync schedule', body: store.actionError ?? 'Please try again.' })
   }
 }
 

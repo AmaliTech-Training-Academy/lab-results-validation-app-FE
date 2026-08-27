@@ -17,6 +17,7 @@ const loadError = ref<string | null>(null)
 const loadSlow = ref(false)
 const LOAD_TIMEOUT_MS = 8000
 const reportLoading = ref(false)
+const reportError = ref<string | null>(null)
 const search = ref('')
 
 async function loadData() {
@@ -192,13 +193,21 @@ function chipStyle(value: number, tone: 'acc' | 'rej'): string {
 async function openReport(entry: AuditEntry) {
   view.value = 'report'
   reportLoading.value = true
-  report.value = await getUploadReport(entry.id)
-  reportLoading.value = false
+  reportError.value = null
+  try {
+    report.value = await getUploadReport(entry.id)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    reportError.value = msg || 'Failed to load the validation report. Please try again.'
+  } finally {
+    reportLoading.value = false
+  }
 }
 
 function backToList() {
   view.value = 'list'
   report.value = null
+  reportError.value = null
 }
 </script>
 
@@ -421,6 +430,17 @@ function backToList() {
             </tr>
           </tbody>
         </table>
+      </div>
+    </template>
+
+    <template v-else-if="reportError">
+      <div class="load-error-state" style="margin-top: 40px">
+        <div class="load-error-icon"><VIcon name="wifi-off" :size="28" /></div>
+        <p class="load-error-title">Could not load report</p>
+        <p class="load-error-sub">{{ reportError }}</p>
+        <button class="link" style="display: inline-flex; align-items: center; gap: 4px" @click="backToList">
+          <VIcon name="chevron-left" :size="14" />Back to audit log
+        </button>
       </div>
     </template>
 

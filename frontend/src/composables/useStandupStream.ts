@@ -111,7 +111,9 @@ export function useStandupStream(cohortId: string): StandupStream {
 
   function handleFailed(data: GateFailedData) {
     const id = gateIdFor(data.gate)
-    setGate(id, { status: 'failed', errors: data.errors.map((message) => ({ message })) })
+    // data.errors is already LocatedError[] (the backend's GateError record, {file, location, rule,
+    // message}) — unlike Gate 4's file.failed, gates 1-3 don't pre-flatten to plain strings.
+    setGate(id, { status: 'failed', errors: data.errors })
     markNotRun(id)
   }
 
@@ -133,7 +135,12 @@ export function useStandupStream(cohortId: string): StandupStream {
     const onMalformed = () => {
       error.value = 'Received a malformed message from the validation stream.'
     }
-    const source = eventSource.open(standupStreamUrl(cohortId))
+    const source = eventSource.open(standupStreamUrl(cohortId), () => {
+      // A browser-initiated reconnect succeeded (or this is the first connect) — drop any stale
+      // "interrupted — reconnecting…" message now that the stream is live again.
+      error.value = null
+      disconnected.value = false
+    })
     eventSource.bindEvent<GatePassedData>('gate.passed', handlePassed, onMalformed)
     eventSource.bindEvent<GateFailedData>('gate.failed', handleFailed, onMalformed)
     eventSource.bindEvent<PipelineDoneData>('pipeline.done', handleDone, onMalformed)

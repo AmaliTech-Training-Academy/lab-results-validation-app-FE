@@ -15,18 +15,18 @@ const cohorts = useCohortsStore()
 const runs = useRunsStore()
 const conflicts = useConflictsStore()
 
-const loading = computed(() => cohorts.loading || runs.loading || conflicts.loading)
+const loading = computed(() => cohorts.loading || runs.loading || runs.statsLoading || conflicts.loading)
 const error = computed(() => cohorts.error || runs.error || conflicts.error)
 
 /**
- * Cohort/run lists load in parallel; the cohort-scoped conflicts totals need cohort ids first, so they
- * fetch once that list lands — narrowed to STOOD_UP cohorts, since draft/reference-accepted cohorts have
- * no ingestion runs yet and can't have conflicts, so querying them would just be wasted requests.
+ * Cohort/run lists load in parallel; the cohort-scoped conflicts totals and run stats both need
+ * cohort ids first, so they fetch once that list lands — narrowed to STOOD_UP cohorts, since
+ * draft/reference-accepted cohorts have no ingestion runs yet, so querying them would just be wasted requests.
  */
 async function loadDashboard() {
   await Promise.all([cohorts.fetchList(), runs.fetchList()])
   const eligibleIds = cohorts.list.filter((c) => c.lifecycleState === 'STOOD_UP').map((c) => c.id)
-  await conflicts.fetchTotalOpen(eligibleIds)
+  await Promise.all([conflicts.fetchTotalOpen(eligibleIds), runs.fetchStats(eligibleIds)])
 }
 
 onMounted(loadDashboard)
@@ -49,8 +49,16 @@ const cohortCounts = computed(() => {
 
 // ── Runs ────────────────────────────────────────────────────────────────────
 const recentRuns = computed(() => runs.list.slice(0, 5))
+/**
+ * `r.highFailure`/`r.counts` are never populated by `runs.list`'s own endpoint (§ FND-46) — the
+ * enriched signal comes from `runs.stats` (keyed by this same run's id) instead. `r.status ===
+ * 'failed'` is kept as a direct fallback since that much the job endpoint does report correctly.
+ */
 const attentionRuns = computed(() =>
-  runs.list.filter((r) => r.highFailure || r.status === 'partial' || r.status === 'failed' || (r.counts?.conflicts ?? 0) > 0),
+  runs.list.filter((r) => {
+    const s = runs.stats.get(r.id)
+    return r.status === 'failed' || !!s?.highFailure || !!s?.failed || (s?.counts.conflicts ?? 0) > 0 || (s?.counts.skippedInvalid ?? 0) > 0
+  }),
 )
 const openConflicts = computed(() => conflicts.totalOpen)
 
@@ -99,12 +107,17 @@ interface Attn {
 }
 const attentionItems = computed<Attn[]>(() =>
   attentionRuns.value.map((r) => {
-    const conflicts = r.counts?.conflicts ?? 0
-    if (r.highFailure) {
+    const s = runs.stats.get(r.id)
+    const conflicts = s?.counts.conflicts ?? 0
+    const skippedInvalid = s?.counts.skippedInvalid ?? 0
+    if (s?.highFailure) {
       return { id: r.id, priority: 'high', title: cohortLabel(r), sub: `${rejectPct(r)}% of submissions rejected`, action: 'Review run', run: r }
     }
     if (conflicts > 0) {
       return { id: r.id, priority: 'high', title: cohortLabel(r), sub: `${conflicts} unresolved conflict${conflicts === 1 ? '' : 's'}`, action: 'Resolve conflicts', run: r }
+    }
+    if (skippedInvalid > 0) {
+      return { id: r.id, priority: 'medium', title: cohortLabel(r), sub: `${skippedInvalid} row${skippedInvalid === 1 ? '' : 's'} rejected`, action: 'Review run', run: r }
     }
     return { id: r.id, priority: 'medium', title: cohortLabel(r), sub: r.status === 'failed' ? 'Run failed' : 'Partial commit', action: 'Review run', run: r }
   }),
@@ -112,8 +125,9 @@ const attentionItems = computed<Attn[]>(() =>
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function rejectPct(r: IngestionRun): number {
-  const rowsRead = r.counts?.rowsRead ?? 0
-  return rowsRead > 0 ? Math.round(((r.counts?.skippedInvalid ?? 0) / rowsRead) * 100) : 0
+  const s = runs.stats.get(r.id)
+  const rowsRead = s?.counts.rowsRead ?? 0
+  return rowsRead > 0 ? Math.round(((s?.counts.skippedInvalid ?? 0) / rowsRead) * 100) : 0
 }
 function whenOf(r: IngestionRun): string | undefined {
   return r.runAt ?? r.completedAt ?? r.startedAt
@@ -158,6 +172,10 @@ function go(to?: string) {
         <p class="page-sub">Cohort stand-up progress and grading ingestion at a glance.</p>
       </div>
     </div>
+
+    <!-- Run-stats enrichment failed (best-effort KPI/needs-attention data) — don't block the page,
+         but don't let those panels read as all-zero either. -->
+    <p v-if="runs.statsError && !loading" class="inline-error" style="margin: -8px 0 16px"><VIcon name="alert-circle" :size="14" /> Run statistics unavailable: {{ runs.statsError }}</p>
 
     <div v-if="error && !loading" class="load-error-state">
       <div class="load-error-icon"><VIcon name="wifi-off" :size="28" /></div>
