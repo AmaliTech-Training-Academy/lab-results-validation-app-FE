@@ -53,7 +53,13 @@ export function useNotificationStream(options: UseNotificationStreamOptions = {}
     const onMalformed = () => {
       error.value = 'Received a malformed message from the notifications stream.'
     }
-    const source = eventSource.open(notificationStreamUrl())
+    const source = eventSource.open(notificationStreamUrl(), () => {
+      // A browser-initiated reconnect succeeded (or this is the first connect) — drop any stale
+      // "interrupted — reconnecting…" message and mark the stream live again.
+      error.value = null
+      disconnected.value = false
+      isConnected.value = true
+    })
     eventSource.bindEvent<NotificationResponse>('notification.updated', handleUpdated, onMalformed)
     source.onerror = eventSource.withGiveUp(
       // EventSource reconnects on its own (Last-Event-ID replay) — just surface a soft warning.
