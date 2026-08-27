@@ -50,8 +50,11 @@ function review(): RunReview {
 
 function conflictResponse(over: Partial<IngestionConflictResponse> = {}): IngestionConflictResponse {
   return {
-    id: 'cf-1', ingestionRunId: 'run-1', cohortId: 'c1', learnerId: 'DEG-1', labId: 'lab-1',
-    conflictKind: 'in_file_duplicate', existingResultId: null, incomingPayload: {},
+    id: 'cf-1', ingestionRunId: 'run-1', cohortId: 'c1', learnerId: 'DEG-1', learnerName: 'Ama Boateng',
+    labId: 'lab-1', labTitle: 'FE State Management',
+    conflictKind: 'in_file_duplicate', existingResultId: null, existingResult: null,
+    candidates: [{ index: 0, fileName: 'FEM01.xlsx', sheetName: 'FEM01', rowNum: 12, nspName: 'Ama Boateng', score: 90, submittedOn: '2026-07-19', instructorContactId: 'ins-1', reviewerName: 'Kwame Asante', payloadIntact: true }],
+    incomingPayload: {}, remediation: null,
     status: 'PENDING', resolvedBy: null, resolvedAt: null, resolutionNote: null,
     createdAt: '2026-07-21T08:01:00Z', updatedAt: '2026-07-21T08:01:00Z',
     ...over,

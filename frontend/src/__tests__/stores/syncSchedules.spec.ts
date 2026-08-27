@@ -69,7 +69,8 @@ describe('useSyncSchedulesStore', () => {
     await expect(
       store.create({ name: '', frequency: 'DAILY', timeOfDay: '02:00', enabled: true }),
     ).rejects.toThrow('name required')
-    expect(store.error).toBe('name required')
+    expect(store.actionError).toBe('name required')
+    expect(store.error).toBeNull()
   })
 
   it('update replaces the row in list and current', async () => {

@@ -18,8 +18,19 @@ export const useConflictsStore = defineStore('conflicts', () => {
     loading.value = true
     error.value = null
     try {
-      const pages = await Promise.all(cohortIds.map((id) => listCohortConflicts(id, { status: 'PENDING', size: 1 })))
-      totalOpen.value = pages.reduce((sum, p) => sum + p.totalElements, 0)
+      // Sum every cohort that responds instead of letting one bad cohort zero the whole KPI. Only
+      // flag a full error when nothing usable came back at all — a partial success keeps its count
+      // (blanking the whole dashboard over one unreachable cohort is worse than an only-slightly
+      // understated "open conflicts" number).
+      const settled = await Promise.allSettled(cohortIds.map((id) => listCohortConflicts(id, { status: 'PENDING', size: 1 })))
+      const fulfilled = settled.filter(
+        (s): s is PromiseFulfilledResult<Awaited<ReturnType<typeof listCohortConflicts>>> => s.status === 'fulfilled',
+      )
+      totalOpen.value = fulfilled.reduce((sum, p) => sum + p.value.totalElements, 0)
+      const rejected = settled.length - fulfilled.length
+      if (rejected === settled.length) {
+        error.value = toErrorMessage((settled[0] as PromiseRejectedResult).reason, 'Failed to load conflicts')
+      }
     } catch (e) {
       error.value = toErrorMessage(e, 'Failed to load conflicts')
     } finally {

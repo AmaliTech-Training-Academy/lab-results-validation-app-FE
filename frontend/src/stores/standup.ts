@@ -36,8 +36,14 @@ export const useStandupStore = defineStore('standup', () => {
 
   /** One status poll — returns the fresh status so callers (poller) can react. */
   async function refresh(cohortId: string): Promise<StandupStatus> {
-    status.value = await fetchStandupStatus(cohortId)
-    return status.value
+    error.value = null
+    try {
+      status.value = await fetchStandupStatus(cohortId)
+      return status.value
+    } catch (e) {
+      error.value = toErrorMessage(e, 'Failed to refresh stand-up status')
+      throw e
+    }
   }
 
   async function accept(cohortId: string) {

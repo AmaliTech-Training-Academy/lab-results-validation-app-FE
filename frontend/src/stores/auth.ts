@@ -51,11 +51,18 @@ export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = computed(() => user.value !== null)
 
   function login(response: LoginResponse, plainPassword?: string) {
-    const payload = decodeJwtPayload(response.token)
-    user.value = buildUser(payload)
-    token.value = response.token
-    mustChangePassword.value = response.mustChangePassword
-    tempPassword.value = response.mustChangePassword ? (plainPassword ?? null) : null
+    try {
+      const payload = decodeJwtPayload(response.token)
+      user.value = buildUser(payload)
+      token.value = response.token
+      mustChangePassword.value = response.mustChangePassword
+      tempPassword.value = response.mustChangePassword ? (plainPassword ?? null) : null
+    } catch {
+      // A malformed JWT from the backend must not silently half-log the user in — clear any partial
+      // state and rethrow so the caller's error handling surfaces a real message.
+      clearSession()
+      throw new Error('Could not read your session token from the server. Please try again.')
+    }
     // Only persist to localStorage once the account is fully set up
     if (!response.mustChangePassword) {
       localStorage.setItem('auth_token', response.token)
@@ -63,10 +70,15 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function completedPasswordSetup(newToken: string) {
-    token.value = newToken
-    user.value = buildUser(decodeJwtPayload(newToken))
-    mustChangePassword.value = false
-    tempPassword.value = null
+    try {
+      token.value = newToken
+      user.value = buildUser(decodeJwtPayload(newToken))
+      mustChangePassword.value = false
+      tempPassword.value = null
+    } catch {
+      clearSession()
+      throw new Error('Could not read your session token from the server. Please try again.')
+    }
     localStorage.setItem('auth_token', newToken)
   }
 

@@ -16,6 +16,9 @@ export const useSyncSchedulesStore = defineStore('syncSchedules', () => {
   const loading = ref(false)
   const saving = ref(false)
   const error = ref<string | null>(null)
+  /** Last mutation (create/update/delete) failure — kept separate from the load `error` so a failed
+   *  save doesn't flip the page into its "could not load" state (the load error drives that). */
+  const actionError = ref<string | null>(null)
 
   async function fetchList() {
     loading.value = true
@@ -43,13 +46,13 @@ export const useSyncSchedulesStore = defineStore('syncSchedules', () => {
 
   async function create(payload: SyncSchedulePayload): Promise<SyncScheduleResponse> {
     saving.value = true
-    error.value = null
+    actionError.value = null
     try {
       const created = await createSyncSchedule(payload)
       list.value = [created, ...list.value]
       return created
     } catch (e) {
-      error.value = toErrorMessage(e, 'Failed to create sync schedule')
+      actionError.value = toErrorMessage(e, 'Failed to create sync schedule')
       throw e
     } finally {
       saving.value = false
@@ -58,14 +61,14 @@ export const useSyncSchedulesStore = defineStore('syncSchedules', () => {
 
   async function update(id: string, payload: SyncSchedulePayload): Promise<SyncScheduleResponse> {
     saving.value = true
-    error.value = null
+    actionError.value = null
     try {
       const updated = await updateSyncSchedule(id, payload)
       list.value = list.value.map((s) => (s.id === id ? updated : s))
       if (current.value?.id === id) current.value = updated
       return updated
     } catch (e) {
-      error.value = toErrorMessage(e, 'Failed to update sync schedule')
+      actionError.value = toErrorMessage(e, 'Failed to update sync schedule')
       throw e
     } finally {
       saving.value = false
@@ -74,18 +77,18 @@ export const useSyncSchedulesStore = defineStore('syncSchedules', () => {
 
   async function remove(id: string): Promise<void> {
     saving.value = true
-    error.value = null
+    actionError.value = null
     try {
       await removeSyncSchedule(id)
       list.value = list.value.filter((s) => s.id !== id)
       if (current.value?.id === id) current.value = null
     } catch (e) {
-      error.value = toErrorMessage(e, 'Failed to delete sync schedule')
+      actionError.value = toErrorMessage(e, 'Failed to delete sync schedule')
       throw e
     } finally {
       saving.value = false
     }
   }
 
-  return { list, current, loading, saving, error, fetchList, fetchOne, create, update, remove }
+  return { list, current, loading, saving, error, actionError, fetchList, fetchOne, create, update, remove }
 })

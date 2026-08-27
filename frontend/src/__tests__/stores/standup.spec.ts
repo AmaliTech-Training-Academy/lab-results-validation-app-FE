@@ -61,4 +61,12 @@ describe('useStandupStore', () => {
     await expect(store.start('c1', 'bad')).rejects.toThrow('no access')
     expect(store.error).toBe('no access')
   })
+
+  it('accept() surfaces the backend\'s real message and rethrows so the caller can stop the chain', async () => {
+    vi.mocked(svc.acceptCohortReference).mockRejectedValue(new Error('Reference bundle failed integrity check'))
+    const store = useStandupStore()
+    await expect(store.accept('c1')).rejects.toThrow('Reference bundle failed integrity check')
+    expect(store.error).toBe('Reference bundle failed integrity check')
+    expect(store.busy).toBe(false)
+  })
 })
