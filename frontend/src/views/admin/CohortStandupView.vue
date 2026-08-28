@@ -440,14 +440,6 @@ function fmtError(e: LocatedError): string {
   gap: 12px;
   margin-top: 20px;
 }
-.inline-error {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--danger);
-  font-size: 13px;
-  margin-top: 8px;
-}
 
 /* Stepper */
 .stepper {
@@ -561,6 +553,9 @@ function fmtError(e: LocatedError): string {
   background: rgba(255, 255, 255, 0.5);
   padding: 6px 10px;
   border-radius: 3px;
+  /* Gate 1's error carries a raw SharePoint URL (see fmtError) with no natural break points —
+     without this it pushes the panel (and the page) wider instead of wrapping. */
+  overflow-wrap: anywhere;
 }
 
 .file-list {

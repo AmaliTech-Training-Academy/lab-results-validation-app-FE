@@ -101,7 +101,11 @@ table.tbl { width: 100%; border-collapse: collapse; font-family: var(--font-body
 .input:focus-within { border-color: var(--navy); box-shadow: var(--ring-focus); }
 .input--error { border-color: var(--danger) !important; }
 .input--error:focus-within { box-shadow: 0 0 0 3px rgba(163, 45, 45, 0.20); }
-.field-error { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--danger); margin-top: 2px; }
+.field-error { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--danger); margin-top: 2px; overflow-wrap: anywhere; }
+/* Long, unbroken backend error text (URLs, stack-trace-shaped messages) must wrap inside its box
+   rather than force it wider — every inline error banner across the app shares this one rule
+   instead of each view reinventing (or forgetting) it. */
+.inline-error { display: flex; align-items: center; gap: 6px; color: var(--danger); font-size: 13px; margin-top: 8px; overflow-wrap: anywhere; }
 .input .trail { color: rgba(90, 104, 112, 0.5); background: none; border: none; padding: 0; display: flex; }
 
 /* ---------- Form fields ---------- */
@@ -129,8 +133,9 @@ table.tbl { width: 100%; border-collapse: collapse; font-family: var(--font-body
 
 /* ---------- Callout ---------- */
 .callout { background: var(--surface-alt); border: 1px solid var(--border); border-left: 4px solid var(--navy); border-radius: var(--r-md); padding: 20px 24px; display: flex; gap: 14px; }
+.callout > div { min-width: 0; }
 .callout-title { font-family: var(--font-display); font-weight: 600; font-size: 18px; margin: 0 0 6px; }
-.callout-body { font-size: 14px; line-height: 1.5; color: var(--text-secondary); margin: 0; }
+.callout-body { font-size: 14px; line-height: 1.5; color: var(--text-secondary); margin: 0; overflow-wrap: anywhere; }
 
 /* ---------- Dropzone ---------- */
 .dropzone { border: 2px dashed #AEC9E3; border-radius: var(--r-md); padding: 56px 24px; text-align: center; transition: border-color 0.15s, background 0.15s; cursor: pointer; }
@@ -242,7 +247,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-family: var(--font-body
    scoped styles and missing entirely from Sync Schedules, which left that
    page's empty state unstyled/left-aligned — defined once here instead. */
 .empty-inline { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 48px 16px; text-align: center; }
-.empty-sub { margin: 0; color: var(--text-secondary); font-size: 14px; }
+.empty-sub { margin: 0; color: var(--text-secondary); font-size: 14px; overflow-wrap: anywhere; }
 
 /* ---------- Drawer ---------- */
 .drawer-scrim { position: fixed; inset: 0; background: rgba(8, 40, 59, 0.4); display: flex; justify-content: flex-end; z-index: 100; animation: scrim 0.15s ease; }
@@ -254,7 +259,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-family: var(--font-body
 .drawer-x:hover { background: var(--bg); }
 .drawer-body { padding: 24px; overflow-y: auto; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 18px; }
 .drawer-foot { padding: 18px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 12px; }
-.drawer-error { padding: 10px 24px; border-top: 1px solid var(--danger-bg); background: var(--danger-bg); display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--danger); line-height: 1.4; }
+.drawer-error { padding: 10px 24px; border-top: 1px solid var(--danger-bg); background: var(--danger-bg); display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--danger); line-height: 1.4; overflow-wrap: anywhere; }
 
 /* ---------- Modal ---------- */
 .modal-scrim { position: fixed; inset: 0; background: rgba(8, 40, 59, 0.4); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 24px; animation: scrim 0.15s ease; }
@@ -265,7 +270,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-family: var(--font-body
 .modal-sub { font-size: 14px; color: var(--text-secondary); margin: 4px 0 0; }
 .modal-body { padding: 18px 24px 4px; display: flex; flex-direction: column; gap: 16px; }
 .modal-foot { padding: 18px 24px; display: flex; justify-content: flex-end; gap: 12px; }
-.modal-error { padding: 10px 24px; border-top: 1px solid var(--danger-bg); background: var(--danger-bg); display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--danger); line-height: 1.4; }
+.modal-error { padding: 10px 24px; border-top: 1px solid var(--danger-bg); background: var(--danger-bg); display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--danger); line-height: 1.4; overflow-wrap: anywhere; }
 
 /* ---------- Toast ---------- */
 /* .toast-stack (VToast.vue) owns the fixed viewport corner; individual .toast rows stack inside it via flex. */
@@ -275,9 +280,9 @@ table.tbl { width: 100%; border-collapse: collapse; font-family: var(--font-body
 .toast-warning { border-left-color: var(--warning); color: var(--warning); }
 .toast-info    { border-left-color: var(--info);    color: var(--info); }
 .toast-danger  { border-left-color: var(--danger);  color: var(--danger); }
-.toast-text { flex: 1; }
-.toast-title { font-weight: 700; font-size: 14px; color: var(--text); }
-.toast-body { font-size: 13px; color: var(--text-secondary); margin-top: 3px; }
+.toast-text { flex: 1; min-width: 0; }
+.toast-title { font-weight: 700; font-size: 14px; color: var(--text); overflow-wrap: anywhere; }
+.toast-body { font-size: 13px; color: var(--text-secondary); margin-top: 3px; overflow-wrap: anywhere; }
 .toast-x { border: none; background: transparent; color: var(--text-secondary); padding: 0; display: flex; cursor: pointer; }
 .toast-action { margin-top: 8px; border: none; background: transparent; color: inherit; font-size: 13px; font-weight: 700; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 
@@ -306,7 +311,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-family: var(--font-body
 .load-error-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 64px 24px; text-align: center; }
 .load-error-icon { display: flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 50%; background: var(--bg); color: var(--text-secondary); margin-bottom: 4px; }
 .load-error-title { font-size: 15px; font-weight: 600; color: var(--text); margin: 0; }
-.load-error-sub { font-size: 13px; color: var(--text-secondary); margin: 0 0 8px; max-width: 340px; }
+.load-error-sub { font-size: 13px; color: var(--text-secondary); margin: 0 0 8px; max-width: 340px; overflow-wrap: anywhere; }
 .skel-row td { padding-top: 14px; padding-bottom: 14px; }
 .skel { display: block; height: 14px; border-radius: 6px; background: linear-gradient(90deg, var(--bg) 25%, #e8e6df 50%, var(--bg) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
 .skel-stat { height: 110px; border-radius: var(--r-md); background: linear-gradient(90deg, var(--bg) 25%, #e8e6df 50%, var(--bg) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
@@ -354,6 +359,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-family: var(--font-body
   background: var(--danger-bg);
   border: 1px solid rgba(163, 45, 45, 0.2);
   border-radius: var(--r-sm);
+  overflow-wrap: anywhere;
 }
 
 /* Global focus-visible ring for all interactive elements */

@@ -811,7 +811,6 @@ function recipientLabel(n: Notification): string {
 .panel { margin-bottom: 32px; border: 1px solid var(--border); border-radius: var(--r-sm, 4px); padding: 16px; }
 .panel--info { border-left: 4px solid var(--success); }
 .panel-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.inline-error { display: flex; align-items: center; gap: 6px; color: var(--danger); font-size: 13px; margin-top: 8px; }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
