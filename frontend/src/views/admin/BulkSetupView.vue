@@ -6,6 +6,9 @@ import VIcon from '@/components/base/VIcon.vue'
 import { useToastStore } from '@/stores/toast'
 import { uploadProgramStructureBulk, downloadProgramStructureTemplate, fetchProgramStructureTemplateHeaders, BulkImportError } from '@/services/cohort.service'
 import type { BulkRowError } from '@/types/bulk.types'
+import { usePageTitle } from '@/composables/usePageTitle'
+
+usePageTitle('Cohort Bulk Setup')
 
 const router = useRouter()
 const toast = useToastStore()

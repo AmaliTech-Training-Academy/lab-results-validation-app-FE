@@ -1,11 +1,21 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import VSortIcon from '@/components/base/VSortIcon.vue'
+import VTablePager from '@/components/base/VTablePager.vue'
+import VPopover from '@/components/base/VPopover.vue'
+import VEmptyState from '@/components/base/VEmptyState.vue'
 import { useToastStore } from '@/stores/toast'
+import { usePageTitle } from '@/composables/usePageTitle'
+import { useQueryParam } from '@/composables/useQueryParam'
+import { loadPageSize, savePageSize } from '@/utils/uiPrefs'
+import { PAGE_SIZE_OPTIONS } from '@/utils/pagination'
+import { fmtDate } from '@/utils/datetime'
 import { getAuditLog, getUploadReport } from '@/services/admin.service'
 import type { AuditEntry, ValidationReport } from '@/types/report.types'
+
+usePageTitle('Audit log')
 
 const toast = useToastStore()
 
@@ -19,6 +29,41 @@ const LOAD_TIMEOUT_MS = 8000
 const reportLoading = ref(false)
 const reportError = ref<string | null>(null)
 const search = ref('')
+
+// ── Filters (date range / instructor / status) ──────────────────────────────
+const dateFrom = ref('')
+const dateTo = ref('')
+const instructorFilter = ref('')
+const statusFilter = ref<AuditEntry['statusLabel'] | ''>('')
+const STATUS_FILTER_OPTIONS: AuditEntry['statusLabel'][] = ['Completed', 'Partial', 'Failed']
+const hasActiveFilters = computed(() => !!(dateFrom.value || dateTo.value || instructorFilter.value || statusFilter.value))
+
+function resetFilters() {
+  dateFrom.value = ''
+  dateTo.value = ''
+  instructorFilter.value = ''
+  statusFilter.value = ''
+  closeFilterPopover()
+}
+
+const dateRangeLabel = computed(() => {
+  if (!dateFrom.value && !dateTo.value) return 'All dates'
+  return `${dateFrom.value ? fmtDate(dateFrom.value) : '…'} – ${dateTo.value ? fmtDate(dateTo.value) : '…'}`
+})
+
+/**
+ * `uploadedAt` is a display-formatted string (mock data, e.g. "Oct 24, 09:41 AM") rather than an
+ * ISO timestamp, so it isn't reliably parseable — skip date-range filtering for any entry `Date`
+ * can't parse instead of hiding it outright.
+ */
+function withinDateRange(uploadedAt: string): boolean {
+  if (!dateFrom.value && !dateTo.value) return true
+  const t = new Date(uploadedAt).getTime()
+  if (Number.isNaN(t)) return true
+  if (dateFrom.value && t < new Date(`${dateFrom.value}T00:00:00`).getTime()) return false
+  if (dateTo.value && t > new Date(`${dateTo.value}T23:59:59`).getTime()) return false
+  return true
+}
 
 async function loadData() {
   isLoading.value = true
@@ -37,23 +82,56 @@ async function loadData() {
   }
 }
 
-onMounted(() => {
-  loadData()
-  window.addEventListener('click', closeColMenu)
-})
-onUnmounted(() => window.removeEventListener('click', closeColMenu))
+onMounted(loadData)
+
+const instructorOptions = computed(() => [...new Set(entries.value.map((e) => e.instructor))].sort((a, b) => a.localeCompare(b)))
 
 const filteredEntries = computed(() => {
   const q = search.value.trim().toLowerCase()
-  return q
-    ? entries.value.filter((e) => e.id.toLowerCase().includes(q) || e.file.toLowerCase().includes(q))
-    : entries.value
+  return entries.value.filter((e) => {
+    if (q && !(e.id.toLowerCase().includes(q) || e.file.toLowerCase().includes(q))) return false
+    if (instructorFilter.value && e.instructor !== instructorFilter.value) return false
+    if (statusFilter.value && e.statusLabel !== statusFilter.value) return false
+    if (!withinDateRange(e.uploadedAt)) return false
+    return true
+  })
 })
 
 // ── Sorting ──────────────────────────────────────────────────────────────────
 type SortKey = 'id' | 'instructor' | 'file' | 'uploadedAt' | 'totalRows' | 'accepted' | 'rejected' | 'status'
+const SORT_KEYS: SortKey[] = ['id', 'instructor', 'file', 'uploadedAt', 'totalRows', 'accepted', 'rejected', 'status']
 const sortKey = ref<SortKey>('uploadedAt')
 const sortDir = ref<'asc' | 'desc'>('desc')
+
+// Table state (search/filters/sort/page) lives in the URL so the filtered/sorted/paged view is a
+// shareable link — `currentPage` is declared ahead of the Pagination section below because
+// `useQueryParam` binds to it immediately, not lazily.
+const currentPage = ref(1)
+function parseStr(raw: string | undefined): string {
+  return raw ?? ''
+}
+function parsePage(raw: string | undefined): number {
+  const n = Number(raw)
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1
+}
+function parseSortKey(raw: string | undefined): SortKey {
+  return SORT_KEYS.includes(raw as SortKey) ? (raw as SortKey) : 'uploadedAt'
+}
+function parseSortDir(raw: string | undefined): 'asc' | 'desc' {
+  return raw === 'asc' ? 'asc' : 'desc'
+}
+function parseStatus(raw: string | undefined): AuditEntry['statusLabel'] | '' {
+  return (STATUS_FILTER_OPTIONS as string[]).includes(raw ?? '') ? (raw as AuditEntry['statusLabel']) : ''
+}
+useQueryParam({ key: 'q', target: search, parse: parseStr, encode: (v) => v.trim() || null })
+useQueryParam({ key: 'page', target: currentPage, parse: parsePage, encode: (v) => (v > 1 ? String(v) : null) })
+useQueryParam({ key: 'sort', target: sortKey, parse: parseSortKey, encode: (v) => (v !== 'uploadedAt' ? v : null) })
+useQueryParam({ key: 'dir', target: sortDir, parse: parseSortDir, encode: (v) => (v !== 'desc' ? v : null) })
+useQueryParam({ key: 'from', target: dateFrom, parse: parseStr, encode: (v) => v || null })
+useQueryParam({ key: 'to', target: dateTo, parse: parseStr, encode: (v) => v || null })
+useQueryParam({ key: 'instructor', target: instructorFilter, parse: parseStr, encode: (v) => v || null })
+useQueryParam({ key: 'status', target: statusFilter, parse: parseStatus, encode: (v) => v || null })
+
 function toggleSort(k: SortKey) {
   if (sortKey.value === k) sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
   else {
@@ -84,8 +162,9 @@ const sortedEntries = computed(() => {
 })
 
 // ── Pagination ───────────────────────────────────────────────────────────────
-const pageSize = ref(10)
-const currentPage = ref(1)
+const PAGESIZE_KEY = 'validata.reports.pageSize'
+const pageSize = ref(loadPageSize(PAGESIZE_KEY, 10, PAGE_SIZE_OPTIONS))
+watch(pageSize, (v) => savePageSize(PAGESIZE_KEY, v))
 const total = computed(() => sortedEntries.value.length)
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const safePage = computed(() => Math.min(currentPage.value, totalPages.value))
@@ -93,32 +172,11 @@ const pagedEntries = computed(() => {
   const start = (safePage.value - 1) * pageSize.value
   return sortedEntries.value.slice(start, start + pageSize.value)
 })
-const showingFrom = computed(() => (total.value === 0 ? 0 : (safePage.value - 1) * pageSize.value + 1))
-const showingTo = computed(() => Math.min(safePage.value * pageSize.value, total.value))
-const pageItems = computed<(number | '…')[]>(() => {
-  const tp = totalPages.value
-  const cur = safePage.value
-  if (tp <= 7) return Array.from({ length: tp }, (_, i) => i + 1)
-  const items: (number | '…')[] = []
-  if (cur <= 4) {
-    // Near the start: 1 2 3 4 5 … last
-    for (let i = 1; i <= 5; i++) items.push(i)
-    items.push('…', tp)
-  } else if (cur >= tp - 3) {
-    // Near the end: 1 … last-4 … last
-    items.push(1, '…')
-    for (let i = tp - 4; i <= tp; i++) items.push(i)
-  } else {
-    // Middle: 1 … cur-1 cur cur+1 … last
-    items.push(1, '…', cur - 1, cur, cur + 1, '…', tp)
-  }
-  return items
-})
 function goToPage(p: number) {
   if (p < 1 || p > totalPages.value) return
   currentPage.value = p
 }
-watch([search, pageSize], () => {
+watch([search, pageSize, dateFrom, dateTo, instructorFilter, statusFilter], () => {
   currentPage.value = 1
 })
 
@@ -135,17 +193,32 @@ const COL_LABELS: { key: keyof typeof cols.value; label: string }[] = [
 ]
 const colCount = computed(() => 1 + Object.values(cols.value).filter(Boolean).length + 1)
 const showColMenu = ref(false)
-const colMenuPos = ref<{ top: number; left: number } | null>(null)
+const colMenuAnchor = ref<HTMLElement | null>(null)
 function toggleColMenu(event: MouseEvent) {
-  event.stopPropagation()
+  closeFilterPopover()
+  colMenuAnchor.value = event.currentTarget as HTMLElement
   showColMenu.value = !showColMenu.value
-  if (showColMenu.value) {
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-    colMenuPos.value = { top: rect.bottom + 6, left: rect.right - 200 }
-  }
 }
 function closeColMenu() {
   showColMenu.value = false
+  closeFilterPopover()
+}
+
+// ── Filter popovers (Date range / Instructor / Status) ──────────────────────
+type FilterPopoverKey = 'date' | 'instructor' | 'status'
+const activeFilterPopover = ref<FilterPopoverKey | null>(null)
+const filterPopoverAnchor = ref<HTMLElement | null>(null)
+function toggleFilterPopover(key: FilterPopoverKey, event: MouseEvent) {
+  showColMenu.value = false
+  if (activeFilterPopover.value === key) {
+    closeFilterPopover()
+    return
+  }
+  filterPopoverAnchor.value = event.currentTarget as HTMLElement
+  activeFilterPopover.value = key
+}
+function closeFilterPopover() {
+  activeFilterPopover.value = null
 }
 
 // ── Export ──────────────────────────────────────────────────────────────────
@@ -221,22 +294,22 @@ function backToList() {
     <div class="card card-pad filterbar" style="margin-bottom: 20px">
       <div class="selectf">
         <span class="selectf-label">Date Range</span>
-        <button type="button" class="selectf-btn">
-          <span>Oct 1, 2023 – Oct 31, 2023</span>
+        <button type="button" class="selectf-btn" @click="toggleFilterPopover('date', $event)">
+          <span>{{ dateRangeLabel }}</span>
           <VIcon name="chevron-down" :size="16" style="color: var(--text-secondary)" />
         </button>
       </div>
       <div class="selectf">
         <span class="selectf-label">Instructor</span>
-        <button type="button" class="selectf-btn">
-          <span>All Instructors</span>
+        <button type="button" class="selectf-btn" @click="toggleFilterPopover('instructor', $event)">
+          <span>{{ instructorFilter || 'All Instructors' }}</span>
           <VIcon name="chevron-down" :size="16" style="color: var(--text-secondary)" />
         </button>
       </div>
       <div class="selectf">
         <span class="selectf-label">Status</span>
-        <button type="button" class="selectf-btn">
-          <span>All</span>
+        <button type="button" class="selectf-btn" @click="toggleFilterPopover('status', $event)">
+          <span>{{ statusFilter || 'All' }}</span>
           <VIcon name="chevron-down" :size="16" style="color: var(--text-secondary)" />
         </button>
       </div>
@@ -247,6 +320,9 @@ function backToList() {
           <input v-model="search" placeholder="Search by ID or Filename" />
         </div>
       </div>
+      <button v-if="hasActiveFilters" type="button" class="link" style="display: inline-flex; align-items: center; gap: 4px; height: 40px" @click="resetFilters">
+        <VIcon name="x" :size="14" />Reset filters
+      </button>
     </div>
 
     <!-- Slow-connection warning -->
@@ -334,8 +410,12 @@ function backToList() {
         </tbody>
         <tbody v-else>
           <tr v-if="!pagedEntries.length">
-            <td :colspan="colCount" style="text-align: center; color: var(--text-secondary); padding: 32px">
-              No uploads found.
+            <td :colspan="colCount" style="padding: 32px 0">
+              <VEmptyState
+                icon="inbox"
+                title="No uploads found"
+                :description="hasActiveFilters ? 'Try adjusting your filters or search.' : 'Uploads will appear here once instructors submit files.'"
+              />
             </td>
           </tr>
           <tr v-for="entry in pagedEntries" :key="entry.id">
@@ -368,38 +448,84 @@ function backToList() {
       </table>
 
       <!-- Pagination -->
-      <div v-if="!isLoading && total > 0" class="pager">
-        <span class="pager-count">Showing <span class="pg-strong">{{ showingFrom }}</span> to <span class="pg-strong">{{ showingTo }}</span> of <span class="pg-strong">{{ total }}</span> Entries</span>
-        <div class="pager-right">
-          <div class="pgsize">
-            <select v-model.number="pageSize" aria-label="Rows per page">
-              <option :value="10">10 per page</option>
-              <option :value="25">25 per page</option>
-              <option :value="50">50 per page</option>
-            </select>
-          </div>
-          <div class="pager-ctrls">
-            <button class="pg-arrow" aria-label="Previous page" :disabled="safePage === 1" @click="goToPage(safePage - 1)"><VIcon name="chevron-left" :size="16" /></button>
-            <template v-for="(p, i) in pageItems" :key="i">
-              <span v-if="p === '…'" class="pg-ellipsis">…</span>
-              <button v-else :class="['pg-num', { on: safePage === p }]" @click="goToPage(Number(p))">{{ p }}</button>
-            </template>
-            <button class="pg-arrow" aria-label="Next page" :disabled="safePage === totalPages" @click="goToPage(safePage + 1)"><VIcon name="chevron-right" :size="16" /></button>
-          </div>
-        </div>
-      </div>
+      <VTablePager
+        v-if="!isLoading && total > 0"
+        :total="total"
+        :page="safePage"
+        :page-size="pageSize"
+        @update:page="goToPage"
+        @update:page-size="pageSize = $event"
+      />
     </div>
 
     <!-- Manage columns popover -->
-    <Teleport to="body">
-      <div v-if="showColMenu && colMenuPos" class="pop col-pop" :style="{ top: `${colMenuPos.top}px`, left: `${colMenuPos.left}px` }" @click.stop>
-        <p class="pop-title">Manage columns</p>
-        <label v-for="c in COL_LABELS" :key="c.key" class="pop-row">
-          <input type="checkbox" v-model="cols[c.key]" />
-          {{ c.label }}
-        </label>
+    <VPopover :open="showColMenu" :anchor="colMenuAnchor" @close="showColMenu = false">
+      <p class="pop-title">Manage columns</p>
+      <label v-for="c in COL_LABELS" :key="c.key" class="pop-row">
+        <input type="checkbox" v-model="cols[c.key]" />
+        {{ c.label }}
+      </label>
+    </VPopover>
+
+    <!-- Date range filter popover -->
+    <VPopover :open="activeFilterPopover === 'date'" :anchor="filterPopoverAnchor" @close="closeFilterPopover">
+      <div class="pop-head">
+        <p class="pop-title">Date range</p>
+        <button v-if="dateFrom || dateTo" class="pop-clear" @click="dateFrom = ''; dateTo = ''">Clear</button>
       </div>
-    </Teleport>
+      <label class="pop-row" style="flex-direction: column; align-items: stretch; gap: 4px">
+        <span style="font-size: 12px; color: var(--text-secondary)">From</span>
+        <input
+          v-model="dateFrom"
+          type="date"
+          style="height: 34px; border: 1px solid var(--border); border-radius: var(--r-sm); padding: 0 8px; font: inherit"
+        />
+      </label>
+      <label class="pop-row" style="flex-direction: column; align-items: stretch; gap: 4px">
+        <span style="font-size: 12px; color: var(--text-secondary)">To</span>
+        <input
+          v-model="dateTo"
+          type="date"
+          style="height: 34px; border: 1px solid var(--border); border-radius: var(--r-sm); padding: 0 8px; font: inherit"
+        />
+      </label>
+    </VPopover>
+
+    <!-- Instructor filter popover -->
+    <VPopover :open="activeFilterPopover === 'instructor'" :anchor="filterPopoverAnchor" @close="closeFilterPopover">
+      <div class="pop-head">
+        <p class="pop-title">Instructor</p>
+        <button v-if="instructorFilter" class="pop-clear" @click="instructorFilter = ''; closeFilterPopover()">Clear</button>
+      </div>
+      <button
+        v-for="name in instructorOptions"
+        :key="name"
+        type="button"
+        class="pop-item"
+        :style="instructorFilter === name ? 'background: var(--bg); font-weight: 600' : ''"
+        @click="instructorFilter = name; closeFilterPopover()"
+      >
+        {{ name }}
+      </button>
+    </VPopover>
+
+    <!-- Status filter popover -->
+    <VPopover :open="activeFilterPopover === 'status'" :anchor="filterPopoverAnchor" @close="closeFilterPopover">
+      <div class="pop-head">
+        <p class="pop-title">Status</p>
+        <button v-if="statusFilter" class="pop-clear" @click="statusFilter = ''; closeFilterPopover()">Clear</button>
+      </div>
+      <button
+        v-for="s in STATUS_FILTER_OPTIONS"
+        :key="s"
+        type="button"
+        class="pop-item"
+        :style="statusFilter === s ? 'background: var(--bg); font-weight: 600' : ''"
+        @click="statusFilter = s; closeFilterPopover()"
+      >
+        {{ s }}
+      </button>
+    </VPopover>
   </template>
 
   <!-- ── Validation report detail ───────────────────────────────────────── -->

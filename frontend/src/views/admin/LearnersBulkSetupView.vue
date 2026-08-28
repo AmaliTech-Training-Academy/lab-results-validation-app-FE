@@ -6,6 +6,9 @@ import VIcon from '@/components/base/VIcon.vue'
 import { useToastStore } from '@/stores/toast'
 import { downloadLearnerTemplate, uploadLearnersBulk, fetchLearnerTemplateHeaders, BulkImportError } from '@/services/learner.service'
 import type { BulkRowError } from '@/types/bulk.types'
+import { usePageTitle } from '@/composables/usePageTitle'
+
+usePageTitle('Learners Bulk Setup')
 
 const router = useRouter()
 const toast = useToastStore()

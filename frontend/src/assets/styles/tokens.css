@@ -40,10 +40,13 @@
   --success-bg:         #EAF3DE;
   --danger:             #A32D2D;
   --danger-bg:          #FCEBEB;
+  --danger-border:      #F3D2D2;
   --warning:            #7A4A00;
   --warning-bg:         #FDF0D5;
+  --warning-border:     #F1E2BE;
   --info:               #466177;
   --info-bg:            #CAE6FF;
+  --info-border:        #BFD9EF;
 
   /* ---------- Stat-card icon chips ---------- */
   --chip-orange-bg:     #FFE9E3;
@@ -78,6 +81,20 @@
   --stack-sm:       8px;
   --stack-md:       16px;
   --stack-lg:       24px;
+
+  /* ---------- Z-index scale ----------
+     Names the stacking values already in use across the app layout — kept
+     as a flat list (not spaced out) so each token maps 1:1 to its existing
+     raw number and no stacking order changes. */
+  --z-topbar:         10;
+  --z-sidebar:        20;
+  --z-sidebar-tab:    30;
+  --z-profile-menu:   50;
+  --z-overlay-scrim:  100;
+  --z-toast:          200;
+  --z-popover:        1000;
+  --z-skip-link:      9999;
+  --z-desktop-guard:  10000;
 }
 
 /* ============================================================

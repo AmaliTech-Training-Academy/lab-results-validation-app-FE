@@ -3,6 +3,9 @@ import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import AppShell from '@/components/layout/AppShell.vue'
+import { usePageTitle } from '@/composables/usePageTitle'
+
+usePageTitle('Instructor Portal')
 
 const auth = useAuthStore()
 const router = useRouter()

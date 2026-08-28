@@ -7,7 +7,11 @@ import type { InstructorDashboardData } from '@/types/dashboard.types'
 import VButton from '@/components/base/VButton.vue'
 import VPill from '@/components/base/VPill.vue'
 import VIcon from '@/components/base/VIcon.vue'
+import VEmptyState from '@/components/base/VEmptyState.vue'
 import '@/assets/styles/dashboard.css'
+import { usePageTitle } from '@/composables/usePageTitle'
+
+usePageTitle('Dashboard')
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -96,13 +100,12 @@ onMounted(loadData)
     <!-- Assigned modules -->
     <h2 class="sec-title" style="margin-bottom: 16px">Assigned modules</h2>
 
-    <div v-if="data.modules.length === 0" class="mod-empty">
-      <div class="mod-empty-icon">
-        <VIcon name="inbox" :size="32" />
-      </div>
-      <p class="mod-empty-title">No modules assigned yet</p>
-      <p class="mod-empty-sub">Your administrator hasn't assigned any modules to you. Contact them to get set up.</p>
-    </div>
+    <VEmptyState
+      v-if="data.modules.length === 0"
+      icon="inbox"
+      title="No modules assigned yet"
+      description="Your administrator hasn't assigned any modules to you. Contact them to get set up."
+    />
 
     <div v-else class="mod-grid">
       <div v-for="m in data.modules" :key="m.name" class="card card-pad mod-card">

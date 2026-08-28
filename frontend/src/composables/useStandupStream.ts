@@ -15,6 +15,8 @@ import { fetchStandupStatus, standupStreamUrl } from '@/services/cohorts.service
 import { USE_MOCKS } from '@/services/mock/useMocks'
 import { useEventSourceStream } from '@/composables/useEventSourceStream'
 
+export type StreamErrorKind = 'malformed' | 'reconnecting' | 'lost'
+
 /**
  * Drives Gates 1-3 of the stand-up pipeline over the backend SSE stream
  * (§9b): after `attachSharePointLink` persists the link (which kicks the job
@@ -55,6 +57,9 @@ export interface StandupStream {
   errors: ComputedRef<LocatedError[]>
   isPolling: Ref<boolean>
   error: Ref<string | null>
+  /** Classifies `error` — `'malformed'`/`'reconnecting'` are transient (the former self-clears on the
+   *  next good event, the latter once the browser reconnects); `'lost'` is terminal, mirrors `disconnected`. */
+  errorKind: Ref<StreamErrorKind | null>
   /** True once reconnect attempts are exhausted — the stream has given up and needs a manual `start()`. */
   disconnected: Ref<boolean>
   start: () => void
@@ -66,6 +71,7 @@ export function useStandupStream(cohortId: string): StandupStream {
   const status = ref<StandupStatus | null>(null) as Ref<StandupStatus | null>
   const isPolling = ref(false)
   const error = ref<string | null>(null)
+  const errorKind = ref<StreamErrorKind | null>(null)
   const disconnected = ref(false)
 
   const eventSource = useEventSourceStream()
@@ -80,6 +86,7 @@ export function useStandupStream(cohortId: string): StandupStream {
     stop()
     status.value = null
     error.value = null
+    errorKind.value = null
     disconnected.value = false
   }
 
@@ -134,23 +141,35 @@ export function useStandupStream(cohortId: string): StandupStream {
   function openRealStream() {
     const onMalformed = () => {
       error.value = 'Received a malformed message from the validation stream.'
+      errorKind.value = 'malformed'
+    }
+    // Once a later event parses and handles cleanly, drop that malformed-message warning — it was
+    // about one bad message, not the connection.
+    const onRecovered = () => {
+      error.value = null
+      errorKind.value = null
     }
     const source = eventSource.open(standupStreamUrl(cohortId), () => {
       // A browser-initiated reconnect succeeded (or this is the first connect) — drop any stale
       // "interrupted — reconnecting…" message now that the stream is live again.
       error.value = null
+      errorKind.value = null
       disconnected.value = false
     })
-    eventSource.bindEvent<GatePassedData>('gate.passed', handlePassed, onMalformed)
-    eventSource.bindEvent<GateFailedData>('gate.failed', handleFailed, onMalformed)
-    eventSource.bindEvent<PipelineDoneData>('pipeline.done', handleDone, onMalformed)
+    eventSource.bindEvent<GatePassedData>('gate.passed', handlePassed, onMalformed, onRecovered)
+    eventSource.bindEvent<GateFailedData>('gate.failed', handleFailed, onMalformed, onRecovered)
+    eventSource.bindEvent<PipelineDoneData>('pipeline.done', handleDone, onMalformed, onRecovered)
     source.onerror = eventSource.withGiveUp(
       // EventSource reconnects on its own (Last-Event-ID replay) — just surface a soft warning.
-      () => { error.value = 'Connection to the validation stream was interrupted — reconnecting…' },
+      () => {
+        error.value = 'Connection to the validation stream was interrupted — reconnecting…'
+        errorKind.value = 'reconnecting'
+      },
       () => {
         isPolling.value = false
         disconnected.value = true
         error.value = 'Lost connection to the validation stream.'
+        errorKind.value = 'lost'
       },
     )
   }
@@ -179,6 +198,7 @@ export function useStandupStream(cohortId: string): StandupStream {
     if (isPolling.value || eventSource.isDisposed()) return
     isPolling.value = true
     error.value = null
+    errorKind.value = null
     disconnected.value = false
     status.value = { overall: 'running', gates: emptyGates() }
     if (USE_MOCKS) {
@@ -191,5 +211,5 @@ export function useStandupStream(cohortId: string): StandupStream {
   const gates = computed<Gate[]>(() => status.value?.gates ?? [])
   const errors = computed<LocatedError[]>(() => gates.value.flatMap((g) => g.errors))
 
-  return { status, gates, errors, isPolling, error, disconnected, start, stop, reset }
+  return { status, gates, errors, isPolling, error, errorKind, disconnected, start, stop, reset }
 }

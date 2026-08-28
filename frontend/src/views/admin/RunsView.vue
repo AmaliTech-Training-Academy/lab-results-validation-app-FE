@@ -5,15 +5,30 @@ import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import VSortIcon from '@/components/base/VSortIcon.vue'
 import VPill from '@/components/base/VPill.vue'
+import VTablePager from '@/components/base/VTablePager.vue'
+import VRowActions from '@/components/base/VRowActions.vue'
+import VPopover from '@/components/base/VPopover.vue'
 import { useRunsStore } from '@/stores/runs'
 import { useCohortsStore } from '@/stores/cohorts'
 import { useToastStore } from '@/stores/toast'
+import { useQueryParam } from '@/composables/useQueryParam'
+import { usePageTitle } from '@/composables/usePageTitle'
+import { loadColumns, saveColumns, loadPageSize, savePageSize } from '@/utils/uiPrefs'
+import { PAGE_SIZE_OPTIONS } from '@/utils/pagination'
+import { fmtDate as fmtDateLocal, fmtTime as fmtTimeLocal } from '@/utils/datetime'
 import type { IngestionRun, RunStatus } from '@/types/run.types'
+
+usePageTitle('Grading runs')
 
 const router = useRouter()
 const runs = useRunsStore()
 const cohorts = useCohortsStore()
 const toast = useToastStore()
+
+// Column visibility survives reloads (previously reset every visit).
+const COLS_KEY = 'validata.runs.columns'
+const cols = ref(loadColumns(COLS_KEY, { cohort: true, trigger: true, status: true, results: true, when: true }))
+watch(cols, (v) => saveColumns(COLS_KEY, v), { deep: true })
 
 const selectedCohortId = ref('')
 
@@ -51,21 +66,24 @@ function stopPolling() {
 function pollIfNeeded() {
   stopPolling()
   if (!runs.list.some((r) => r.status === 'processing')) return
+  /**
+   * Background poll tick — deliberately lighter than the initial `loadRuns`:
+   * cohorts.fetchList() is skipped (the cohort roster can't meaningfully change
+   * while the admin is staring at this table, and it's already loaded) so each
+   * poll only re-hits the run lists + stats enrichment that can actually change.
+   */
   pollTimer = setTimeout(async () => {
-    await Promise.all([runs.fetchList(undefined, { silent: true }), cohorts.fetchList()])
-    await refreshStats()
+    await Promise.all([runs.fetchList(undefined, { silent: true }), refreshStats()])
     pollIfNeeded()
   }, POLL_INTERVAL_MS)
 }
 
 onMounted(() => {
   loadRuns()
-  window.addEventListener('click', closeAllMenus)
 })
 
 onUnmounted(() => {
   stopPolling()
-  window.removeEventListener('click', closeAllMenus)
 })
 
 /** Only STOOD_UP (incl. locked) cohorts are sync-eligible (B2 AC1). */
@@ -95,9 +113,8 @@ const STATUS_ORDER: Record<RunStatus, number> = {
 }
 
 // ── Column visibility (Manage columns) ──────────────────────────────────────
-const cols = ref({ cohort: true, trigger: true, status: true, results: true, when: true })
 const showColMenu = ref(false)
-const colMenuPos = ref<{ top: number; left: number } | null>(null)
+const colMenuAnchor = ref<HTMLElement | null>(null)
 const COL_LABELS: { key: keyof typeof cols.value; label: string }[] = [
   { key: 'cohort', label: 'Cohort' },
   { key: 'trigger', label: 'Trigger' },
@@ -111,20 +128,20 @@ const colCount = computed(
 
 function toggleColMenu(event: MouseEvent) {
   event.stopPropagation()
-  showFilterMenu.value = false
+  closeFilterMenu()
+  activeKebabId.value = null
+  colMenuAnchor.value = event.currentTarget as HTMLElement
   showColMenu.value = !showColMenu.value
-  if (showColMenu.value) {
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-    colMenuPos.value = { top: rect.bottom + 6, left: rect.right - 200 }
-    activeKebabId.value = null
-  }
+}
+function closeColMenu() {
+  showColMenu.value = false
 }
 
 // ── Search + filter ──────────────────────────────────────────────────────────
 const search = ref('')
 const statusFilter = ref<Set<RunStatus>>(new Set())
 const showFilterMenu = ref(false)
-const filterMenuPos = ref<{ top: number; left: number } | null>(null)
+const filterMenuAnchor = ref<HTMLElement | null>(null)
 const STATUS_FILTER_OPTIONS: { key: RunStatus; label: string }[] = [
   { key: 'completed', label: 'Completed' },
   { key: 'partial', label: 'Partial' },
@@ -147,17 +164,47 @@ function toggleFilterMenu(event: MouseEvent) {
   event.stopPropagation()
   showColMenu.value = false
   activeKebabId.value = null
+  filterMenuAnchor.value = event.currentTarget as HTMLElement
   showFilterMenu.value = !showFilterMenu.value
-  if (showFilterMenu.value) {
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-    filterMenuPos.value = { top: rect.bottom + 6, left: rect.left }
-  }
+}
+function closeFilterMenu() {
+  showFilterMenu.value = false
 }
 
 // ── Sorting ─────────────────────────────────────────────────────────────────
 type SortKey = 'cohort' | 'trigger' | 'status' | 'results' | 'when'
 const sortKey = ref<SortKey>('when')
 const sortDir = ref<'asc' | 'desc'>('desc')
+
+// Table state lives in the URL (q/page/sort) so filters survive reloads and
+// filtered views can be shared as links — previously everything was lost.
+// `currentPage` is declared here (ahead of the Pagination section below) because
+// `useQueryParam` below binds to it immediately, not lazily.
+const currentPage = ref(1)
+function parseStr(raw: string | undefined): string {
+  return raw ?? ''
+}
+function parsePage(raw: string | undefined): number {
+  const n = Number(raw)
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1
+}
+function parseSortKey(raw: string | undefined): SortKey {
+  return (['cohort', 'trigger', 'status', 'results', 'when'] as const).includes(raw as SortKey)
+    ? (raw as SortKey)
+    : 'when'
+}
+function parseSortDir(raw: string | undefined): 'asc' | 'desc' {
+  return raw === 'asc' ? 'asc' : 'desc'
+}
+useQueryParam({ key: 'q', target: search, parse: parseStr, encode: (v) => v.trim() || null })
+useQueryParam({
+  key: 'page',
+  target: currentPage,
+  parse: parsePage,
+  encode: (v) => (v > 1 ? String(v) : null),
+})
+useQueryParam({ key: 'sort', target: sortKey, parse: parseSortKey, encode: (v) => (v !== 'when' ? v : null) })
+useQueryParam({ key: 'dir', target: sortDir, parse: parseSortDir, encode: (v) => (v !== 'desc' ? v : null) })
 
 function toggleSort(key: SortKey) {
   if (sortKey.value === key) {
@@ -210,8 +257,9 @@ const sorted = computed(() => {
 })
 
 // ── Pagination ──────────────────────────────────────────────────────────────
-const pageSize = ref(10)
-const currentPage = ref(1)
+const PAGESIZE_KEY = 'validata.runs.pageSize'
+const pageSize = ref(loadPageSize(PAGESIZE_KEY, 10, PAGE_SIZE_OPTIONS))
+watch(pageSize, (v) => savePageSize(PAGESIZE_KEY, v))
 const total = computed(() => sorted.value.length)
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const safePage = computed(() => Math.min(currentPage.value, totalPages.value))
@@ -219,82 +267,35 @@ const paged = computed(() => {
   const start = (safePage.value - 1) * pageSize.value
   return sorted.value.slice(start, start + pageSize.value)
 })
-const showingFrom = computed(() => (total.value === 0 ? 0 : (safePage.value - 1) * pageSize.value + 1))
-const showingTo = computed(() => Math.min(safePage.value * pageSize.value, total.value))
 
-const pageItems = computed<(number | '…')[]>(() => {
-  const tp = totalPages.value
-  const cur = safePage.value
-  if (tp <= 7) return Array.from({ length: tp }, (_, i) => i + 1)
-  const items: (number | '…')[] = []
-  if (cur <= 4) {
-    // Near the start: 1 2 3 4 5 … last
-    for (let i = 1; i <= 5; i++) items.push(i)
-    items.push('…', tp)
-  } else if (cur >= tp - 3) {
-    // Near the end: 1 … last-4 … last
-    items.push(1, '…')
-    for (let i = tp - 4; i <= tp; i++) items.push(i)
-  } else {
-    // Middle: 1 … cur-1 cur cur+1 … last
-    items.push(1, '…', cur - 1, cur, cur + 1, '…', tp)
-  }
-  return items
-})
-
-function goToPage(p: number) {
-  if (p < 1 || p > totalPages.value) return
-  currentPage.value = p
-}
-
-watch([selectedCohortId, pageSize, search, statusFilter], () => {
+// pageSize itself isn't listed here — VTablePager recomputes the landing page
+// on a rows-per-page change so the visible range stays roughly stable instead
+// of always snapping back to page 1.
+watch([selectedCohortId, search, statusFilter], () => {
   currentPage.value = 1
 })
 
 // ── Kebab (row actions) ──────────────────────────────────────────────────────
 const activeKebabId = ref<string | null>(null)
-const kebabPos = ref<{ top: number; left: number } | null>(null)
-const activeKebabRun = computed(() => runs.list.find((r) => r.id === activeKebabId.value) ?? null)
 
-function toggleKebab(event: MouseEvent, id: string) {
-  event.stopPropagation()
-  if (activeKebabId.value === id) {
-    closeAllMenus()
-    return
-  }
-  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-  kebabPos.value = { top: rect.bottom + 4, left: rect.right - 180 }
-  activeKebabId.value = id
+function onKebabToggle({ id }: { id: string; anchor: HTMLElement }) {
   showColMenu.value = false
+  closeFilterMenu()
+  activeKebabId.value = id
 }
 
-function closeAllMenus() {
+function closeKebab() {
   activeKebabId.value = null
-  kebabPos.value = null
-  showColMenu.value = false
-  showFilterMenu.value = false
 }
 
 // ── Formatting helpers ───────────────────────────────────────────────────────
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
 /** Best available timestamp for a run (endpoints vary: runAt | completedAt | startedAt). */
 function whenOf(r: IngestionRun): string | undefined {
   return r.runAt ?? r.completedAt ?? r.startedAt
 }
 
-function fmtDate(iso?: string): string {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso.slice(0, 10)
-  return `${String(d.getDate()).padStart(2, '0')} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`
-}
-function fmtTime(iso?: string): string {
-  if (!iso) return ''
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso.slice(11, 16)
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
+const fmtDate = fmtDateLocal
+const fmtTime = fmtTimeLocal
 
 const SEASONS = ['Winter', 'Winter', 'Spring', 'Spring', 'Spring', 'Summer', 'Summer', 'Summer', 'Autumn', 'Autumn', 'Autumn', 'Winter']
 
@@ -329,11 +330,11 @@ function resultsFor(r: IngestionRun) {
 
 // ── Row actions ───────────────────────────────────────────────────────────────
 function openRun(r: IngestionRun) {
-  router.push({ name: 'admin-run-review', params: { id: r.id }, query: { cohortId: r.cohortId } })
+  router.push({ name: 'admin-run-review', params: { id: r.syncJobId ?? r.id }, query: { cohortId: r.cohortId } })
 }
 
 async function copyLink(r: IngestionRun) {
-  closeAllMenus()
+  closeKebab()
   if (!r.sharepointFileUrl) {
     toast.show({ tone: 'info', title: 'No file link', body: 'This run has no SharePoint URL recorded.' })
     return
@@ -508,9 +509,16 @@ async function runSync() {
 
             <!-- Kebab -->
             <td class="col-kebab">
-              <button class="kebab" aria-label="Row actions" @click="toggleKebab($event, r.id)">
-                <VIcon name="more-vertical" :size="18" />
-              </button>
+              <VRowActions :active-id="activeKebabId" :row-id="r.id" @toggle="onKebabToggle" @close="closeKebab">
+                <button class="pop-item" @click="openRun(r)">
+                  <VIcon name="eye" :size="15" />
+                  View details
+                </button>
+                <button class="pop-item" @click="copyLink(r)">
+                  <VIcon name="copy" :size="15" />
+                  Copy file link
+                </button>
+              </VRowActions>
             </td>
           </tr>
 
@@ -520,7 +528,7 @@ async function runSync() {
               <div class="empty-inline">
                 <VIcon name="refresh-cw" :size="26" class="muted" />
                 <p class="empty-title">No runs yet</p>
-                <p class="empty-sub">Trigger a sync to ingest grading data for a stood-up cohort.</p>
+                <p class="empty-sub">Run a sync to ingest grading data for a stood-up cohort.</p>
               </div>
             </td>
           </tr>
@@ -529,78 +537,44 @@ async function runSync() {
     </div>
 
     <!-- Pagination -->
-    <div v-if="!runs.loading && total > 0" class="pager">
-      <span class="pager-count">Showing <span class="pg-strong">{{ showingFrom }}</span> to <span class="pg-strong">{{ showingTo }}</span> of <span class="pg-strong">{{ total }}</span> Entries</span>
-      <div class="pager-right">
-        <div class="pgsize">
-          <select v-model.number="pageSize" aria-label="Rows per page">
-            <option :value="10">10 per page</option>
-            <option :value="25">25 per page</option>
-            <option :value="50">50 per page</option>
-          </select>
-        </div>
-        <div class="pager-ctrls">
-          <button class="pg-arrow" aria-label="Previous page" :disabled="safePage === 1" @click="goToPage(safePage - 1)">
-            <VIcon name="chevron-left" :size="16" />
-          </button>
-          <template v-for="(p, i) in pageItems" :key="i">
-            <span v-if="p === '…'" class="pg-ellipsis">…</span>
-            <button v-else :class="['pg-num', { on: safePage === p }]" @click="goToPage(Number(p))">{{ p }}</button>
-          </template>
-          <button class="pg-arrow" aria-label="Next page" :disabled="safePage === totalPages" @click="goToPage(safePage + 1)">
-            <VIcon name="chevron-right" :size="16" />
-          </button>
-        </div>
-      </div>
-    </div>
+    <VTablePager
+      v-if="!runs.loading && total > 0"
+      :total="total"
+      :page="safePage"
+      :page-size="pageSize"
+      @update:page="currentPage = $event"
+      @update:pageSize="pageSize = $event"
+    />
   </div>
 
   <!-- Filter popover -->
-  <Teleport to="body">
-    <div v-if="showFilterMenu && filterMenuPos" class="pop col-pop" :style="{ top: `${filterMenuPos.top}px`, left: `${filterMenuPos.left}px` }" @click.stop>
-      <div class="pop-head">
-        <p class="pop-title">Filter runs</p>
-        <button v-if="activeFilterCount > 0" class="pop-clear" @click="clearFilter">Clear</button>
-      </div>
-      <div class="pop-field">
-        <span class="pop-flabel">Cohort</span>
-        <select v-model="selectedCohortId" class="pop-select">
-          <option value="">All cohorts</option>
-          <option v-for="c in eligibleCohorts" :key="c.id" :value="c.id">{{ c.name }}</option>
-        </select>
-      </div>
-      <p class="pop-flabel" style="margin: 8px 0 2px; padding: 0 8px">Status</p>
-      <label v-for="opt in STATUS_FILTER_OPTIONS" :key="opt.key" class="pop-row">
-        <input type="checkbox" :checked="statusFilter.has(opt.key)" @change="toggleStatusFilter(opt.key)" />
-        {{ opt.label }}
-      </label>
+  <VPopover :open="showFilterMenu" :anchor="filterMenuAnchor" class="col-pop" @close="closeFilterMenu">
+    <div class="pop-head">
+      <p class="pop-title">Filter runs</p>
+      <button v-if="activeFilterCount > 0" class="pop-clear" @click="clearFilter">Clear</button>
     </div>
-  </Teleport>
+    <div class="pop-field">
+      <span class="pop-flabel">Cohort</span>
+      <select v-model="selectedCohortId" class="pop-select">
+        <option value="">All cohorts</option>
+        <option v-for="c in eligibleCohorts" :key="c.id" :value="c.id">{{ c.name }}</option>
+      </select>
+    </div>
+    <p class="pop-flabel" style="margin: 8px 0 2px; padding: 0 8px">Status</p>
+    <label v-for="opt in STATUS_FILTER_OPTIONS" :key="opt.key" class="pop-row">
+      <input type="checkbox" :checked="statusFilter.has(opt.key)" @change="toggleStatusFilter(opt.key)" />
+      {{ opt.label }}
+    </label>
+  </VPopover>
 
   <!-- Manage columns popover -->
-  <Teleport to="body">
-    <div v-if="showColMenu && colMenuPos" class="pop col-pop" :style="{ top: `${colMenuPos.top}px`, left: `${colMenuPos.left}px` }" @click.stop>
-      <p class="pop-title">Manage columns</p>
-      <label v-for="c in COL_LABELS" :key="c.key" class="pop-row">
-        <input type="checkbox" v-model="cols[c.key]" />
-        {{ c.label }}
-      </label>
-    </div>
-  </Teleport>
-
-  <!-- Row actions popover -->
-  <Teleport to="body">
-    <div v-if="activeKebabRun && kebabPos" class="pop" :style="{ top: `${kebabPos.top}px`, left: `${kebabPos.left}px` }" @click.stop>
-      <button class="pop-item" @click="openRun(activeKebabRun)">
-        <VIcon name="eye" :size="15" />
-        View details
-      </button>
-      <button class="pop-item" @click="copyLink(activeKebabRun)">
-        <VIcon name="copy" :size="15" />
-        Copy file link
-      </button>
-    </div>
-  </Teleport>
+  <VPopover :open="showColMenu" :anchor="colMenuAnchor" class="col-pop" @close="closeColMenu">
+    <p class="pop-title">Manage columns</p>
+    <label v-for="c in COL_LABELS" :key="c.key" class="pop-row">
+      <input type="checkbox" v-model="cols[c.key]" />
+      {{ c.label }}
+    </label>
+  </VPopover>
 </template>
 
 <style scoped>

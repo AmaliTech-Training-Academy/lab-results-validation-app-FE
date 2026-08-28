@@ -2,9 +2,12 @@
 import { ref, watch, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import VButton from '@/components/base/VButton.vue'
+import VEmptyState from '@/components/base/VEmptyState.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import VDrawer from '@/components/base/VDrawer.vue'
 import VModal from '@/components/base/VModal.vue'
+import VTablePager from '@/components/base/VTablePager.vue'
+import { usePageTitle } from '@/composables/usePageTitle'
 import { useToastStore } from '@/stores/toast'
 import {
   getSpecializations,
@@ -19,8 +22,12 @@ import {
   forceEditLab,
 } from '@/services/reference.service'
 import { getCohorts } from '@/services/cohort.service'
+import { PAGE_SIZE_OPTIONS } from '@/utils/pagination'
+import { loadPageSize, savePageSize } from '@/utils/uiPrefs'
 import type { Specialization, Module, Lab } from '@/types/reference.types'
 import type { CohortRow } from '@/types/cohort.types'
+
+usePageTitle('Reference data')
 
 const toast = useToastStore()
 const route = useRoute()
@@ -43,7 +50,16 @@ const loadErrors = ref({ specs: null as string | null, mods: null as string | nu
 const submitting = ref(false)
 
 // ── Pagination ────────────────────────────────────────────────────────────────
-const PAGE_SIZE = 10
+const SPEC_PAGE_SIZE_KEY = 'validata.referenceData.specializationsPageSize'
+const MOD_PAGE_SIZE_KEY = 'validata.referenceData.modulesPageSize'
+const LAB_PAGE_SIZE_KEY = 'validata.referenceData.labsPageSize'
+
+const specPageSize = ref(loadPageSize(SPEC_PAGE_SIZE_KEY, 10, PAGE_SIZE_OPTIONS))
+const modPageSize = ref(loadPageSize(MOD_PAGE_SIZE_KEY, 10, PAGE_SIZE_OPTIONS))
+const labPageSize = ref(loadPageSize(LAB_PAGE_SIZE_KEY, 10, PAGE_SIZE_OPTIONS))
+watch(specPageSize, (v) => savePageSize(SPEC_PAGE_SIZE_KEY, v))
+watch(modPageSize, (v) => savePageSize(MOD_PAGE_SIZE_KEY, v))
+watch(labPageSize, (v) => savePageSize(LAB_PAGE_SIZE_KEY, v))
 
 const specPage = ref(0)
 const specTotalPages = ref(0)
@@ -91,7 +107,7 @@ async function fetchSpecs(id: string, page = 0) {
   loading.value.specs = true
   loadErrors.value.specs = null
   try {
-    const result = await getSpecializations(id, page, PAGE_SIZE)
+    const result = await getSpecializations(id, page, specPageSize.value)
     specializations.value = result.content
     specPage.value = result.page
     specTotalPages.value = result.totalPages
@@ -109,7 +125,7 @@ async function fetchMods(specId: string, page = 0) {
   loading.value.mods = true
   loadErrors.value.mods = null
   try {
-    const result = await getModules(specId, page, PAGE_SIZE)
+    const result = await getModules(specId, page, modPageSize.value)
     modules.value = result.content
     modPage.value = result.page
     modTotalPages.value = result.totalPages
@@ -127,7 +143,7 @@ async function fetchLabs(id: string, page = 0) {
   loading.value.labs = true
   loadErrors.value.labs = null
   try {
-    const result = await getLabs(id, page, PAGE_SIZE)
+    const result = await getLabs(id, page, labPageSize.value)
     labs.value = result.content
     labPage.value = result.page
     labTotalPages.value = result.totalPages
@@ -461,6 +477,18 @@ function goToLabPage(page: number) {
   if (selectedModId.value) fetchLabs(selectedModId.value, page)
 }
 
+function onSpecPageSizeChange(size: number) {
+  specPageSize.value = size
+}
+
+function onModPageSizeChange(size: number) {
+  modPageSize.value = size
+}
+
+function onLabPageSizeChange(size: number) {
+  labPageSize.value = size
+}
+
 async function submitForceEdit() {
   forceEditForm.value.error = ''
   const max = Number(forceEditForm.value.maxScore)
@@ -573,29 +601,16 @@ async function submitForceEdit() {
         </div>
       </div>
       <div v-else class="empty">
-        <div class="empty-ic"><VIcon name="layers" :size="30" /></div>
-        <p class="empty-title">No specializations</p>
-        <p class="empty-body">Add the first specialization to this cohort.</p>
+        <VEmptyState icon="layers" title="No specializations" description="Add the first specialization to this cohort." />
       </div>
-      <div v-if="!loading.specs && specTotalPages > 1" class="pager">
-        <span class="pager-count">
-          Showing {{ specPage * PAGE_SIZE + 1 }}–{{ Math.min((specPage + 1) * PAGE_SIZE, specTotalElements) }} of {{ specTotalElements }}
-        </span>
-        <div class="pager-ctrls">
-          <button class="pg-arrow" aria-label="Previous" :disabled="specPage === 0" @click="goToSpecPage(specPage - 1)">
-            <VIcon name="chevron-left" :size="16" />
-          </button>
-          <button
-            v-for="p in specTotalPages"
-            :key="p"
-            :class="['pg-num', { on: p - 1 === specPage }]"
-            @click="goToSpecPage(p - 1)"
-          >{{ p }}</button>
-          <button class="pg-arrow" aria-label="Next" :disabled="specPage >= specTotalPages - 1" @click="goToSpecPage(specPage + 1)">
-            <VIcon name="chevron-right" :size="16" />
-          </button>
-        </div>
-      </div>
+      <VTablePager
+        v-if="!loading.specs && specTotalElements > 0"
+        :total="specTotalElements"
+        :page="specPage + 1"
+        :page-size="specPageSize"
+        @update:page="(p) => goToSpecPage(p - 1)"
+        @update:page-size="onSpecPageSizeChange"
+      />
     </div>
 
     <!-- Column 2: Modules -->
@@ -634,32 +649,19 @@ async function submitForceEdit() {
         </div>
       </div>
       <div v-else-if="selectedSpecId" class="empty">
-        <div class="empty-ic"><VIcon name="inbox" :size="30" /></div>
-        <p class="empty-title">No modules yet</p>
-        <p class="empty-body">Add the first module to this specialization.</p>
+        <VEmptyState icon="inbox" title="No modules yet" description="Add the first module to this specialization." />
       </div>
       <div v-else class="empty">
         <p class="empty-body">Select a specialization to see its modules.</p>
       </div>
-      <div v-if="!loading.mods && modTotalPages > 1" class="pager">
-        <span class="pager-count">
-          Showing {{ modPage * PAGE_SIZE + 1 }}–{{ Math.min((modPage + 1) * PAGE_SIZE, modTotalElements) }} of {{ modTotalElements }}
-        </span>
-        <div class="pager-ctrls">
-          <button class="pg-arrow" aria-label="Previous" :disabled="modPage === 0" @click="goToModPage(modPage - 1)">
-            <VIcon name="chevron-left" :size="16" />
-          </button>
-          <button
-            v-for="p in modTotalPages"
-            :key="p"
-            :class="['pg-num', { on: p - 1 === modPage }]"
-            @click="goToModPage(p - 1)"
-          >{{ p }}</button>
-          <button class="pg-arrow" aria-label="Next" :disabled="modPage >= modTotalPages - 1" @click="goToModPage(modPage + 1)">
-            <VIcon name="chevron-right" :size="16" />
-          </button>
-        </div>
-      </div>
+      <VTablePager
+        v-if="!loading.mods && modTotalElements > 0"
+        :total="modTotalElements"
+        :page="modPage + 1"
+        :page-size="modPageSize"
+        @update:page="(p) => goToModPage(p - 1)"
+        @update:page-size="onModPageSizeChange"
+      />
     </div>
 
     <!-- Column 3: Labs -->
@@ -729,30 +731,17 @@ async function submitForceEdit() {
             Labs with results attached cannot be edited. Use force-edit to update with audit trail.
           </span>
         </div>
-        <div v-if="labTotalPages > 1" class="pager">
-          <span class="pager-count">
-            Showing {{ labPage * PAGE_SIZE + 1 }}–{{ Math.min((labPage + 1) * PAGE_SIZE, labTotalElements) }} of {{ labTotalElements }}
-          </span>
-          <div class="pager-ctrls">
-            <button class="pg-arrow" aria-label="Previous" :disabled="labPage === 0" @click="goToLabPage(labPage - 1)">
-              <VIcon name="chevron-left" :size="16" />
-            </button>
-            <button
-              v-for="p in labTotalPages"
-              :key="p"
-              :class="['pg-num', { on: p - 1 === labPage }]"
-              @click="goToLabPage(p - 1)"
-            >{{ p }}</button>
-            <button class="pg-arrow" aria-label="Next" :disabled="labPage >= labTotalPages - 1" @click="goToLabPage(labPage + 1)">
-              <VIcon name="chevron-right" :size="16" />
-            </button>
-          </div>
-        </div>
+        <VTablePager
+          v-if="labTotalElements > 0"
+          :total="labTotalElements"
+          :page="labPage + 1"
+          :page-size="labPageSize"
+          @update:page="(p) => goToLabPage(p - 1)"
+          @update:page-size="onLabPageSizeChange"
+        />
       </template>
       <div v-else-if="selectedModId" class="empty">
-        <div class="empty-ic"><VIcon name="inbox" :size="30" /></div>
-        <p class="empty-title">No labs yet</p>
-        <p class="empty-body">Add the first lab to this module.</p>
+        <VEmptyState icon="inbox" title="No labs yet" description="Add the first lab to this module." />
       </div>
       <div v-else class="empty">
         <p class="empty-body">Select a module to see its labs.</p>

@@ -5,6 +5,9 @@ import { useToastStore } from '@/stores/toast'
 import type { TemplateData } from '@/types/instructor.types'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
+import { usePageTitle } from '@/composables/usePageTitle'
+
+usePageTitle('Download Template')
 
 const toast = useToastStore()
 

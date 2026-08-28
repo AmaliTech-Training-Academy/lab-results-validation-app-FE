@@ -98,7 +98,7 @@ describe('SyncSchedulesView', () => {
     expect(document.body.textContent).toContain('New sync schedule')
   })
 
-  it('shows the day-of-week field only when frequency is WEEKLY', async () => {
+  it('keeps the day-of-week field in the DOM but disables it when frequency is DAILY', async () => {
     vi.mocked(svc.listSyncSchedules).mockResolvedValue([])
     const wrapper = mountView()
     await flushPromises()
@@ -111,22 +111,29 @@ describe('SyncSchedulesView', () => {
     const frequencySelect = Array.from(drawer.querySelectorAll('select')).find((s) =>
       Array.from(s.options).some((o) => o.value === 'DAILY'),
     ) as HTMLSelectElement
+    const daySelect = Array.from(drawer.querySelectorAll('select')).find((s) =>
+      Array.from(s.options).some((o) => o.value === 'MONDAY'),
+    ) as HTMLSelectElement
+
+    expect(daySelect.disabled).toBe(false)
+
     frequencySelect.value = 'DAILY'
     frequencySelect.dispatchEvent(new Event('change'))
     await flushPromises()
 
-    expect(document.body.textContent).not.toContain('Day of week')
+    // Field stays in the DOM (no layout jump) — just greyed out and disabled.
+    expect(document.body.textContent).toContain('Day of week')
+    expect(daySelect.disabled).toBe(true)
   })
 
-  it('deletes a schedule only after the user confirms', async () => {
+  it('deletes a schedule only after the user confirms via the delete modal', async () => {
     vi.mocked(svc.listSyncSchedules).mockResolvedValue([schedule({ id: 's1' })])
     vi.mocked(svc.removeSyncSchedule).mockResolvedValue(undefined)
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
     const wrapper = mountView()
     await flushPromises()
 
     // Delete lives in the row's ⋮ kebab, whose menu teleports to <body>.
-    async function clickDeleteViaKebab() {
+    async function openDeleteViaKebab() {
       await wrapper.find('button[aria-label="Row actions"]').trigger('click')
       await flushPromises()
       const del = Array.from(document.body.querySelectorAll('button')).find((b) =>
@@ -135,12 +142,22 @@ describe('SyncSchedulesView', () => {
       del!.click()
       await flushPromises()
     }
+    function modalButton(text: string): HTMLButtonElement {
+      const modal = document.body.querySelector('.modal')!
+      return Array.from(modal.querySelectorAll('button')).find((b) => b.textContent?.trim() === text) as HTMLButtonElement
+    }
 
-    await clickDeleteViaKebab()
+    // Cancel: no delete call.
+    await openDeleteViaKebab()
+    expect(document.body.textContent).toContain('Delete sync schedule')
+    modalButton('Cancel').click()
+    await flushPromises()
     expect(svc.removeSyncSchedule).not.toHaveBeenCalled()
 
-    confirmSpy.mockReturnValue(true)
-    await clickDeleteViaKebab()
+    // Confirm: delete goes through.
+    await openDeleteViaKebab()
+    modalButton('Delete').click()
+    await flushPromises()
     expect(svc.removeSyncSchedule).toHaveBeenCalledWith('s1')
   })
 })

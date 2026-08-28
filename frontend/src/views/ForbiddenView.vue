@@ -3,6 +3,9 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
+import { usePageTitle } from '@/composables/usePageTitle'
+
+usePageTitle('Access Denied')
 
 const auth = useAuthStore()
 const router = useRouter()

@@ -51,10 +51,15 @@ export function useEventSourceStream() {
     return source
   }
 
-  function bindEvent<T>(name: string, handler: (data: T) => void, onMalformed: () => void) {
+  /**
+   * `onRecovered` fires after a message parses and handles cleanly — callers use it to drop a
+   * stale "received a malformed message" warning raised by an earlier event on this same stream.
+   */
+  function bindEvent<T>(name: string, handler: (data: T) => void, onMalformed: () => void, onRecovered?: () => void) {
     source?.addEventListener(name, (e) => {
       try {
         handler(JSON.parse((e as MessageEvent).data) as T)
+        onRecovered?.()
       } catch {
         onMalformed()
       }
