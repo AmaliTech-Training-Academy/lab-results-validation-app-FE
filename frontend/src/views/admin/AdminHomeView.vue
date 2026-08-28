@@ -8,7 +8,11 @@ import { RUN_STATUS_TONE, type IngestionRun, type RunStatus } from '@/types/run.
 import { useCohortsStore } from '@/stores/cohorts'
 import { useRunsStore } from '@/stores/runs'
 import { useConflictsStore } from '@/stores/conflicts'
+import { usePageTitle } from '@/composables/usePageTitle'
+import { fmtDate, fmtTime, whenOf } from '@/utils/datetime'
 import '@/assets/styles/dashboard.css'
+
+usePageTitle('Dashboard')
 
 const router = useRouter()
 const cohorts = useCohortsStore()
@@ -129,14 +133,8 @@ function rejectPct(r: IngestionRun): number {
   const rowsRead = s?.counts.rowsRead ?? 0
   return rowsRead > 0 ? Math.round(((s?.counts.skippedInvalid ?? 0) / rowsRead) * 100) : 0
 }
-function whenOf(r: IngestionRun): string | undefined {
-  return r.runAt ?? r.completedAt ?? r.startedAt
-}
-function fmtDate(iso?: string): string {
-  return iso ? iso.slice(0, 10) : '—'
-}
-function fmtTime(iso?: string): string {
-  return iso ? iso.slice(11, 16) : ''
+function runWhen(r: IngestionRun): string | undefined {
+  return whenOf(r.runAt, r.completedAt, r.startedAt)
 }
 function triggerLabel(r: IngestionRun): string {
   if (!r.triggerType) return '—'
@@ -244,8 +242,8 @@ function go(to?: string) {
                   </td>
                   <td><VPill :tone="RUN_STATUS_TONE[r.status]">{{ STATUS_LABEL[r.status] }}</VPill></td>
                   <td class="when-cell">
-                    <span class="when-date">{{ fmtDate(whenOf(r)) }}</span>
-                    <span v-if="whenOf(r)" class="when-time">{{ fmtTime(whenOf(r)) }}</span>
+                    <span class="when-date">{{ fmtDate(runWhen(r)) }}</span>
+                    <span v-if="runWhen(r)" class="when-time">{{ fmtTime(runWhen(r)) }}</span>
                   </td>
                 </tr>
                 <tr v-if="recentRuns.length === 0">

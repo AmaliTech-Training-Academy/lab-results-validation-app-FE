@@ -4,6 +4,9 @@ import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import VPill from '@/components/base/VPill.vue'
 import { useToastStore } from '@/stores/toast'
+import { usePageTitle } from '@/composables/usePageTitle'
+
+usePageTitle('Power BI Integration')
 
 const toast = useToastStore()
 

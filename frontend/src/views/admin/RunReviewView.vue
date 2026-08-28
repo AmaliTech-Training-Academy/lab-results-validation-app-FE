@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, ref, watchEffect } from 'vue'
 import { useRoute } from 'vue-router'
 import VButton from '@/components/base/VButton.vue'
 import VDrawer from '@/components/base/VDrawer.vue'
 import VIcon from '@/components/base/VIcon.vue'
+import VModal from '@/components/base/VModal.vue'
 import VPill from '@/components/base/VPill.vue'
+import VTablePager from '@/components/base/VTablePager.vue'
+import VRowActions from '@/components/base/VRowActions.vue'
 import { useRunReviewStore } from '@/stores/runReview'
 import { useRunsStore } from '@/stores/runs'
 import { useSyncRunStream } from '@/composables/useSyncRunStream'
@@ -12,7 +15,7 @@ import { useNotificationStream } from '@/composables/useNotificationStream'
 import { useToastAction } from '@/composables/useToastAction'
 import { useToastStore } from '@/stores/toast'
 import { toErrorMessage } from '@/utils/errors'
-import type { Paged } from '@/types/common.types'
+import { fmtDate, fmtTime } from '@/utils/datetime'
 import { RUN_STATUS_TONE, type SyncFileStatus } from '@/types/run.types'
 import {
   CONFLICT_STATUS_TONE,
@@ -31,6 +34,10 @@ const toast = useToastStore()
 
 const runId = route.params.id as string
 const cohortId = route.query.cohortId as string
+
+// Matches the store's own hardcoded CONFLICTS_PAGE_SIZE/NOTIFICATIONS_PAGE_SIZE — neither the
+// conflicts nor the notifications endpoint currently take a caller-chosen size.
+const PAGE_SIZE = 20
 
 /** Loads the review + its two paged panels together — used once the sync stream completes, and by the "Try again" retry. */
 function retryReview() {
@@ -81,9 +88,7 @@ onMounted(async () => {
     await retryReview()
   }
   notifStream.start()
-  window.addEventListener('click', closeKebab)
 })
-onUnmounted(() => window.removeEventListener('click', closeKebab))
 
 const review = computed(() => store.review)
 const run = computed(() => store.review?.run ?? null)
@@ -93,27 +98,24 @@ const headerRun = computed(() => review.value?.run ?? runsStore.current)
 const conflictRows = computed(() => store.conflictsPage?.content ?? [])
 const notifications = computed(() => store.notificationsPage?.content ?? [])
 
-// ── Row actions (kebab) — matches the row-actions pattern used across the other
-// admin tables (Runs/Cohorts/Sync schedules/Learners/User management): one
-// shared kebab id/pos, closed on any outside click. Conflict and notification
-// ids never collide, so one shared state covers both tables on this page.
-const activeKebabId = ref<string | null>(null)
-const kebabPos = ref<{ top: number; left: number } | null>(null)
-const activeKebabNotification = computed(() => notifications.value.find((n) => n.id === activeKebabId.value) ?? null)
+// This is a per-run detail page — a static "Run review" title is indistinguishable from any other
+// run in the tab bar/history, so keep it reactive to the cohort name as soon as it's known.
+watchEffect(() => {
+  const cohort = headerRun.value?.cohortName
+  document.title = `Run review${cohort ? ` · ${cohort}` : ''} · Validata`
+})
 
-function toggleKebab(event: MouseEvent, id: string) {
-  event.stopPropagation()
-  if (activeKebabId.value === id) {
-    closeKebab()
-    return
-  }
-  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-  kebabPos.value = { top: rect.bottom + 4, left: rect.right - 200 }
-  activeKebabId.value = id
+// ── Row actions (kebab) — matches the row-actions pattern used across the other admin tables
+// (Runs/Cohorts/Sync schedules/Learners/User management): one shared "which row is open" id, the
+// positioning/outside-click/Escape handling now lives in VRowActions/VPopover. Conflict rows use
+// an inline "Review"/"View" VButton instead of a kebab, so this only ever tracks notification ids.
+const activeKebabId = ref<string | null>(null)
+
+function onKebabToggle(payload: { id: string; anchor: HTMLElement }) {
+  activeKebabId.value = payload.id
 }
 function closeKebab() {
   activeKebabId.value = null
-  kebabPos.value = null
 }
 /** Scoped to the current page — informational only. "Send all held" itself touches every PENDING
  * notification for the whole job, page (and filter) or not, so it must not be gated on this. */
@@ -150,8 +152,10 @@ const FILE_SUMMARY = [
   { key: 'conflictsCount', label: 'Conflicts' },
 ] as const
 
-function formatRunAt(iso: string): string {
-  return iso.slice(0, 16).replace('T', ' ')
+/** Viewer-local date + time, e.g. "21 Jul 2026 08:05" — replaces the old raw-UTC `iso.slice(0, 16)`. */
+function formatRunAt(iso: string | null | undefined): string {
+  const time = fmtTime(iso)
+  return time ? `${fmtDate(iso)} ${time}` : fmtDate(iso)
 }
 
 const NOTIF_TONE: Record<NotificationStatus, 'success' | 'warning' | 'danger' | 'info'> = {
@@ -189,34 +193,6 @@ function onNotificationStatusChange(status: NotificationStatus | '') {
 function changeNotificationsPage(page: number) {
   store.fetchNotifications(cohortId, runId, page)
 }
-
-// ── Pagination (server-paged — mirrors the numbered pager used by the
-// client-paged admin tables, e.g. RunsView/CohortsView) ─────────────────────
-function pageItemsFor(page: Paged<unknown> | null): (number | '…')[] {
-  const tp = Math.max(page?.totalPages ?? 1, 1)
-  const cur = (page?.number ?? 0) + 1
-  if (tp <= 7) return Array.from({ length: tp }, (_, i) => i + 1)
-  const items: (number | '…')[] = []
-  if (cur <= 4) {
-    for (let i = 1; i <= 5; i++) items.push(i)
-    items.push('…', tp)
-  } else if (cur >= tp - 3) {
-    items.push(1, '…')
-    for (let i = tp - 4; i <= tp; i++) items.push(i)
-  } else {
-    items.push(1, '…', cur - 1, cur, cur + 1, '…', tp)
-  }
-  return items
-}
-function showingRange(page: Paged<unknown> | null): { from: number; to: number; total: number } {
-  if (!page || page.totalElements === 0) return { from: 0, to: 0, total: 0 }
-  const from = page.number * page.size + 1
-  return { from, to: from + page.content.length - 1, total: page.totalElements }
-}
-const conflictsPageItems = computed(() => pageItemsFor(store.conflictsPage))
-const conflictsShowing = computed(() => showingRange(store.conflictsPage))
-const notificationsPageItems = computed(() => pageItemsFor(store.notificationsPage))
-const notificationsShowing = computed(() => showingRange(store.notificationsPage))
 
 /** Re-fetches the page currently shown — used by the "new activity" banner once a live event lands off-page. */
 function refreshNotifications() {
@@ -285,6 +261,13 @@ function confirmReject() {
   confirmResolve('REJECT')
 }
 
+// "Reject both" dismisses the conflict outright with no way back — confirm before firing.
+const rejectConfirmOpen = ref(false)
+async function confirmRejectBoth() {
+  rejectConfirmOpen.value = false
+  await confirmReject()
+}
+
 async function sendOne(n: Notification) {
   closeKebab()
   await withToast(() => store.sendNotification(n.id), {
@@ -298,6 +281,13 @@ async function dismissNotif(n: Notification) {
   await withToast(() => store.dismissNotification(n.id), {
     error: { tone: 'warning', title: 'Could not dismiss' },
   })
+}
+
+// Bulk-sends every held notification for the whole run — confirm before firing.
+const sendAllConfirmOpen = ref(false)
+async function confirmSendAll() {
+  sendAllConfirmOpen.value = false
+  await sendAll()
 }
 
 /** Send-all just queues the work (202) and the actual sends happen off-thread — so the toast reports "queued", not "sent", and the caller has to re-check for the outcome. */
@@ -332,6 +322,15 @@ function recipientLabel(n: Notification): string {
     </div>
   </div>
 
+  <!-- folderErrors survives past sync.done (only `reset()`/`start()` clear it) — but the panel
+       below that renders it while syncing is gone once isPolling flips false, so without this the
+       admin briefly sees "folder X couldn't be listed" mid-sync and then it vanishes the moment the
+       page moves on to the loading/loaded/error state, with no trace of a real backend-reported
+       cause. Kept visible here across every state that follows. -->
+  <ul v-if="!stream.isPolling.value && stream.folderErrors.value.length" class="err-list" style="margin: 0 0 16px">
+    <li v-for="(e, i) in stream.folderErrors.value" :key="i" class="err-item mono">{{ e.folder }} — {{ e.error }}</li>
+  </ul>
+
   <div v-if="stream.isPolling.value" class="panel panel--info">
     <div class="panel-head">
       <VIcon name="loader" :size="18" class="spin" />
@@ -361,7 +360,37 @@ function recipientLabel(n: Notification): string {
     <VButton variant="ghost" icon="rotate-ccw" @click="stream.start()">Reconnect</VButton>
   </div>
 
-  <div v-else-if="store.loading" class="muted">Loading run…</div>
+  <section v-else-if="store.loading" class="block">
+    <h2 class="block-title">Results</h2>
+    <dl class="summary">
+      <div v-for="i in SUMMARY.length" :key="i" class="summary-cell">
+        <dt><span class="skel" style="width: 70%" /></dt>
+        <dd><span class="skel" style="width: 36px; height: 24px; margin-top: 2px" /></dd>
+      </div>
+    </dl>
+    <div class="tbl-wrap file-breakdown" style="margin-top: 20px">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Workbook</th>
+            <th>Status</th>
+            <th style="text-align: center">Failure rate</th>
+            <th v-for="s in FILE_SUMMARY" :key="s.key" style="text-align: center">{{ s.label }}</th>
+            <th>Run at</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="i in 3" :key="i" class="skel-row">
+            <td><span class="skel" style="width: 65%" /></td>
+            <td><span class="skel" style="width: 55%" /></td>
+            <td style="text-align: center"><span class="skel" style="width: 44px; display: inline-block" /></td>
+            <td v-for="s in FILE_SUMMARY" :key="s.key" style="text-align: center"><span class="skel" style="width: 24px; display: inline-block" /></td>
+            <td><span class="skel" style="width: 90px" /></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
 
   <div v-else-if="store.error" class="load-error-state">
     <div class="load-error-icon"><VIcon name="wifi-off" :size="28" /></div>
@@ -452,7 +481,30 @@ function recipientLabel(n: Notification): string {
       </div>
       <p class="block-sub">In-file duplicates — same learner + lab appearing twice, held for manual resolution.</p>
 
-      <div v-if="store.conflictsLoading" class="muted">Loading conflicts…</div>
+      <div v-if="store.conflictsLoading" class="tbl-wrap">
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th>Learner</th>
+              <th>Lab</th>
+              <th>Marks</th>
+              <th style="text-align: center">Status</th>
+              <th>Created</th>
+              <th style="text-align: right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="i in 3" :key="i" class="skel-row">
+              <td><span class="skel" style="width: 70%" /></td>
+              <td><span class="skel" style="width: 60%" /></td>
+              <td><span class="skel" style="width: 80px" /></td>
+              <td style="text-align: center"><span class="skel" style="width: 60px; border-radius: 999px; display: inline-block" /></td>
+              <td><span class="skel" style="width: 90px" /></td>
+              <td style="text-align: right"><span class="skel" style="width: 70px; display: inline-block" /></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
       <p v-else-if="store.conflictsError" class="inline-error"><VIcon name="alert-circle" :size="14" /> {{ store.conflictsError }}</p>
       <template v-else>
         <p v-if="conflictRows.length === 0" class="empty-note"><VIcon name="check-circle-2" :size="15" class="ic-success" /> No conflicts in this run.</p>
@@ -490,24 +542,13 @@ function recipientLabel(n: Notification): string {
             </tbody>
           </table>
 
-          <div v-if="store.conflictsPage && conflictRows.length > 0" class="pager">
-            <span class="pager-count">
-              Showing <span class="pg-strong">{{ conflictsShowing.from }}</span> to <span class="pg-strong">{{ conflictsShowing.to }}</span>
-              of <span class="pg-strong">{{ conflictsShowing.total }}</span> entries
-            </span>
-            <div class="pager-ctrls">
-              <button class="pg-arrow" aria-label="Previous page" :disabled="store.conflictsPage.number === 0" @click="changeConflictsPage(store.conflictsPage.number - 1)">
-                <VIcon name="chevron-left" :size="16" />
-              </button>
-              <template v-for="(p, i) in conflictsPageItems" :key="i">
-                <span v-if="p === '…'" class="pg-ellipsis">…</span>
-                <button v-else :class="['pg-num', { on: store.conflictsPage.number + 1 === p }]" @click="changeConflictsPage(Number(p) - 1)">{{ p }}</button>
-              </template>
-              <button class="pg-arrow" aria-label="Next page" :disabled="store.conflictsPage.last" @click="changeConflictsPage(store.conflictsPage.number + 1)">
-                <VIcon name="chevron-right" :size="16" />
-              </button>
-            </div>
-          </div>
+          <VTablePager
+            v-if="store.conflictsPage && conflictRows.length > 0"
+            :total="store.conflictsPage.totalElements"
+            :page="store.conflictsPage.number + 1"
+            :page-size="PAGE_SIZE"
+            @update:page="(p) => changeConflictsPage(p - 1)"
+          />
         </div>
       </template>
     </section>
@@ -529,7 +570,7 @@ function recipientLabel(n: Notification): string {
               <option value="FAILED">Failed</option>
             </select>
           </label>
-          <VButton size="sm" variant="primary" icon="send" :disabled="!canSendAll" @click="sendAll">Send all held</VButton>
+          <VButton size="sm" variant="primary" icon="send" :disabled="!canSendAll" @click="sendAllConfirmOpen = true">Send all held</VButton>
         </div>
       </div>
 
@@ -543,7 +584,32 @@ function recipientLabel(n: Notification): string {
         <button v-if="notifStream.disconnected.value" type="button" class="link-btn" @click="notifStream.start()">Reconnect</button>
       </p>
 
-      <div v-if="store.notificationsLoading" class="muted">Loading notifications…</div>
+      <div v-if="store.notificationsLoading" class="tbl-wrap">
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th>Recipient</th>
+              <th>Type</th>
+              <th>Policy</th>
+              <th style="text-align: center">Status</th>
+              <th>Issues</th>
+              <th>Created</th>
+              <th style="text-align: right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="i in 3" :key="i" class="skel-row">
+              <td><span class="skel" style="width: 65%" /></td>
+              <td><span class="skel" style="width: 55%" /></td>
+              <td><span class="skel" style="width: 50px; display: inline-block" /></td>
+              <td style="text-align: center"><span class="skel" style="width: 60px; border-radius: 999px; display: inline-block" /></td>
+              <td><span class="skel" style="width: 40px" /></td>
+              <td><span class="skel" style="width: 90px" /></td>
+              <td style="text-align: right"><span class="skel" style="width: 18px; display: inline-block" /></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
       <p v-else-if="store.notificationsError" class="inline-error"><VIcon name="alert-circle" :size="14" /> {{ store.notificationsError }}</p>
       <template v-else>
         <p v-if="notifications.length === 0" class="empty-note"><VIcon name="check-circle-2" :size="15" class="ic-success" /> No notifications for this run.</p>
@@ -591,9 +657,20 @@ function recipientLabel(n: Notification): string {
                   </td>
                   <td class="mono muted">{{ n.createdAt ? formatRunAt(n.createdAt) : '—' }}</td>
                   <td style="text-align: right">
-                    <button v-if="n.status === 'PENDING' || n.status === 'FAILED'" class="kebab" aria-label="Row actions" @click="toggleKebab($event, n.id)">
-                      <VIcon name="more-vertical" :size="18" />
-                    </button>
+                    <VRowActions v-if="n.status === 'PENDING' || n.status === 'FAILED'" :active-id="activeKebabId" :row-id="n.id" @toggle="onKebabToggle" @close="closeKebab">
+                      <button v-if="n.status === 'PENDING'" class="pop-item" @click="sendOne(n)">
+                        <VIcon name="send" :size="15" />
+                        Notify
+                      </button>
+                      <button v-if="n.status === 'FAILED'" class="pop-item" @click="sendOne(n)">
+                        <VIcon name="rotate-ccw" :size="15" />
+                        Retry
+                      </button>
+                      <button v-if="n.status === 'PENDING'" class="pop-item" @click="dismissNotif(n)">
+                        <VIcon name="x" :size="15" />
+                        Dismiss
+                      </button>
+                    </VRowActions>
                     <span v-else class="muted">—</span>
                   </td>
                 </tr>
@@ -601,24 +678,13 @@ function recipientLabel(n: Notification): string {
             </table>
           </div>
 
-          <div v-if="store.notificationsPage && notifications.length > 0" class="pager">
-            <span class="pager-count">
-              Showing <span class="pg-strong">{{ notificationsShowing.from }}</span> to <span class="pg-strong">{{ notificationsShowing.to }}</span>
-              of <span class="pg-strong">{{ notificationsShowing.total }}</span> entries
-            </span>
-            <div class="pager-ctrls">
-              <button class="pg-arrow" aria-label="Previous page" :disabled="store.notificationsPage.number === 0" @click="changeNotificationsPage(store.notificationsPage.number - 1)">
-                <VIcon name="chevron-left" :size="16" />
-              </button>
-              <template v-for="(p, i) in notificationsPageItems" :key="i">
-                <span v-if="p === '…'" class="pg-ellipsis">…</span>
-                <button v-else :class="['pg-num', { on: store.notificationsPage.number + 1 === p }]" @click="changeNotificationsPage(Number(p) - 1)">{{ p }}</button>
-              </template>
-              <button class="pg-arrow" aria-label="Next page" :disabled="store.notificationsPage.last" @click="changeNotificationsPage(store.notificationsPage.number + 1)">
-                <VIcon name="chevron-right" :size="16" />
-              </button>
-            </div>
-          </div>
+          <VTablePager
+            v-if="store.notificationsPage && notifications.length > 0"
+            :total="store.notificationsPage.totalElements"
+            :page="store.notificationsPage.number + 1"
+            :page-size="PAGE_SIZE"
+            @update:page="(p) => changeNotificationsPage(p - 1)"
+          />
         </div>
       </template>
     </section>
@@ -691,7 +757,7 @@ function recipientLabel(n: Notification): string {
     </template>
 
     <template v-if="reviewingConflict?.status === 'PENDING'" #footer>
-      <VButton variant="danger" :disabled="resolveBusy" @click="confirmReject">Reject both</VButton>
+      <VButton variant="danger" :disabled="resolveBusy" @click="rejectConfirmOpen = true">Reject both</VButton>
       <VButton variant="primary" :disabled="selectedChoice == null || resolveBusy" @click="confirmKeep">
         {{ resolveBusy ? 'Saving…' : 'Keep selected' }}
       </VButton>
@@ -701,23 +767,37 @@ function recipientLabel(n: Notification): string {
     </template>
   </VDrawer>
 
-  <!-- Notification row actions popover -->
-  <Teleport to="body">
-    <div v-if="activeKebabNotification && kebabPos" class="pop" :style="{ top: `${kebabPos.top}px`, left: `${kebabPos.left}px` }" @click.stop>
-      <button v-if="activeKebabNotification.status === 'PENDING'" class="pop-item" @click="sendOne(activeKebabNotification)">
-        <VIcon name="send" :size="15" />
-        Notify
-      </button>
-      <button v-if="activeKebabNotification.status === 'FAILED'" class="pop-item" @click="sendOne(activeKebabNotification)">
-        <VIcon name="rotate-ccw" :size="15" />
-        Retry
-      </button>
-      <button v-if="activeKebabNotification.status === 'PENDING'" class="pop-item" @click="dismissNotif(activeKebabNotification)">
-        <VIcon name="x" :size="15" />
-        Dismiss
-      </button>
-    </div>
-  </Teleport>
+  <!-- Reject-both confirmation — irreversible, so it gets an explicit step of its own. -->
+  <VModal
+    :open="rejectConfirmOpen"
+    tone="danger"
+    title="Reject both rows?"
+    :subtitle="reviewingConflict ? (reviewingConflict.learnerName ?? reviewingConflict.learnerId ?? undefined) : undefined"
+    @close="rejectConfirmOpen = false"
+  >
+    <p>This dismisses both the existing and incoming rows for this conflict — neither will be committed, and it can't be undone.</p>
+    <template #footer>
+      <VButton variant="ghost" :disabled="resolveBusy" @click="rejectConfirmOpen = false">Cancel</VButton>
+      <VButton variant="danger" :disabled="resolveBusy" @click="confirmRejectBoth">{{ resolveBusy ? 'Rejecting…' : 'Reject both' }}</VButton>
+    </template>
+  </VModal>
+
+  <!-- Send-all confirmation — bulk-sends every held notification for this run, not just this page. -->
+  <VModal
+    :open="sendAllConfirmOpen"
+    tone="danger"
+    title="Send all held notifications?"
+    @close="sendAllConfirmOpen = false"
+  >
+    <p>
+      {{ pendingCount }} notification{{ pendingCount === 1 ? '' : 's' }} held on this page — sending queues every held
+      notification for this run, not just this page. This can't be undone.
+    </p>
+    <template #footer>
+      <VButton variant="ghost" @click="sendAllConfirmOpen = false">Cancel</VButton>
+      <VButton variant="danger" @click="confirmSendAll">Send all held</VButton>
+    </template>
+  </VModal>
 </template>
 
 <style scoped>

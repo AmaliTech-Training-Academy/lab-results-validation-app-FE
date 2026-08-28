@@ -174,6 +174,27 @@ describe('RunReviewView', () => {
     expect(text).toContain('Sarah')
   })
 
+  it('keeps a folder.failed error visible after sync.done instead of dropping it once the stream stops polling', async () => {
+    vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
+    vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
+    vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage())
+    vi.mocked(reviewSvc.listNotifications).mockResolvedValue(notificationsPage())
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    const es = FakeEventSource.instances[0]!
+    es.emit('folder.failed', { folder: 'Scenario 2', error: 'Cannot list contents of the SharePoint folder.' })
+    await flushPromises()
+    expect(wrapper.text()).toContain('Scenario 2 — Cannot list contents of the SharePoint folder.')
+
+    // sync.done stops the stream (isPolling flips false) and the view moves on to the loaded
+    // Results panel — the folder error must still be visible, not silently dropped.
+    await completeSync()
+
+    expect(wrapper.text()).toContain('Results')
+    expect(wrapper.text()).toContain('Scenario 2 — Cannot list contents of the SharePoint folder.')
+  })
+
   it('shows a retry state when the review fails to load, and reloads on Try again', async () => {
     vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
     vi.mocked(reviewSvc.getRunReview).mockRejectedValueOnce(new Error('Network error'))
@@ -198,7 +219,9 @@ describe('RunReviewView', () => {
   it('fetches conflicts for the run and paginates via the Next button', async () => {
     vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
     vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
-    vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage({ last: false, totalPages: 2 }))
+    // totalElements > one page's worth (VTablePager derives its own page count from total/pageSize,
+    // unlike the old hand-rolled pager which trusted the server's `last`/`totalPages` fields directly).
+    vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage({ last: false, totalPages: 2, totalElements: 21 }))
     vi.mocked(reviewSvc.listNotifications).mockResolvedValue(notificationsPage())
     const { wrapper } = mountView()
     await flushPromises()
@@ -375,8 +398,14 @@ describe('RunReviewView', () => {
     const reviewBtn = wrapper.findAll('button').find((b) => b.text() === 'Review')
     await reviewBtn!.trigger('click')
     await flushPromises()
+    // "Reject both" opens a confirmation modal first — it doesn't fire the resolve call by itself.
     const rejectBtn = Array.from(document.body.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Reject both')
     rejectBtn!.click()
+    await flushPromises()
+    expect(reviewSvc.resolveConflict).not.toHaveBeenCalled()
+
+    const confirmBtn = Array.from(document.body.querySelector('.modal-foot')!.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Reject both')
+    confirmBtn!.click()
     await flushPromises()
 
     expect(reviewSvc.resolveConflict).toHaveBeenCalledWith('c1', 'cf-1', { action: 'REJECT' })
@@ -409,7 +438,9 @@ describe('RunReviewView', () => {
     vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
     vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
     vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage())
-    vi.mocked(reviewSvc.listNotifications).mockResolvedValue(notificationsPage({ last: false, totalPages: 2 }))
+    // totalElements > one page's worth (VTablePager derives its own page count from total/pageSize,
+    // unlike the old hand-rolled pager which trusted the server's `last`/`totalPages` fields directly).
+    vi.mocked(reviewSvc.listNotifications).mockResolvedValue(notificationsPage({ last: false, totalPages: 2, totalElements: 21 }))
     const { wrapper } = mountView()
     await flushPromises()
     await completeSync()
@@ -459,7 +490,8 @@ describe('RunReviewView', () => {
 
     expect(reviewSvc.sendNotification).toHaveBeenCalledWith('nt-1')
     expect(wrapper.text()).toContain('Sent')
-    expect(wrapper.text()).toContain('Sent 2026-07-21 08:05')
+    // Viewer-local, locale-formatted date + time (fmtDate/fmtTime) — no longer the raw UTC "yyyy-mm-dd hh:mm" slice.
+    expect(wrapper.text()).toContain('Sent Jul 21, 2026 08:05')
   })
 
   it('shows the real backend error when sending a notification fails, not a silent title-only toast', async () => {
@@ -532,7 +564,13 @@ describe('RunReviewView', () => {
     const { wrapper, pinia } = mountView()
     await flushPromises()
     await completeSync()
+    // "Send all held" opens a confirmation modal first — it doesn't fire the bulk send by itself.
     await wrapper.findAll('button').find((b) => b.text().includes('Send all held'))!.trigger('click')
+    await flushPromises()
+    expect(reviewSvc.sendAllNotifications).not.toHaveBeenCalled()
+
+    const confirmBtn = Array.from(document.body.querySelector('.modal-foot')!.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Send all held')
+    confirmBtn!.click()
     await flushPromises()
     expect(reviewSvc.sendAllNotifications).toHaveBeenCalledWith('run-1')
     expect(reviewSvc.listNotifications).toHaveBeenCalledTimes(2)
@@ -629,7 +667,8 @@ describe('RunReviewView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Sent')
-    expect(wrapper.text()).toContain('Sent 2026-07-21 09:00')
+    // Viewer-local, locale-formatted date + time (fmtDate/fmtTime) — no longer the raw UTC "yyyy-mm-dd hh:mm" slice.
+    expect(wrapper.text()).toContain('Sent Jul 21, 2026 09:00')
   })
 
   it('flags new activity for a notification the stream reports off the current page, and refetches on Refresh', async () => {

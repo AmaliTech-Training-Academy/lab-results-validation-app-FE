@@ -10,6 +10,9 @@ import { useStandupStream } from '@/composables/useStandupStream'
 import { useGate4Stream } from '@/composables/useGate4Stream'
 import type { FileGateStatus, GateStatus } from '@/types/standup.types'
 import type { LocatedError } from '@/types/common.types'
+import { usePageTitle } from '@/composables/usePageTitle'
+
+usePageTitle('Cohort Stand-up')
 
 const route = useRoute()
 const router = useRouter()
@@ -39,6 +42,11 @@ const gate4 = useGate4Stream(cohortId, {
 })
 
 const isBusy = computed(() => stream.isPolling.value || gate4.isPolling.value)
+/** True while any of start/accept/runGate4/discard is in flight. Each action tracks its own
+ *  busy/error in the store (`standup.busyAction`/`standup.errors`), but the four are still mutually
+ *  exclusive from the UI's point of view — this keeps e.g. Discard from being clickable mid-Accept
+ *  and vice versa, so no two mutating actions can ever race each other. */
+const anyActionBusy = computed(() => standup.busyAction !== null)
 
 const GATE4_TO_STEP: Record<'idle' | 'running' | 'passed' | 'failed', GateStatus> = {
   idle: 'pending',
@@ -83,8 +91,8 @@ async function runValidation() {
   try {
     await standup.start(cohortId, linkInput.value.trim())
   } catch {
-    // start()'s failure is captured in standup.error and rendered inline below — catching here (and
-    // stopping) keeps the stream from being kicked off for a stand-up that never started.
+    // start()'s failure is captured in standup.errors.start and rendered inline below — catching here
+    // (and stopping) keeps the stream from being kicked off for a stand-up that never started.
     return
   }
   stream.start() // drives Gates 1-3 over SSE
@@ -94,8 +102,8 @@ async function accept() {
   try {
     await standup.accept(cohortId)
   } catch {
-    // standup.error is already set by the store and rendered inline below — stop here rather than
-    // letting the rejection go unhandled (which would trigger the generic "Something went wrong"
+    // standup.errors.accept is already set by the store and rendered inline below — stop here rather
+    // than letting the rejection go unhandled (which would trigger the generic "Something went wrong"
     // toast and swallow the backend's real explanation) or chaining into Gate 4 on a failed accept.
     return
   }
@@ -105,8 +113,8 @@ async function accept() {
     await standup.runGate4(cohortId)
   } catch {
     // The commit itself succeeded (acceptDone stays true) but triggering Gate 4 failed — same
-    // silent-failure shape as accept() above. standup.error is rendered inline in the "accepted"
-    // panel below; don't start a stream that was never actually kicked off on the backend.
+    // silent-failure shape as accept() above. standup.errors.gate4 is rendered inline in the
+    // "accepted" panel below; don't start a stream that was never actually kicked off on the backend.
     return
   }
   gate4.start() // drives Gate 4 over its own SSE
@@ -116,7 +124,7 @@ async function retryGate4() {
   try {
     await standup.runGate4(cohortId)
   } catch {
-    // runGate4()'s failure is set on standup.error and rendered in the "could not start Gate 4"
+    // runGate4()'s failure is set on standup.errors.gate4 and rendered in the "could not start Gate 4"
     // panel above — catching stops the unhandled rejection (which would otherwise surface a generic
     // toast) and prevents starting a stream for a validation that never kicked off.
     return
@@ -128,8 +136,8 @@ async function discard() {
   try {
     await standup.discard(cohortId)
   } catch {
-    // Failure is captured in standup.error (rendered wherever the panel is); if the discard didn't
-    // take, leave the current state intact rather than resetting the local UI or claiming success.
+    // Failure is captured in standup.errors.discard; if the discard didn't take, leave the current
+    // state intact rather than resetting the local UI or claiming success.
     return
   }
   stream.reset()
@@ -209,10 +217,10 @@ function fmtError(e: LocatedError): string {
       </span>
     </label>
     <p v-if="localError" class="inline-error"><VIcon name="alert-circle" :size="14" /> {{ localError }}</p>
-    <p v-if="standup.error" class="inline-error"><VIcon name="alert-circle" :size="14" /> {{ standup.error }}</p>
+    <p v-if="standup.errors.start" class="inline-error"><VIcon name="alert-circle" :size="14" /> {{ standup.errors.start }}</p>
     <div class="card-actions">
-      <VButton variant="primary" icon-right="arrow-right" :disabled="standup.busy" @click="runValidation">
-        {{ standup.busy ? 'Starting…' : 'Run validation' }}
+      <VButton variant="primary" icon-right="arrow-right" :disabled="anyActionBusy" @click="runValidation">
+        {{ standup.busyAction === 'start' ? 'Starting…' : 'Run validation' }}
       </VButton>
     </div>
   </section>
@@ -226,10 +234,16 @@ function fmtError(e: LocatedError): string {
         <p class="card-sub">This cohort's reference bundle is committed and frozen. Continue by re-running, or discard to redo.</p>
       </div>
     </div>
-    <p v-if="standup.error" class="inline-error"><VIcon name="alert-circle" :size="14" /> {{ standup.error }}</p>
+    <p v-if="standup.errors.start || standup.errors.discard" class="inline-error">
+      <VIcon name="alert-circle" :size="14" /> {{ standup.errors.start || standup.errors.discard }}
+    </p>
     <div class="card-actions">
-      <VButton variant="ghost" icon="rotate-ccw" @click="discard">Discard / reset</VButton>
-      <VButton variant="primary" icon-right="arrow-right" @click="runValidation">Re-run stand-up</VButton>
+      <VButton variant="ghost" icon="rotate-ccw" :disabled="anyActionBusy" @click="discard">
+        {{ standup.busyAction === 'discard' ? 'Discarding…' : 'Discard / reset' }}
+      </VButton>
+      <VButton variant="primary" icon-right="arrow-right" :disabled="anyActionBusy" @click="runValidation">
+        {{ standup.busyAction === 'start' ? 'Starting…' : 'Re-run stand-up' }}
+      </VButton>
     </div>
   </section>
 
@@ -259,7 +273,7 @@ function fmtError(e: LocatedError): string {
       <p class="panel-note">Fix the source data in SharePoint, then retry — or change the link and start over.</p>
       <div class="card-actions">
         <VButton variant="ghost" icon="pencil" @click="startOver">Change link</VButton>
-        <VButton variant="primary" icon="rotate-ccw" :disabled="standup.busy" @click="runValidation">Retry validation</VButton>
+        <VButton variant="primary" icon="rotate-ccw" :disabled="anyActionBusy" @click="runValidation">Retry validation</VButton>
       </div>
     </div>
 
@@ -284,11 +298,11 @@ function fmtError(e: LocatedError): string {
         />
         Quiz reference file {{ summary.quizReferencePresent ? 'found' : 'not found' }}
       </p>
-      <p v-if="standup.error" class="inline-error"><VIcon name="alert-circle" :size="14" /> {{ standup.error }}</p>
+      <p v-if="standup.errors.accept" class="inline-error"><VIcon name="alert-circle" :size="14" /> {{ standup.errors.accept }}</p>
       <div class="card-actions">
         <VButton variant="ghost" @click="startOver">Cancel</VButton>
-        <VButton variant="primary" icon="check" :disabled="standup.busy" @click="accept">
-          {{ standup.busy ? 'Accepting…' : 'Accept reference data' }}
+        <VButton variant="primary" icon="check" :disabled="anyActionBusy" @click="accept">
+          {{ standup.busyAction === 'accept' ? 'Accepting…' : 'Accept reference data' }}
         </VButton>
       </div>
     </div>
@@ -297,15 +311,17 @@ function fmtError(e: LocatedError): string {
     <template v-else-if="accepted">
       <!-- The commit itself succeeded, but triggering Gate 4 failed outright (never started) — a
            distinct case from a Gate 4 run that started and then failed validation, below. -->
-      <div v-if="standup.error && gate4.overall.value === 'idle'" class="panel panel--error">
+      <div v-if="standup.errors.gate4 && gate4.overall.value === 'idle'" class="panel panel--error">
         <div class="panel-head">
           <VIcon name="alert-triangle" :size="18" />
           <strong>Could not start Gate 4 validation</strong>
         </div>
-        <p class="panel-note">{{ standup.error }}</p>
+        <p class="panel-note">{{ standup.errors.gate4 }}</p>
         <div class="card-actions">
-          <VButton variant="ghost" icon="rotate-ccw" @click="discard">Discard / reset</VButton>
-          <VButton variant="primary" icon="rotate-ccw" :disabled="standup.busy" @click="retryGate4">Retry Gate 4</VButton>
+          <VButton variant="ghost" icon="rotate-ccw" :disabled="anyActionBusy" @click="discard">
+            {{ standup.busyAction === 'discard' ? 'Discarding…' : 'Discard / reset' }}
+          </VButton>
+          <VButton variant="primary" icon="rotate-ccw" :disabled="anyActionBusy" @click="retryGate4">Retry Gate 4</VButton>
         </div>
       </div>
 
@@ -326,8 +342,10 @@ function fmtError(e: LocatedError): string {
         </ul>
         <p class="panel-note">Fix the flagged score sheets in SharePoint, then retry.</p>
         <div class="card-actions">
-          <VButton variant="ghost" icon="rotate-ccw" @click="discard">Discard / reset</VButton>
-          <VButton variant="primary" icon="rotate-ccw" :disabled="standup.busy" @click="retryGate4">Retry Gate 4</VButton>
+          <VButton variant="ghost" icon="rotate-ccw" :disabled="anyActionBusy" @click="discard">
+            {{ standup.busyAction === 'discard' ? 'Discarding…' : 'Discard / reset' }}
+          </VButton>
+          <VButton variant="primary" icon="rotate-ccw" :disabled="anyActionBusy" @click="retryGate4">Retry Gate 4</VButton>
         </div>
       </div>
 
@@ -356,7 +374,9 @@ function fmtError(e: LocatedError): string {
           <strong>Reference data accepted</strong>
         </div>
         <div class="card-actions">
-          <VButton variant="ghost" icon="rotate-ccw" @click="discard">Discard / reset</VButton>
+          <VButton variant="ghost" icon="rotate-ccw" :disabled="anyActionBusy" @click="discard">
+            {{ standup.busyAction === 'discard' ? 'Discarding…' : 'Discard / reset' }}
+          </VButton>
         </div>
       </div>
     </template>

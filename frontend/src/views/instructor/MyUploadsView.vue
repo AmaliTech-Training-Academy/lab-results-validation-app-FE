@@ -1,16 +1,18 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { ref, watch, onMounted } from 'vue'
 import { getMyUploads, getUploadReport } from '@/services/instructor.service'
 import { useToastStore } from '@/stores/toast'
+import { usePageTitle } from '@/composables/usePageTitle'
+import { useQueryParam } from '@/composables/useQueryParam'
 import type { MyUpload } from '@/types/dashboard.types'
 import type { ValidationReport } from '@/types/report.types'
 import VButton from '@/components/base/VButton.vue'
+import VEmptyState from '@/components/base/VEmptyState.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import VPill from '@/components/base/VPill.vue'
 
-const route = useRoute()
-const router = useRouter()
+usePageTitle('My uploads')
+
 const toast = useToastStore()
 
 const uploads = ref<MyUpload[]>([])
@@ -20,7 +22,15 @@ const listError = ref<string | null>(null)
 const report = ref<ValidationReport | null>(null)
 const reportLoading = ref(false)
 
-const activeUploadId = computed(() => route.query.uploadId as string | undefined)
+// Which upload's report is open — synced with the `uploadId` query param so the
+// report view is shareable/bookmarkable and the browser back button works.
+const activeUploadId = ref('')
+useQueryParam<string>({
+  key: 'uploadId',
+  target: activeUploadId,
+  parse: (raw) => raw ?? '',
+  encode: (value) => (value ? value : null),
+})
 
 async function loadUploads() {
   listLoading.value = true
@@ -43,7 +53,7 @@ async function loadReport(uploadId: string) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : ''
     toast.show({ tone: 'danger', title: 'Could not load report', body: msg || 'Please try again.' })
-    router.push({ name: 'instructor-uploads' })
+    activeUploadId.value = ''
   } finally {
     reportLoading.value = false
   }
@@ -61,11 +71,11 @@ watch(
 onMounted(loadUploads)
 
 function openReport(uploadId: string) {
-  router.push({ name: 'instructor-uploads', query: { uploadId } })
+  activeUploadId.value = uploadId
 }
 
 function backToList() {
-  router.push({ name: 'instructor-uploads' })
+  activeUploadId.value = ''
 }
 
 function downloadCorrections() {
@@ -114,8 +124,12 @@ function downloadCorrections() {
         </tbody>
         <tbody v-else>
           <tr v-if="!uploads.length">
-            <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 32px">
-              No uploads yet.
+            <td colspan="6" style="padding: 32px">
+              <VEmptyState
+                icon="inbox"
+                title="No uploads yet"
+                description="Submit a CSV for validation and it will show up here with its outcome."
+              />
             </td>
           </tr>
           <tr v-for="(row, i) in uploads" :key="i">

@@ -9,6 +9,9 @@ import { useSettingsStore } from '@/stores/settings'
 import { useSyncSchedulesStore } from '@/stores/syncSchedules'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
+import { usePageTitle } from '@/composables/usePageTitle'
+
+usePageTitle('Settings')
 
 const router = useRouter()
 const store = useSettingsStore()

@@ -1,24 +1,37 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import VPill from '@/components/base/VPill.vue'
 import VSortIcon from '@/components/base/VSortIcon.vue'
+import VTablePager from '@/components/base/VTablePager.vue'
+import VRowActions from '@/components/base/VRowActions.vue'
 import { useAuditStore } from '@/stores/audit'
 import { useCohortsStore } from '@/stores/cohorts'
 import { getCohortReference } from '@/services/cohorts.service'
+import { usePageTitle } from '@/composables/usePageTitle'
+import { useQueryParam } from '@/composables/useQueryParam'
+import { fmtDate, fmtTime } from '@/utils/datetime'
 import { RUN_STATUS_TONE, type IngestionRun, type RunStatus } from '@/types/run.types'
 import { EVENT_TYPE_TONE, EVENT_TYPE_ICON, TONE_CHIP_STYLE, type AuditEventType, type AuditEvent } from '@/types/audit.types'
 import type { InstructorContact } from '@/types/domain.types'
 
+usePageTitle('Audit')
+
 const router = useRouter()
-const route = useRoute()
 const audit = useAuditStore()
 const cohorts = useCohortsStore()
 
-// Land back on the Events tab when returning from an event's detail page.
-const tab = ref<'runs' | 'events'>(route.query.tab === 'events' ? 'events' : 'runs')
+// Land back on the Events tab when returning from an event's detail page — and keep the
+// URL in sync when the admin switches tabs, so the tab is shareable/reload-safe too.
+const tab = ref<'runs' | 'events'>('runs')
+useQueryParam({
+  key: 'tab',
+  target: tab,
+  parse: (raw) => (raw === 'events' ? 'events' : 'runs'),
+  encode: (v) => (v === 'events' ? 'events' : null),
+})
 const expandedRun = ref<string | null>(null)
 
 const STATUS_LABEL: Record<RunStatus, string> = {
@@ -76,9 +89,7 @@ onMounted(async () => {
   await cohorts.fetchList()
   loadInstructors()
   applyFilters()
-  window.addEventListener('click', closeKebab)
 })
-onUnmounted(() => window.removeEventListener('click', closeKebab))
 
 const EVENT_TYPES = Object.keys(EVENT_TYPE_ICON) as AuditEventType[]
 function eventLabel(t: string): string {
@@ -86,9 +97,6 @@ function eventLabel(t: string): string {
 }
 function eventIcon(t: string): string {
   return EVENT_TYPE_ICON[t as AuditEventType] ?? 'circle'
-}
-function fmt(iso?: string): string {
-  return iso ? iso.replace('T', ' ').slice(0, 16) : '—'
 }
 function toggleRun(id: string) {
   expandedRun.value = expandedRun.value === id ? null : id
@@ -175,47 +183,11 @@ const sortedEvents = computed(() => {
 
 // ── Row actions (kebab) ──────────────────────────────────────────────────────
 const activeKebabId = ref<string | null>(null)
-const kebabPos = ref<{ top: number; left: number } | null>(null)
-const activeKebabRun = computed(() => runs.value.find((r) => r.id === activeKebabId.value) ?? null)
-const activeKebabEvent = computed(() => events.value.find((e) => e.id === activeKebabId.value) ?? null)
-function toggleKebab(event: MouseEvent, id: string) {
-  event.stopPropagation()
-  if (activeKebabId.value === id) {
-    closeKebab()
-    return
-  }
-  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-  kebabPos.value = { top: rect.bottom + 4, left: rect.right - 180 }
+function toggleKebab({ id }: { id: string; anchor: HTMLElement }) {
   activeKebabId.value = id
 }
 function closeKebab() {
   activeKebabId.value = null
-  kebabPos.value = null
-}
-
-// ── Server-page pager helpers ────────────────────────────────────────────────
-/** Windowed 1-based page numbers for a server-paginated table (0-based `current`). */
-function pagesFor(totalPages: number, current: number): (number | '…')[] {
-  const tp = Math.max(totalPages, 1)
-  const cur = current + 1
-  if (tp <= 7) return Array.from({ length: tp }, (_, i) => i + 1)
-  const items: (number | '…')[] = []
-  if (cur <= 4) {
-    for (let i = 1; i <= 5; i++) items.push(i)
-    items.push('…', tp)
-  } else if (cur >= tp - 3) {
-    items.push(1, '…')
-    for (let i = tp - 4; i <= tp; i++) items.push(i)
-  } else {
-    items.push(1, '…', cur - 1, cur, cur + 1, '…', tp)
-  }
-  return items
-}
-function showFrom(number: number, size: number, total: number): number {
-  return total === 0 ? 0 : number * size + 1
-}
-function showTo(number: number, size: number, total: number): number {
-  return Math.min((number + 1) * size, total)
 }
 </script>
 
@@ -338,9 +310,16 @@ function showTo(number: number, size: number, total: number): number {
               <span v-if="(r.runAt ?? r.startedAt)" class="when-time">{{ (r.runAt ?? r.startedAt ?? '').slice(11, 16) }}</span>
             </td>
             <td class="col-actions">
-              <button class="kebab" aria-label="Row actions" @click="toggleKebab($event, r.id)">
-                <VIcon name="more-vertical" :size="18" />
-              </button>
+              <VRowActions :active-id="activeKebabId" :row-id="r.id" @toggle="toggleKebab" @close="closeKebab">
+                <button class="pop-item" @click="toggleRun(r.id); closeKebab()">
+                  <VIcon name="chevrons-up-down" :size="15" />
+                  {{ expandedRun === r.id ? 'Hide details' : 'Show details' }}
+                </button>
+                <button v-if="r.syncJobId" class="pop-item" @click="openRunReview(r); closeKebab()">
+                  <VIcon name="arrow-right" :size="15" />
+                  Open run review
+                </button>
+              </VRowActions>
             </td>
           </tr>
           <tr v-if="expandedRun === r.id" class="detail-row">
@@ -373,21 +352,13 @@ function showTo(number: number, size: number, total: number): number {
       </tbody>
     </table>
 
-    <div v-if="!audit.loading && audit.runsPage && sortedRuns.length > 0" class="pager">
-      <span class="pager-count">
-        Showing <span class="pg-strong">{{ showFrom(audit.runsPage.number, audit.runsPage.size, audit.runsPage.totalElements) }}</span>
-        to <span class="pg-strong">{{ showTo(audit.runsPage.number, audit.runsPage.size, audit.runsPage.totalElements) }}</span>
-        of <span class="pg-strong">{{ audit.runsPage.totalElements }}</span> Entries
-      </span>
-      <div class="pager-ctrls">
-        <button class="pg-arrow" aria-label="Previous page" :disabled="audit.runsPage.number === 0" @click="changeRunsPage(audit.runsPage.number - 1)"><VIcon name="chevron-left" :size="16" /></button>
-        <template v-for="(p, i) in pagesFor(audit.runsPage.totalPages, audit.runsPage.number)" :key="i">
-          <span v-if="p === '…'" class="pg-ellipsis">…</span>
-          <button v-else :class="['pg-num', { on: audit.runsPage.number + 1 === p }]" @click="changeRunsPage(Number(p) - 1)">{{ p }}</button>
-        </template>
-        <button class="pg-arrow" aria-label="Next page" :disabled="audit.runsPage.last" @click="changeRunsPage(audit.runsPage.number + 1)"><VIcon name="chevron-right" :size="16" /></button>
-      </div>
-    </div>
+    <VTablePager
+      v-if="!audit.loading && audit.runsPage && sortedRuns.length > 0"
+      :total="audit.runsPage.totalElements"
+      :page="audit.runsPage.number + 1"
+      :page-size="audit.runsPage.size"
+      @update:page="(p) => changeRunsPage(p - 1)"
+    />
   </div>
 
   <!-- Events tab -->
@@ -430,53 +401,28 @@ function showTo(number: number, size: number, total: number): number {
           </td>
           <td>{{ cohortLabel(e) }}</td>
           <td class="muted">{{ e.actorEmail ?? 'SYSTEM' }}</td>
-          <td class="mono muted">{{ fmt(e.occurredAt) }}</td>
+          <td class="mono muted">{{ fmtDate(e.occurredAt) }} {{ fmtTime(e.occurredAt) }}</td>
           <td class="col-actions">
-            <button class="kebab" aria-label="Row actions" @click="toggleKebab($event, e.id)">
-              <VIcon name="more-vertical" :size="18" />
-            </button>
+            <VRowActions :active-id="activeKebabId" :row-id="e.id" @toggle="toggleKebab" @close="closeKebab">
+              <button class="pop-item" @click="openEvent(e.id)">
+                <VIcon name="eye" :size="15" />
+                View details
+              </button>
+            </VRowActions>
           </td>
         </tr>
         <tr v-if="sortedEvents.length === 0"><td colspan="5"><div class="empty-inline"><VIcon name="scroll-text" :size="24" class="muted" /><p class="empty-sub">No events match these filters.</p></div></td></tr>
       </tbody>
     </table>
 
-    <div v-if="!audit.eventsLoading && audit.eventsPage && sortedEvents.length > 0" class="pager">
-      <span class="pager-count">
-        Showing <span class="pg-strong">{{ showFrom(audit.eventsPage.number, audit.eventsPage.size, audit.eventsPage.totalElements) }}</span>
-        to <span class="pg-strong">{{ showTo(audit.eventsPage.number, audit.eventsPage.size, audit.eventsPage.totalElements) }}</span>
-        of <span class="pg-strong">{{ audit.eventsPage.totalElements }}</span> Entries
-      </span>
-      <div class="pager-ctrls">
-        <button class="pg-arrow" aria-label="Previous page" :disabled="audit.eventsPage.number === 0" @click="changeEventsPage(audit.eventsPage.number - 1)"><VIcon name="chevron-left" :size="16" /></button>
-        <template v-for="(p, i) in pagesFor(audit.eventsPage.totalPages, audit.eventsPage.number)" :key="i">
-          <span v-if="p === '…'" class="pg-ellipsis">…</span>
-          <button v-else :class="['pg-num', { on: audit.eventsPage.number + 1 === p }]" @click="changeEventsPage(Number(p) - 1)">{{ p }}</button>
-        </template>
-        <button class="pg-arrow" aria-label="Next page" :disabled="audit.eventsPage.last" @click="changeEventsPage(audit.eventsPage.number + 1)"><VIcon name="chevron-right" :size="16" /></button>
-      </div>
-    </div>
+    <VTablePager
+      v-if="!audit.eventsLoading && audit.eventsPage && sortedEvents.length > 0"
+      :total="audit.eventsPage.totalElements"
+      :page="audit.eventsPage.number + 1"
+      :page-size="audit.eventsPage.size"
+      @update:page="(p) => changeEventsPage(p - 1)"
+    />
   </div>
-
-  <!-- Row actions popover -->
-  <Teleport to="body">
-    <div v-if="activeKebabId && kebabPos && tab === 'runs' && activeKebabRun" class="pop" :style="{ top: `${kebabPos.top}px`, left: `${kebabPos.left}px` }" @click.stop>
-      <button class="pop-item" @click="toggleRun(activeKebabRun.id); closeKebab()">
-        <VIcon name="chevrons-up-down" :size="15" />
-        {{ expandedRun === activeKebabRun.id ? 'Hide details' : 'Show details' }}
-      </button>
-      <button v-if="activeKebabRun.syncJobId" class="pop-item" @click="openRunReview(activeKebabRun)">
-        <VIcon name="arrow-right" :size="15" />
-        Open run review
-      </button>
-    </div>
-    <div v-else-if="activeKebabId && kebabPos && tab === 'events' && activeKebabEvent" class="pop" :style="{ top: `${kebabPos.top}px`, left: `${kebabPos.left}px` }" @click.stop>
-      <button class="pop-item" @click="openEvent(activeKebabEvent.id)">
-        <VIcon name="eye" :size="15" />
-        View details
-      </button>
-    </div>
-  </Teleport>
 </template>
 
 <style scoped>
@@ -524,12 +470,7 @@ function showTo(number: number, size: number, total: number): number {
 .event-cell { display: inline-flex; align-items: center; gap: 10px; font-weight: 500; }
 .event-ic { display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: var(--r-sm); flex-shrink: 0; }
 
-/* Pager */
-.pager-ctrls { display: flex; align-items: center; gap: 6px; }
-.pg-arrow:disabled { opacity: 0.4; cursor: not-allowed; }
-
-/* Row-actions popover */
-.pop { position: fixed; z-index: 1000; background: #fff; border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-pop); min-width: 180px; overflow: hidden; padding: 4px; }
+/* Row-actions popover items (popover shell itself comes from VRowActions/VPopover) */
 .pop-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border: none; background: none; border-radius: var(--r-sm); font-family: inherit; font-size: 14px; color: var(--text); cursor: pointer; text-align: left; }
 .pop-item:hover { background: var(--bg); }
 .pop-item :deep(svg) { color: var(--text-secondary); }

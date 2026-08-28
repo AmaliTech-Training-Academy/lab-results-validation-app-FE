@@ -5,20 +5,28 @@ import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import VPill from '@/components/base/VPill.vue'
 import VDrawer from '@/components/base/VDrawer.vue'
+import VTablePager from '@/components/base/VTablePager.vue'
+import VRowActions from '@/components/base/VRowActions.vue'
+import VPopover from '@/components/base/VPopover.vue'
+import VEmptyState from '@/components/base/VEmptyState.vue'
 import { useToastStore } from '@/stores/toast'
 import { toErrorMessage } from '@/utils/errors'
 import { getLearners, addLearner, updateLearner, setLearnerStatus } from '@/services/learner.service'
 import { getCohorts } from '@/services/cohort.service'
 import { getSpecializations } from '@/services/reference.service'
+import { useQueryParam } from '@/composables/useQueryParam'
+import { usePageTitle } from '@/composables/usePageTitle'
+import { loadColumns, saveColumns, loadPageSize, savePageSize } from '@/utils/uiPrefs'
+import { PAGE_SIZE_OPTIONS } from '@/utils/pagination'
 import type { Learner, LearnerStatus } from '@/types/learner.types'
 import type { CohortRow } from '@/types/cohort.types'
 import type { Specialization } from '@/types/reference.types'
 
+usePageTitle('Learner roster')
+
 const router = useRouter()
 
 const toast = useToastStore()
-
-const PAGE_SIZE = 10
 
 // ── Data ─────────────────────────────────────────────────────────────────────
 const learners = ref<Learner[]>([])
@@ -29,10 +37,13 @@ const loadSlow = ref(false)
 const LOAD_TIMEOUT_MS = 8000
 
 // ── Pagination ────────────────────────────────────────────────────────────────
-const currentPage = ref(0)
+// `currentPage` is 1-based (URL/VTablePager convention) — the backend's `page`/`size`
+// query params are 0-based, so requests/responses convert at the loadLearners boundary.
+const currentPage = ref(1)
 const totalElements = ref(0)
-const totalPages = ref(0)
-const isLastPage = ref(true)
+const PAGESIZE_KEY = 'validata.learners.pageSize'
+const pageSize = ref(loadPageSize(PAGESIZE_KEY, 10, PAGE_SIZE_OPTIONS))
+watch(pageSize, (v) => savePageSize(PAGESIZE_KEY, v))
 
 // ── Filters ───────────────────────────────────────────────────────────────────
 const searchQuery = ref('')
@@ -40,6 +51,18 @@ const filterCohortId = ref<string | null>(null)
 const filterSpecId = ref<string | null>(null)
 const filterSpecOptions = ref<Specialization[]>([])
 const activeTab = ref<'Active' | 'Archived'>('Active')
+
+// Table state lives in the URL (q/page) so filters survive reloads and filtered
+// views can be shared as links.
+function parseSearch(raw: string | undefined): string {
+  return raw ?? ''
+}
+function parsePage(raw: string | undefined): number {
+  const n = Number(raw)
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1
+}
+useQueryParam({ key: 'q', target: searchQuery, parse: parseSearch, encode: (v) => v.trim() || null })
+useQueryParam({ key: 'page', target: currentPage, parse: parsePage, encode: (v) => (v > 1 ? String(v) : null) })
 
 // ── Drawer ────────────────────────────────────────────────────────────────────
 const showDrawer = ref(false)
@@ -57,11 +80,11 @@ const form = ref({
 
 // ── Kebab ─────────────────────────────────────────────────────────────────────
 const activeKebabId = ref<string | null>(null)
-const kebabPos = ref<{ top: number; left: number } | null>(null)
-const activeKebabLearner = computed(() => learners.value.find((l) => l.id === activeKebabId.value) ?? null)
 
 // ── Manage columns ─────────────────────────────────────────────────────────
-const cols = ref({ email: true, cohort: true, spec: true, status: true })
+const COLS_KEY = 'validata.learners.columns'
+const cols = ref(loadColumns(COLS_KEY, { email: true, cohort: true, spec: true, status: true }))
+watch(cols, (v) => saveColumns(COLS_KEY, v), { deep: true })
 const COL_LABELS: { key: keyof typeof cols.value; label: string }[] = [
   { key: 'email', label: 'Email' },
   { key: 'cohort', label: 'Cohort' },
@@ -70,16 +93,12 @@ const COL_LABELS: { key: keyof typeof cols.value; label: string }[] = [
 ]
 const colCount = computed(() => 1 + Object.values(cols.value).filter(Boolean).length + 1)
 const showColMenu = ref(false)
-const colMenuPos = ref<{ top: number; left: number } | null>(null)
+const colMenuAnchor = ref<HTMLElement | null>(null)
 function toggleColMenu(event: MouseEvent) {
   event.stopPropagation()
   activeKebabId.value = null
-  kebabPos.value = null
   showColMenu.value = !showColMenu.value
-  if (showColMenu.value) {
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-    colMenuPos.value = { top: rect.bottom + 6, left: rect.right - 200 }
-  }
+  if (showColMenu.value) colMenuAnchor.value = event.currentTarget as HTMLElement
 }
 
 // ── Export (fetches the full filtered set, not just the current page) ───────
@@ -127,10 +146,9 @@ async function exportCsv() {
 // ── Computed ──────────────────────────────────────────────────────────────────
 const drawerTitle = computed(() => editTarget.value ? 'Edit learner' : 'Add learner')
 
-const showingFrom = computed(() => totalElements.value === 0 ? 0 : currentPage.value * PAGE_SIZE + 1)
-const showingTo = computed(() => Math.min((currentPage.value + 1) * PAGE_SIZE, totalElements.value))
-
 // ── Data loading ──────────────────────────────────────────────────────────────
+// `page` here is 1-based (URL/VTablePager convention); the backend's own `page`
+// param is 0-based, so it's converted at the request/response boundary.
 async function loadLearners(page = currentPage.value) {
   isLoading.value = true
   loadError.value = null
@@ -142,14 +160,12 @@ async function loadLearners(page = currentPage.value) {
       specializationId: filterSpecId.value ?? undefined,
       status: activeTab.value === 'Active' ? 'ACTIVE' : 'ARCHIVED',
       search: searchQuery.value.trim() || undefined,
-      page,
-      size: PAGE_SIZE,
+      page: page - 1,
+      size: pageSize.value,
     })
     learners.value = result.content
-    currentPage.value = result.page
+    currentPage.value = result.page + 1
     totalElements.value = result.totalElements
-    totalPages.value = result.totalPages
-    isLastPage.value = result.last
   } catch (err) {
     const msg = err instanceof Error ? err.message : ''
     loadError.value = msg || 'Failed to load learners. Check your connection and try again.'
@@ -173,7 +189,7 @@ async function loadInitialData() {
       body: e instanceof Error ? e.message : 'The cohort filter is unavailable.',
     })
   }
-  await loadLearners(0)
+  await loadLearners(currentPage.value)
 }
 
 // ── Watchers ──────────────────────────────────────────────────────────────────
@@ -182,14 +198,14 @@ let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
 watch(searchQuery, () => {
   if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
   searchDebounceTimer = setTimeout(() => {
-    currentPage.value = 0
-    loadLearners(0)
+    currentPage.value = 1
+    loadLearners(1)
   }, 400)
 })
 
 watch(activeTab, () => {
-  currentPage.value = 0
-  loadLearners(0)
+  currentPage.value = 1
+  loadLearners(1)
 })
 
 watch(filterCohortId, async (id) => {
@@ -202,42 +218,36 @@ watch(filterCohortId, async (id) => {
       toast.show({ tone: 'warning', title: 'Could not load specializations', body: toErrorMessage(e, 'Please try again.') })
     }
   }
-  currentPage.value = 0
-  loadLearners(0)
+  currentPage.value = 1
+  loadLearners(1)
 })
 
 watch(filterSpecId, () => {
-  currentPage.value = 0
-  loadLearners(0)
+  currentPage.value = 1
+  loadLearners(1)
 })
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 onMounted(() => {
   loadInitialData()
-  window.addEventListener('click', closeKebab)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('click', closeKebab)
   if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
 })
 
 // ── Actions ───────────────────────────────────────────────────────────────────
-function closeKebab() {
-  activeKebabId.value = null
-  kebabPos.value = null
+function onKebabToggle(payload: { id: string; anchor: HTMLElement }) {
   showColMenu.value = false
+  activeKebabId.value = payload.id
 }
 
-function toggleKebab(event: MouseEvent, id: string) {
-  event.stopPropagation()
-  if (activeKebabId.value === id) {
-    closeKebab()
-    return
-  }
-  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-  kebabPos.value = { top: rect.bottom + 4, left: rect.right - 160 }
-  activeKebabId.value = id
+function onKebabClose() {
+  activeKebabId.value = null
+}
+
+function onPageSizeChange(size: number) {
+  pageSize.value = size
 }
 
 function resetForm() {
@@ -320,7 +330,8 @@ async function submitForm() {
     } else {
       await addLearner(payload)
       toast.show({ tone: 'success', title: 'Learner added' })
-      loadLearners(0)
+      currentPage.value = 1
+      loadLearners(1)
     }
     closeDrawer()
   } catch (err) {
@@ -353,8 +364,7 @@ async function toggleStatus(learner: Learner) {
   }
 }
 
-function goToPage(page: number) {
-  if (page < 0 || page >= totalPages.value) return
+function onPageChange(page: number) {
   loadLearners(page)
 }
 </script>
@@ -389,7 +399,7 @@ function goToPage(page: number) {
     <div class="load-error-icon"><VIcon name="wifi-off" :size="28" /></div>
     <p class="load-error-title">Could not load learners</p>
     <p class="load-error-sub">{{ loadError }}</p>
-    <VButton variant="ghost" icon="rotate-ccw" @click="loadLearners(0)">Try again</VButton>
+    <VButton variant="ghost" icon="rotate-ccw" @click="loadLearners(1)">Try again</VButton>
   </div>
 
   <div v-else class="card" style="overflow: hidden">
@@ -471,8 +481,12 @@ function goToPage(page: number) {
       </tbody>
       <tbody v-else>
         <tr v-if="!learners.length">
-          <td :colspan="colCount" style="text-align: center; color: var(--text-secondary); padding: 32px">
-            No learners found.
+          <td :colspan="colCount">
+            <VEmptyState
+              icon="users"
+              title="No learners found"
+              description="Add learners individually, bulk-import a roster, or adjust your search and filters."
+            />
           </td>
         </tr>
         <tr v-for="l in learners" :key="l.id">
@@ -486,36 +500,30 @@ function goToPage(page: number) {
             </VPill>
           </td>
           <td style="text-align: right">
-            <button class="kebab" aria-label="Actions" @click="toggleKebab($event, l.id)">
-              <VIcon name="more-vertical" :size="18" />
-            </button>
+            <VRowActions :active-id="activeKebabId" :row-id="l.id" @toggle="onKebabToggle" @close="onKebabClose">
+              <button class="pop-item" @click="openEdit(l)">
+                <VIcon name="pencil" :size="15" />
+                Edit
+              </button>
+              <button class="pop-item" @click="toggleStatus(l)">
+                <VIcon :name="l.status === 'ACTIVE' ? 'archive' : 'rotate-ccw'" :size="15" />
+                {{ l.status === 'ACTIVE' ? 'Archive' : 'Restore' }}
+              </button>
+            </VRowActions>
           </td>
         </tr>
       </tbody>
     </table>
 
     <!-- Pagination -->
-    <div v-if="!isLoading && totalElements > 0" class="pager">
-      <span class="pager-count">
-        Showing <span class="pg-strong">{{ showingFrom }}</span> to <span class="pg-strong">{{ showingTo }}</span> of <span class="pg-strong">{{ totalElements }}</span> Entries
-      </span>
-      <div class="pager-ctrls">
-        <button class="pg-arrow" aria-label="Previous" :disabled="currentPage === 0" @click="goToPage(currentPage - 1)">
-          <VIcon name="chevron-left" :size="16" />
-        </button>
-        <button
-          v-for="p in totalPages"
-          :key="p"
-          :class="['pg-num', { on: currentPage === p - 1 }]"
-          @click="goToPage(p - 1)"
-        >
-          {{ p }}
-        </button>
-        <button class="pg-arrow" aria-label="Next" :disabled="isLastPage" @click="goToPage(currentPage + 1)">
-          <VIcon name="chevron-right" :size="16" />
-        </button>
-      </div>
-    </div>
+    <VTablePager
+      v-if="!isLoading && totalElements > 0"
+      :total="totalElements"
+      :page="currentPage"
+      :page-size="pageSize"
+      @update:page="onPageChange"
+      @update:page-size="onPageSizeChange"
+    />
   </div>
 
   <!-- Add / Edit Drawer -->
@@ -581,51 +589,11 @@ function goToPage(page: number) {
   </VDrawer>
 
   <!-- Manage columns popover -->
-  <Teleport to="body">
-    <div v-if="showColMenu && colMenuPos" class="pop col-pop" :style="{ top: `${colMenuPos.top}px`, left: `${colMenuPos.left}px` }" @click.stop>
-      <p class="pop-title">Manage columns</p>
-      <label v-for="c in COL_LABELS" :key="c.key" class="pop-row">
-        <input type="checkbox" v-model="cols[c.key]" />
-        {{ c.label }}
-      </label>
-    </div>
-  </Teleport>
-
-  <Teleport to="body">
-    <div
-      v-if="activeKebabLearner && kebabPos"
-      :style="{
-        position: 'fixed',
-        top: `${kebabPos.top}px`,
-        left: `${kebabPos.left}px`,
-        zIndex: 1000,
-        background: '#fff',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--r-md)',
-        boxShadow: 'var(--shadow-pop)',
-        minWidth: '160px',
-        overflow: 'hidden',
-      }"
-      @click.stop
-    >
-      <button
-        style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 16px; border: none; background: none; font-family: inherit; font-size: 14px; color: var(--text); cursor: pointer; text-align: left"
-        @mouseenter="($event.target as HTMLElement).style.background = 'var(--bg)'"
-        @mouseleave="($event.target as HTMLElement).style.background = 'none'"
-        @click="openEdit(activeKebabLearner)"
-      >
-        <VIcon name="pencil" :size="15" style="color: var(--text-secondary)" />
-        Edit
-      </button>
-      <button
-        style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 16px; border: none; background: none; font-family: inherit; font-size: 14px; color: var(--text); cursor: pointer; text-align: left"
-        @mouseenter="($event.target as HTMLElement).style.background = 'var(--bg)'"
-        @mouseleave="($event.target as HTMLElement).style.background = 'none'"
-        @click="toggleStatus(activeKebabLearner)"
-      >
-        <VIcon :name="activeKebabLearner.status === 'ACTIVE' ? 'archive' : 'rotate-ccw'" :size="15" style="color: var(--text-secondary)" />
-        {{ activeKebabLearner.status === 'ACTIVE' ? 'Archive' : 'Restore' }}
-      </button>
-    </div>
-  </Teleport>
+  <VPopover :open="showColMenu" :anchor="colMenuAnchor" @close="showColMenu = false">
+    <p class="pop-title">Manage columns</p>
+    <label v-for="c in COL_LABELS" :key="c.key" class="pop-row">
+      <input type="checkbox" v-model="cols[c.key]" />
+      {{ c.label }}
+    </label>
+  </VPopover>
 </template>
