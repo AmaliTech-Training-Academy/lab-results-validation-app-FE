@@ -103,7 +103,8 @@ All scripts are run from `frontend/`:
 
 ## Environment Variables
 
-Create `frontend/.env.local` (gitignored — see `*.local` in `.gitignore`) to override defaults:
+Copy `frontend/.env.example` to `frontend/.env.local` (gitignored — see `*.local` in
+`.gitignore`) to override defaults:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
