@@ -123,16 +123,17 @@ describe('MyUploadsView', () => {
   })
 
   describe('back navigation', () => {
-    it('navigates to instructor-uploads without query when back link is clicked', async () => {
+    it('clears the uploadId query param and returns to the uploads list when back link is clicked', async () => {
       const { wrapper, router } = await mountView({ uploadId: 'UP-AAA111' })
-      const pushSpy = vi.spyOn(router, 'push').mockResolvedValue(undefined as never)
       await flushPromises()
+      expect(wrapper.find('h1').text()).toBe('Validation report')
 
       const backLink = wrapper.find('.link')
       await backLink.trigger('click')
+      await flushPromises()
 
-      expect(pushSpy).toHaveBeenCalledWith({ name: 'instructor-uploads' })
-      pushSpy.mockRestore()
+      expect(router.currentRoute.value.query.uploadId).toBeUndefined()
+      expect(wrapper.find('h1').text()).toBe('My uploads')
     })
   })
 })

@@ -14,6 +14,8 @@ import { syncRunStreamUrl } from '@/services/runs.service'
 import { USE_MOCKS } from '@/services/mock/useMocks'
 import { useEventSourceStream } from '@/composables/useEventSourceStream'
 
+export type StreamErrorKind = 'malformed' | 'reconnecting' | 'lost'
+
 export type SyncRunOverall = 'idle' | 'running' | 'passed' | 'failed'
 
 export interface UseSyncRunStreamOptions {
@@ -28,6 +30,9 @@ export interface SyncRunStream {
   overall: Ref<SyncRunOverall>
   isPolling: Ref<boolean>
   error: Ref<string | null>
+  /** Classifies `error` — `'malformed'`/`'reconnecting'` are transient (the former self-clears on the
+   *  next good event, the latter once the browser reconnects); `'lost'` is terminal, mirrors `disconnected`. */
+  errorKind: Ref<StreamErrorKind | null>
   /** True once reconnect attempts are exhausted — the stream has given up and needs a manual `start()`. */
   disconnected: Ref<boolean>
   start: () => void
@@ -58,6 +63,7 @@ export function useSyncRunStream(cohortId: string, runId: string, options: UseSy
   const overall = ref<SyncRunOverall>('idle')
   const isPolling = ref(false)
   const error = ref<string | null>(null)
+  const errorKind = ref<StreamErrorKind | null>(null)
   const disconnected = ref(false)
 
   const eventSource = useEventSourceStream()
@@ -75,6 +81,7 @@ export function useSyncRunStream(cohortId: string, runId: string, options: UseSy
     folderErrors.value = []
     summary.value = null
     error.value = null
+    errorKind.value = null
     disconnected.value = false
   }
 
@@ -134,28 +141,40 @@ export function useSyncRunStream(cohortId: string, runId: string, options: UseSy
   function openRealStream() {
     const onMalformed = () => {
       error.value = 'Received a malformed message from the sync stream.'
+      errorKind.value = 'malformed'
+    }
+    // Once a later event parses and handles cleanly, drop that malformed-message warning — it was
+    // about one bad message, not the connection.
+    const onRecovered = () => {
+      error.value = null
+      errorKind.value = null
     }
     const source = eventSource.open(syncRunStreamUrl(cohortId), () => {
       // A browser-initiated reconnect succeeded (or this is the first connect) — drop any stale
       // "interrupted — reconnecting…" message now that the stream is live again.
       error.value = null
+      errorKind.value = null
       disconnected.value = false
     })
-    eventSource.bindEvent<SyncFileDiscoveredData>('file.discovered', handleDiscovered, onMalformed)
-    eventSource.bindEvent<SyncFileUnchangedData>('file.unchanged', handleUnchanged, onMalformed)
-    eventSource.bindEvent<SyncFileChangedData>('file.changed', handleChanged, onMalformed)
-    eventSource.bindEvent<SyncFileArchivedData>('file.archived', handleArchived, onMalformed)
-    eventSource.bindEvent<SyncFileFailedData>('file.failed', handleFailed, onMalformed)
-    eventSource.bindEvent<SyncFileArchiveFailedData>('file.archive_failed', handleArchiveFailed, onMalformed)
-    eventSource.bindEvent<SyncFolderFailedData>('folder.failed', handleFolderFailed, onMalformed)
-    eventSource.bindEvent<SyncDoneData>('sync.done', handleDone, onMalformed)
+    eventSource.bindEvent<SyncFileDiscoveredData>('file.discovered', handleDiscovered, onMalformed, onRecovered)
+    eventSource.bindEvent<SyncFileUnchangedData>('file.unchanged', handleUnchanged, onMalformed, onRecovered)
+    eventSource.bindEvent<SyncFileChangedData>('file.changed', handleChanged, onMalformed, onRecovered)
+    eventSource.bindEvent<SyncFileArchivedData>('file.archived', handleArchived, onMalformed, onRecovered)
+    eventSource.bindEvent<SyncFileFailedData>('file.failed', handleFailed, onMalformed, onRecovered)
+    eventSource.bindEvent<SyncFileArchiveFailedData>('file.archive_failed', handleArchiveFailed, onMalformed, onRecovered)
+    eventSource.bindEvent<SyncFolderFailedData>('folder.failed', handleFolderFailed, onMalformed, onRecovered)
+    eventSource.bindEvent<SyncDoneData>('sync.done', handleDone, onMalformed, onRecovered)
     source.onerror = eventSource.withGiveUp(
       // EventSource reconnects on its own (Last-Event-ID replay) — just surface a soft warning.
-      () => { error.value = 'Connection to the sync stream was interrupted — reconnecting…' },
+      () => {
+        error.value = 'Connection to the sync stream was interrupted — reconnecting…'
+        errorKind.value = 'reconnecting'
+      },
       () => {
         isPolling.value = false
         disconnected.value = true
         error.value = 'Lost connection to the sync stream.'
+        errorKind.value = 'lost'
       },
     )
   }
@@ -224,6 +243,7 @@ export function useSyncRunStream(cohortId: string, runId: string, options: UseSy
     if (isPolling.value || eventSource.isDisposed()) return
     isPolling.value = true
     error.value = null
+    errorKind.value = null
     disconnected.value = false
     overall.value = 'running'
     files.value = []
@@ -236,5 +256,5 @@ export function useSyncRunStream(cohortId: string, runId: string, options: UseSy
     }
   }
 
-  return { files, folderErrors, summary, overall, isPolling, error, disconnected, start, stop, reset }
+  return { files, folderErrors, summary, overall, isPolling, error, errorKind, disconnected, start, stop, reset }
 }

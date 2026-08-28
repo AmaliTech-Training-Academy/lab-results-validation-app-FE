@@ -248,7 +248,7 @@ describe('AuditView', () => {
   it('paginates events via the Next button without re-fetching runs', async () => {
     vi.mocked(cohortsSvc.listCohorts).mockResolvedValue([cohort()])
     vi.mocked(auditSvc.listAuditRuns).mockResolvedValue(runsPage())
-    vi.mocked(auditSvc.listAuditEvents).mockResolvedValue(eventsPage({ last: false, totalPages: 2 }))
+    vi.mocked(auditSvc.listAuditEvents).mockResolvedValue(eventsPage({ last: false, totalPages: 2, totalElements: 21 }))
 
     const wrapper = mountView()
     await flushPromises()
@@ -305,7 +305,7 @@ describe('AuditView', () => {
 
   it('paginates runs via the Next button, now that /audit-log/ingestion-runs is genuinely cross-cohort paginated', async () => {
     vi.mocked(cohortsSvc.listCohorts).mockResolvedValue([cohort()])
-    vi.mocked(auditSvc.listAuditRuns).mockResolvedValue(runsPage({ last: false, totalPages: 2 }))
+    vi.mocked(auditSvc.listAuditRuns).mockResolvedValue(runsPage({ last: false, totalPages: 2, totalElements: 21 }))
     vi.mocked(auditSvc.listAuditEvents).mockResolvedValue(eventsPage({ content: [] }))
 
     const wrapper = mountView()

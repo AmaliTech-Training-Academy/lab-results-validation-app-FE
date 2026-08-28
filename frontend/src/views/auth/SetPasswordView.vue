@@ -38,13 +38,21 @@ const confirmTouched = ref(false)
 const isLoading = ref(false)
 const error = ref<string | null>(null)
 
+const hasDigit = (p: string) => /[0-9]/.test(p)
+const hasSymbol = (p: string) => /[^a-zA-Z0-9]/.test(p)
+
+// Weighted on character diversity (lower/upper/digit/symbol), not just length —
+// an all-lowercase password can never score above "Weak", however long it is.
 const score = computed(() => {
   const p = password.value
   if (!p) return 0
-  if (p.length < 6) return 1
-  if (p.length < 10) return 2
-  if (/[0-9]/.test(p) && /[^a-zA-Z0-9]/.test(p)) return 4
-  return 3
+  const hasLower = /[a-z]/.test(p)
+  const hasUpper = /[A-Z]/.test(p)
+  const diversity = [hasLower, hasUpper, hasDigit(p), hasSymbol(p)].filter(Boolean).length
+  if (p.length < 8 || diversity <= 1) return 1
+  if (diversity === 2) return 2
+  if (diversity === 3) return p.length >= 12 ? 4 : 3
+  return p.length >= 10 ? 4 : 3
 })
 
 const SCORE_LABELS = ['', 'Weak', 'Fair', 'Good', 'Strong']
@@ -53,6 +61,9 @@ const SCORE_COLORS = ['var(--danger)', 'var(--orange)', 'var(--orange)', 'var(--
 const passwordError = computed(() => {
   if (!passwordTouched.value) return ''
   if (password.value.length < 8) return 'Password must be at least 8 characters'
+  if (!hasDigit(password.value) || !hasSymbol(password.value)) {
+    return 'Password must include at least one number and one symbol'
+  }
   return ''
 })
 
@@ -63,7 +74,11 @@ const confirmError = computed(() => {
 })
 
 const isFormValid = computed(
-  () => password.value.length >= 8 && password.value === confirmPassword.value,
+  () =>
+    password.value.length >= 8 &&
+    hasDigit(password.value) &&
+    hasSymbol(password.value) &&
+    password.value === confirmPassword.value,
 )
 
 async function submit() {
@@ -81,6 +96,7 @@ async function submit() {
     } else {
       const response = await changePasswordApi(auth.tempPassword ?? '', password.value)
       auth.completedPasswordSetup(response.token)
+      toast.show({ tone: 'success', title: 'Password set', body: 'Your password has been set. Welcome!' })
       router.push({ name: 'admin-dashboard' })
     }
   } catch (err) {
@@ -233,7 +249,7 @@ async function submit() {
 /* ---------- Pattern side ---------- */
 .reset-aside {
   position: relative;
-  background-color: #08283b;
+  background-color: var(--navy);
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
@@ -284,21 +300,6 @@ async function submit() {
   color: var(--text);
   font-weight: 600;
   font-size: 14px;
-}
-
-/* Filled, rounded inputs — identical to the sign-up page */
-.input {
-  height: 50px;
-  background: #efeff1;
-  border: 1px solid #e4e5e9;
-  border-radius: 10px;
-}
-.input:focus-within {
-  border-color: var(--navy);
-  box-shadow: 0 0 0 3px rgba(8, 40, 59, 0.12);
-}
-.input input:focus-visible {
-  outline: none;
 }
 
 /* Dark-navy primary button — identical to the sign-up page */

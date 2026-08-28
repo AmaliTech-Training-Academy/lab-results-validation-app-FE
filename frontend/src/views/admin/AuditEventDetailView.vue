@@ -6,6 +6,10 @@ import VIcon from '@/components/base/VIcon.vue'
 import { useAuditStore } from '@/stores/audit'
 import { useCohortsStore } from '@/stores/cohorts'
 import { EVENT_TYPE_TONE, EVENT_TYPE_ICON, TONE_CHIP_STYLE, type AuditEventType } from '@/types/audit.types'
+import { usePageTitle } from '@/composables/usePageTitle'
+import { fmtDate, fmtTime } from '@/utils/datetime'
+
+usePageTitle('Audit Event')
 
 const route = useRoute()
 const audit = useAuditStore()
@@ -28,7 +32,7 @@ function retry() {
   audit.fetchEvent(eventId)
 }
 function fmt(iso?: string): string {
-  return iso ? `${iso.replace('T', ' ').slice(0, 19)} UTC` : '—'
+  return iso ? `${fmtDate(iso)} ${fmtTime(iso)}` : '—'
 }
 /** Neither the run nor the event endpoint denormalizes the cohort name — look it up. */
 const cohortLabel = computed(() => {

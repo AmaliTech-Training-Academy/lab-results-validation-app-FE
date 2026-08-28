@@ -59,10 +59,15 @@ async function submit() {
 
     router.push('/admin/dashboard')
   } catch (err) {
+    // Show the backend's actual message (rate limits, outages, etc.) rather than always blaming
+    // the submitted credentials — only "Account is disabled" gets a friendlier rewrite, and a
+    // genuinely blank/unrecognisable error falls back to the generic bad-credentials message.
     const msg = toErrorMessage(err, '')
-    error.value = msg === 'Account is disabled'
-      ? 'Your account has been disabled. Please contact your administrator.'
-      : 'Invalid email or password.'
+    if (msg === 'Account is disabled') {
+      error.value = 'Your account has been disabled. Please contact your administrator.'
+    } else {
+      error.value = msg || 'Invalid email or password.'
+    }
   } finally {
     isLoading.value = false
   }
@@ -155,7 +160,7 @@ async function submit() {
       </VButton>
 
       <div class="auth-foot">
-        <a class="link link--muted" href="#" @click.prevent>Contact Support</a>
+        <span class="link link--muted">Need help? Contact your administrator.</span>
       </div>
     </form>
   </div>
@@ -167,7 +172,7 @@ async function submit() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #08283b;
+  background-color: var(--navy);
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
@@ -236,23 +241,6 @@ async function submit() {
   color: var(--text);
   font-weight: 600;
   font-size: 14px;
-}
-
-/* Filled, rounded inputs */
-.input {
-  height: 50px;
-  background: #efeff1;
-  border: 1px solid #e4e5e9;
-  border-radius: 10px;
-}
-.input:focus-within {
-  border-color: var(--navy);
-  box-shadow: 0 0 0 3px rgba(8, 40, 59, 0.12);
-}
-/* The wrapper above shows the focus state — drop the inner field's navy
-   focus-visible outline so there's no double (navy) ring. */
-.input input:focus-visible {
-  outline: none;
 }
 
 /* Forgot password — right-aligned, muted */

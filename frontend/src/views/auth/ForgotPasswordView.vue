@@ -7,6 +7,9 @@ import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import logoUrl from '@/assets/validata-logo.webp'
 import mailboxUrl from '@/assets/mailbox.jpeg'
+import { usePageTitle } from '@/composables/usePageTitle'
+
+usePageTitle('Reset Password')
 
 const email = ref('')
 const emailTouched = ref(false)
@@ -165,21 +168,6 @@ async function submit() {
   color: var(--text);
   font-weight: 600;
   font-size: 14px;
-}
-
-/* Filled, rounded inputs (matches sign-up) */
-.input {
-  height: 50px;
-  background: #efeff1;
-  border: 1px solid #e4e5e9;
-  border-radius: 10px;
-}
-.input:focus-within {
-  border-color: var(--navy);
-  box-shadow: 0 0 0 3px rgba(8, 40, 59, 0.12);
-}
-.input input:focus-visible {
-  outline: none;
 }
 
 /* Dark-navy primary action button — identical to the sign-up page */

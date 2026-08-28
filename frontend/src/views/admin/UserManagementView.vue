@@ -1,17 +1,25 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import VPill from '@/components/base/VPill.vue'
 import VDrawer from '@/components/base/VDrawer.vue'
+import VRowActions from '@/components/base/VRowActions.vue'
+import VPopover from '@/components/base/VPopover.vue'
+import VEmptyState from '@/components/base/VEmptyState.vue'
+import VTablePager from '@/components/base/VTablePager.vue'
 import { useToastStore } from '@/stores/toast'
 import { toErrorMessage } from '@/utils/errors'
+import { usePageTitle } from '@/composables/usePageTitle'
+import { useQueryParam } from '@/composables/useQueryParam'
+import { loadPageSize, savePageSize } from '@/utils/uiPrefs'
+import { PAGE_SIZE_OPTIONS } from '@/utils/pagination'
 import { getInstructors, getModuleGroups, addInstructor, assignInstructorModules, removeInstructorModules, updateInstructor } from '@/services/user.service'
 import type { InstructorUser, ModuleGroup, AssignModulesResponse } from '@/types/user.types'
 
-const toast = useToastStore()
+usePageTitle('User management')
 
-const PAGE_SIZE = 10
+const toast = useToastStore()
 
 // ── Data ─────────────────────────────────────────────────────────────────────
 const instructors = ref<InstructorUser[]>([])
@@ -25,12 +33,47 @@ const LOAD_TIMEOUT_MS = 8000
 const currentPage = ref(0)
 const totalElements = ref(0)
 const totalPages = ref(0)
-const isLastPage = ref(true)
+
+const PAGESIZE_KEY = 'validata.users.pageSize'
+const pageSize = ref(loadPageSize(PAGESIZE_KEY, 10, PAGE_SIZE_OPTIONS))
+
+function parsePage(raw: string | undefined): number {
+  const n = Number(raw)
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) - 1 : 0
+}
+useQueryParam({
+  key: 'page',
+  target: currentPage,
+  parse: parsePage,
+  encode: (v) => (v > 0 ? String(v + 1) : null),
+})
+
+// VTablePager emits `update:pageSize` immediately followed, synchronously, by
+// an `update:page` guess to keep the visible range roughly stable — this flag
+// swallows that follow-up so a size change always lands on page 0 via a
+// single fetch instead of racing two concurrent loadInstructors calls.
+let pageSizeChanging = false
+function onPageSizeChange(size: number) {
+  pageSizeChanging = true
+  pageSize.value = size
+  savePageSize(PAGESIZE_KEY, size)
+  loadInstructors(0)
+}
+
+function onPagerUpdatePage(page: number) {
+  if (pageSizeChanging) {
+    pageSizeChanging = false
+    return
+  }
+  goToPage(page - 1)
+}
 
 // ── Kebab ─────────────────────────────────────────────────────────────────────
 const activeKebabId = ref<string | null>(null)
-const kebabPos = ref<{ top: number; left: number } | null>(null)
-const activeKebabInstructor = computed(() => instructors.value.find((u) => u.id === activeKebabId.value) ?? null)
+function onKebabToggle({ id }: { id: string; anchor: HTMLElement }) {
+  showColMenu.value = false
+  activeKebabId.value = id
+}
 
 // ── Manage columns ─────────────────────────────────────────────────────────
 const cols = ref({ email: true, modules: true, status: true })
@@ -41,16 +84,11 @@ const COL_LABELS: { key: keyof typeof cols.value; label: string }[] = [
 ]
 const colCount = computed(() => 1 + Object.values(cols.value).filter(Boolean).length + 1)
 const showColMenu = ref(false)
-const colMenuPos = ref<{ top: number; left: number } | null>(null)
+const colMenuAnchor = ref<HTMLElement | null>(null)
 function toggleColMenu(event: MouseEvent) {
-  event.stopPropagation()
   activeKebabId.value = null
-  kebabPos.value = null
   showColMenu.value = !showColMenu.value
-  if (showColMenu.value) {
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-    colMenuPos.value = { top: rect.bottom + 6, left: rect.right - 200 }
-  }
+  colMenuAnchor.value = event.currentTarget as HTMLElement
 }
 
 // ── Export (fetches the full set, not just the current page) ────────────────
@@ -125,9 +163,6 @@ const drawerSubtitle = computed(() =>
   editTarget.value ? emailToName(editTarget.value.email) : 'Provision a new instructor account.',
 )
 
-const showingFrom = computed(() => totalElements.value === 0 ? 0 : currentPage.value * PAGE_SIZE + 1)
-const showingTo = computed(() => Math.min((currentPage.value + 1) * PAGE_SIZE, totalElements.value))
-
 function emailToName(email: string): string {
   const local = email.split('@')[0] ?? email
   return local
@@ -143,12 +178,11 @@ async function loadInstructors(page = 0) {
   loadSlow.value = false
   const slowTimer = setTimeout(() => { loadSlow.value = true }, LOAD_TIMEOUT_MS)
   try {
-    const result = await getInstructors(page, PAGE_SIZE)
+    const result = await getInstructors(page, pageSize.value)
     instructors.value = result.content
     currentPage.value = result.page
     totalElements.value = result.totalElements
     totalPages.value = result.totalPages
-    isLastPage.value = result.last
   } catch (err) {
     const msg = err instanceof Error ? err.message : ''
     loadError.value = msg || 'Failed to load instructors. Check your connection and try again.'
@@ -169,7 +203,7 @@ async function loadData() {
         body: e instanceof Error ? e.message : 'Module assignment options are unavailable.',
       })
     })
-  await Promise.all([loadInstructors(0), groupsPromise])
+  await Promise.all([loadInstructors(currentPage.value), groupsPromise])
 }
 
 function goToPage(page: number) {
@@ -179,31 +213,9 @@ function goToPage(page: number) {
 
 onMounted(() => {
   loadData()
-  window.addEventListener('click', closeKebab)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('click', closeKebab)
 })
 
 // ── Actions ───────────────────────────────────────────────────────────────────
-function closeKebab() {
-  activeKebabId.value = null
-  kebabPos.value = null
-  showColMenu.value = false
-}
-
-function toggleKebab(event: MouseEvent, id: string) {
-  event.stopPropagation()
-  if (activeKebabId.value === id) {
-    closeKebab()
-    return
-  }
-  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-  kebabPos.value = { top: rect.bottom + 4, left: rect.right - 160 }
-  activeKebabId.value = id
-}
-
 async function toggleStatus(instructor: InstructorUser) {
   activeKebabId.value = null
   try {
@@ -475,8 +487,14 @@ async function submitForm() {
       </tbody>
       <tbody v-else>
         <tr v-if="!instructors.length">
-          <td :colspan="colCount" style="text-align: center; color: var(--text-secondary); padding: 32px">
-            No instructors yet. Add one to get started.
+          <td :colspan="colCount" style="padding: 0">
+            <VEmptyState
+              icon="user-plus"
+              title="No instructors yet"
+              description="Add one to get started."
+              action-label="Add instructor"
+              @action="openAdd"
+            />
           </td>
         </tr>
         <tr v-for="u in instructors" :key="u.id">
@@ -497,36 +515,30 @@ async function submitForm() {
             </VPill>
           </td>
           <td style="text-align: right">
-            <button class="kebab" aria-label="Actions" @click="toggleKebab($event, u.id)">
-              <VIcon name="more-vertical" :size="18" />
-            </button>
+            <VRowActions :active-id="activeKebabId" :row-id="u.id" @toggle="onKebabToggle" @close="activeKebabId = null">
+              <button class="pop-item" @click="openEdit(u)">
+                <VIcon name="pencil" :size="15" />
+                Edit
+              </button>
+              <button class="pop-item" @click="toggleStatus(u)">
+                <VIcon :name="u.active ? 'user-x' : 'user-check'" :size="15" />
+                {{ u.active ? 'Deactivate' : 'Activate' }}
+              </button>
+            </VRowActions>
           </td>
         </tr>
       </tbody>
     </table>
 
     <!-- Pagination -->
-    <div v-if="!isLoading && totalElements > 0" class="pager">
-      <span class="pager-count">
-        Showing <span class="pg-strong">{{ showingFrom }}</span> to <span class="pg-strong">{{ showingTo }}</span> of <span class="pg-strong">{{ totalElements }}</span> Entries
-      </span>
-      <div class="pager-ctrls">
-        <button class="pg-arrow" aria-label="Previous" :disabled="currentPage === 0" @click="goToPage(currentPage - 1)">
-          <VIcon name="chevron-left" :size="16" />
-        </button>
-        <button
-          v-for="p in totalPages"
-          :key="p"
-          :class="['pg-num', { on: currentPage === p - 1 }]"
-          @click="goToPage(p - 1)"
-        >
-          {{ p }}
-        </button>
-        <button class="pg-arrow" aria-label="Next" :disabled="isLastPage" @click="goToPage(currentPage + 1)">
-          <VIcon name="chevron-right" :size="16" />
-        </button>
-      </div>
-    </div>
+    <VTablePager
+      v-if="!isLoading && totalElements > 0"
+      :total="totalElements"
+      :page="currentPage + 1"
+      :page-size="pageSize"
+      @update:page="onPagerUpdatePage"
+      @update:page-size="onPageSizeChange"
+    />
   </div>
 
   <!-- View Modules Drawer -->
@@ -611,53 +623,13 @@ async function submitForm() {
   </VDrawer>
 
   <!-- Manage columns popover -->
-  <Teleport to="body">
-    <div v-if="showColMenu && colMenuPos" class="pop col-pop" :style="{ top: `${colMenuPos.top}px`, left: `${colMenuPos.left}px` }" @click.stop>
-      <p class="pop-title">Manage columns</p>
-      <label v-for="c in COL_LABELS" :key="c.key" class="pop-row">
-        <input type="checkbox" v-model="cols[c.key]" />
-        {{ c.label }}
-      </label>
-    </div>
-  </Teleport>
-
-  <Teleport to="body">
-    <div
-      v-if="activeKebabInstructor && kebabPos"
-      :style="{
-        position: 'fixed',
-        top: `${kebabPos.top}px`,
-        left: `${kebabPos.left}px`,
-        zIndex: 1000,
-        background: '#fff',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--r-md)',
-        boxShadow: 'var(--shadow-pop)',
-        minWidth: '160px',
-        overflow: 'hidden',
-      }"
-      @click.stop
-    >
-      <button
-        style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 16px; border: none; background: none; font-family: inherit; font-size: 14px; color: var(--text); cursor: pointer; text-align: left"
-        @mouseenter="($event.target as HTMLElement).style.background = 'var(--bg)'"
-        @mouseleave="($event.target as HTMLElement).style.background = 'none'"
-        @click="openEdit(activeKebabInstructor)"
-      >
-        <VIcon name="pencil" :size="15" style="color: var(--text-secondary)" />
-        Edit
-      </button>
-      <button
-        style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 16px; border: none; background: none; font-family: inherit; font-size: 14px; color: var(--text); cursor: pointer; text-align: left"
-        @mouseenter="($event.target as HTMLElement).style.background = 'var(--bg)'"
-        @mouseleave="($event.target as HTMLElement).style.background = 'none'"
-        @click="toggleStatus(activeKebabInstructor)"
-      >
-        <VIcon :name="activeKebabInstructor.active ? 'user-x' : 'user-check'" :size="15" style="color: var(--text-secondary)" />
-        {{ activeKebabInstructor.active ? 'Deactivate' : 'Activate' }}
-      </button>
-    </div>
-  </Teleport>
+  <VPopover :open="showColMenu" :anchor="colMenuAnchor" @close="showColMenu = false">
+    <p class="pop-title">Manage columns</p>
+    <label v-for="c in COL_LABELS" :key="c.key" class="pop-row">
+      <input type="checkbox" v-model="cols[c.key]" />
+      {{ c.label }}
+    </label>
+  </VPopover>
 </template>
 
 <style scoped>

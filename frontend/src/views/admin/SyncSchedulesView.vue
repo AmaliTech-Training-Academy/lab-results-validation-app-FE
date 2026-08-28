@@ -1,16 +1,26 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
 import VSortIcon from '@/components/base/VSortIcon.vue'
 import VPill from '@/components/base/VPill.vue'
 import VDrawer from '@/components/base/VDrawer.vue'
+import VModal from '@/components/base/VModal.vue'
 import VToggle from '@/components/base/VToggle.vue'
+import VTablePager from '@/components/base/VTablePager.vue'
+import VRowActions from '@/components/base/VRowActions.vue'
+import VPopover from '@/components/base/VPopover.vue'
 import { useSyncSchedulesStore } from '@/stores/syncSchedules'
 import { useCohortsStore } from '@/stores/cohorts'
 import { useToastStore } from '@/stores/toast'
 import { toErrorMessage } from '@/utils/errors'
+import { loadColumns, saveColumns, loadPageSize, savePageSize } from '@/utils/uiPrefs'
+import { PAGE_SIZE_OPTIONS } from '@/utils/pagination'
+import { usePageTitle } from '@/composables/usePageTitle'
+import { useQueryParam } from '@/composables/useQueryParam'
 import type { DayOfWeekName, ScheduleFrequency, SyncSchedulePayload, SyncScheduleResponse } from '@/types/syncSchedule.types'
+
+usePageTitle('Sync schedules')
 
 const store = useSyncSchedulesStore()
 const cohorts = useCohortsStore()
@@ -21,9 +31,7 @@ const loading = computed(() => store.loading || cohorts.loading)
 onMounted(() => {
   store.fetchList()
   cohorts.fetchList()
-  window.addEventListener('click', closeMenus)
 })
-onUnmounted(() => window.removeEventListener('click', closeMenus))
 
 const FREQUENCIES: { value: ScheduleFrequency; label: string }[] = [
   { value: 'DAILY', label: 'Daily' },
@@ -62,6 +70,25 @@ const STATUS_OPTIONS: { key: StatusKey; label: string }[] = [
 ]
 const search = ref('')
 const statusFilter = ref<Set<StatusKey>>(new Set())
+
+// Table state lives in the URL (q/status) so filters survive reloads and
+// filtered views can be shared as links.
+function parseSearch(raw: string | undefined): string {
+  return raw ?? ''
+}
+function parseStatusFilter(raw: string | undefined): Set<StatusKey> {
+  if (!raw) return new Set()
+  const keys = raw.split(',').filter((k): k is StatusKey => STATUS_OPTIONS.some((o) => o.key === k))
+  return new Set(keys)
+}
+useQueryParam({ key: 'q', target: search, parse: parseSearch, encode: (v) => v.trim() || null })
+useQueryParam({
+  key: 'status',
+  target: statusFilter,
+  parse: parseStatusFilter,
+  encode: (v) => (v.size ? Array.from(v).join(',') : null),
+})
+
 const activeFilterCount = computed(() => statusFilter.value.size)
 
 function toggleStatus(key: StatusKey) {
@@ -75,7 +102,10 @@ function clearFilter() {
 }
 
 // ── Column visibility ──────────────────────────────────────────────────────────
-const cols = ref({ cohort: true, frequency: true, time: true, status: true })
+// Persisted across visits (previously reset every page load).
+const COLS_KEY = 'validata.syncSchedules.columns'
+const cols = ref(loadColumns(COLS_KEY, { cohort: true, frequency: true, time: true, status: true }))
+watch(cols, (v) => saveColumns(COLS_KEY, v), { deep: true })
 const COL_LABELS: { key: keyof typeof cols.value; label: string }[] = [
   { key: 'cohort', label: 'Cohort' },
   { key: 'frequency', label: 'Frequency' },
@@ -86,51 +116,32 @@ const colCount = computed(() => 1 + Object.values(cols.value).filter(Boolean).le
 
 // ── Popovers (filter + columns) ────────────────────────────────────────────────
 const showFilterMenu = ref(false)
-const filterMenuPos = ref<{ top: number; left: number } | null>(null)
+const filterBtnEl = ref<HTMLElement | null>(null)
 const showColMenu = ref(false)
-const colMenuPos = ref<{ top: number; left: number } | null>(null)
+const colBtnEl = ref<HTMLElement | null>(null)
 
 function toggleFilterMenu(event: MouseEvent) {
-  event.stopPropagation()
-  showColMenu.value = false
-  showFilterMenu.value = !showFilterMenu.value
-  if (showFilterMenu.value) {
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-    filterMenuPos.value = { top: rect.bottom + 6, left: rect.left }
-  }
-}
-function toggleColMenu(event: MouseEvent) {
-  event.stopPropagation()
-  showFilterMenu.value = false
-  showColMenu.value = !showColMenu.value
-  if (showColMenu.value) {
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-    colMenuPos.value = { top: rect.bottom + 6, left: rect.right - 200 }
-  }
-}
-function closeMenus() {
-  showFilterMenu.value = false
   showColMenu.value = false
   activeKebabId.value = null
-  kebabPos.value = null
+  showFilterMenu.value = !showFilterMenu.value
+  if (showFilterMenu.value) filterBtnEl.value = event.currentTarget as HTMLElement
+}
+function toggleColMenu(event: MouseEvent) {
+  showFilterMenu.value = false
+  activeKebabId.value = null
+  showColMenu.value = !showColMenu.value
+  if (showColMenu.value) colBtnEl.value = event.currentTarget as HTMLElement
 }
 
 // ── Row actions (kebab) ──────────────────────────────────────────────────────────
 const activeKebabId = ref<string | null>(null)
-const kebabPos = ref<{ top: number; left: number } | null>(null)
-const activeKebab = computed(() => store.list.find((s) => s.id === activeKebabId.value) ?? null)
-function toggleKebab(event: MouseEvent, id: string) {
-  event.stopPropagation()
+function onKebabToggle({ id }: { id: string; anchor: HTMLElement }) {
   showFilterMenu.value = false
   showColMenu.value = false
-  if (activeKebabId.value === id) {
-    activeKebabId.value = null
-    kebabPos.value = null
-    return
-  }
-  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-  kebabPos.value = { top: rect.bottom + 4, left: rect.right - 200 }
   activeKebabId.value = id
+}
+function closeKebab() {
+  activeKebabId.value = null
 }
 
 // ── Row actions ──────────────────────────────────────────────────────────────
@@ -156,11 +167,24 @@ async function toggleEnabled(s: SyncScheduleResponse) {
   }
 }
 
-async function onDelete(s: SyncScheduleResponse) {
+// ── Delete confirmation ───────────────────────────────────────────────────────
+const deleteTarget = ref<SyncScheduleResponse | null>(null)
+
+function onDelete(s: SyncScheduleResponse) {
   activeKebabId.value = null
-  if (!window.confirm(`Delete "${s.name}"? This cannot be undone.`)) return
+  deleteTarget.value = s
+}
+
+function closeDeleteConfirm() {
+  deleteTarget.value = null
+}
+
+async function confirmDelete() {
+  const target = deleteTarget.value
+  if (!target) return
+  deleteTarget.value = null
   try {
-    await store.remove(s.id)
+    await store.remove(target.id)
     toast.show({ tone: 'success', title: 'Sync schedule deleted' })
   } catch {
     toast.show({ tone: 'warning', title: 'Could not delete sync schedule', body: store.actionError ?? 'Please try again.' })
@@ -215,7 +239,10 @@ const sorted = computed(() => {
 })
 
 // ── Pagination ───────────────────────────────────────────────────────────────
-const pageSize = ref(10)
+// Rows-per-page persisted across visits (previously reset every page load).
+const PAGESIZE_KEY = 'validata.syncSchedules.pageSize'
+const pageSize = ref(loadPageSize(PAGESIZE_KEY, 10, PAGE_SIZE_OPTIONS))
+watch(pageSize, (v) => savePageSize(PAGESIZE_KEY, v))
 const currentPage = ref(1)
 const total = computed(() => sorted.value.length)
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
@@ -224,26 +251,6 @@ const paged = computed(() => {
   const start = (safePage.value - 1) * pageSize.value
   return sorted.value.slice(start, start + pageSize.value)
 })
-const pageItems = computed<(number | '…')[]>(() => {
-  const tp = totalPages.value
-  const cur = safePage.value
-  if (tp <= 7) return Array.from({ length: tp }, (_, i) => i + 1)
-  const items: (number | '…')[] = []
-  if (cur <= 4) {
-    for (let i = 1; i <= 5; i++) items.push(i)
-    items.push('…', tp)
-  } else if (cur >= tp - 3) {
-    items.push(1, '…')
-    for (let i = tp - 4; i <= tp; i++) items.push(i)
-  } else {
-    items.push(1, '…', cur - 1, cur, cur + 1, '…', tp)
-  }
-  return items
-})
-function goToPage(p: number) {
-  if (p < 1 || p > totalPages.value) return
-  currentPage.value = p
-}
 watch([search, pageSize, statusFilter], () => {
   currentPage.value = 1
 })
@@ -430,9 +437,20 @@ async function submit() {
             <span v-else class="pill pill-muted">Paused</span>
           </td>
           <td class="col-actions">
-            <button class="kebab" aria-label="Row actions" @click.stop="toggleKebab($event, s.id)">
-              <VIcon name="more-vertical" :size="18" />
-            </button>
+            <VRowActions :active-id="activeKebabId" :row-id="s.id" @toggle="onKebabToggle" @close="closeKebab">
+              <button class="pop-item" @click="openEdit(s)">
+                <VIcon name="pencil" :size="15" />
+                Edit schedule
+              </button>
+              <button class="pop-item" @click="toggleEnabled(s)">
+                <VIcon :name="s.enabled ? 'minus-circle' : 'play'" :size="15" />
+                {{ s.enabled ? 'Pause schedule' : 'Enable schedule' }}
+              </button>
+              <button class="pop-item danger" @click="onDelete(s)">
+                <VIcon name="trash-2" :size="15" />
+                Delete schedule
+              </button>
+            </VRowActions>
           </td>
         </tr>
 
@@ -452,72 +470,36 @@ async function submit() {
     </table>
 
     <!-- Pagination -->
-    <div v-if="!loading && total > 0" class="pager">
-      <span class="pager-count"><span class="pg-strong">{{ total }}</span> Entries</span>
-      <div class="pager-right">
-        <div class="pgsize">
-          <select v-model.number="pageSize" aria-label="Rows per page">
-            <option v-for="n in [10, 15, 20, 25, 30, 35, 40]" :key="n" :value="n">{{ n }} per page</option>
-          </select>
-        </div>
-        <div class="pager-ctrls">
-          <button class="pg-arrow" aria-label="Previous page" :disabled="safePage === 1" @click="goToPage(safePage - 1)">
-            <VIcon name="chevron-left" :size="16" />
-          </button>
-          <template v-for="(p, i) in pageItems" :key="i">
-            <span v-if="p === '…'" class="pg-ellipsis">…</span>
-            <button v-else :class="['pg-num', { on: safePage === p }]" @click="goToPage(Number(p))">{{ p }}</button>
-          </template>
-          <button class="pg-arrow" aria-label="Next page" :disabled="safePage === totalPages" @click="goToPage(safePage + 1)">
-            <VIcon name="chevron-right" :size="16" />
-          </button>
-        </div>
-      </div>
-    </div>
+    <VTablePager
+      v-if="!loading && total > 0"
+      :total="total"
+      :page="safePage"
+      :page-size="pageSize"
+      @update:page="(p) => (currentPage = p)"
+      @update:pageSize="(size) => (pageSize = size)"
+    />
   </div>
 
   <!-- Filter popover -->
-  <Teleport to="body">
-    <div v-if="showFilterMenu && filterMenuPos" class="pop col-pop" :style="{ top: `${filterMenuPos.top}px`, left: `${filterMenuPos.left}px` }" @click.stop>
-      <div class="pop-head">
-        <p class="pop-title">Filter by status</p>
-        <button v-if="activeFilterCount > 0" class="pop-clear" @click="clearFilter">Clear</button>
-      </div>
-      <label v-for="opt in STATUS_OPTIONS" :key="opt.key" class="pop-row">
-        <input type="checkbox" :checked="statusFilter.has(opt.key)" @change="toggleStatus(opt.key)" />
-        {{ opt.label }}
-      </label>
+  <VPopover :open="showFilterMenu" :anchor="filterBtnEl" @close="showFilterMenu = false">
+    <div class="pop-head">
+      <p class="pop-title">Filter by status</p>
+      <button v-if="activeFilterCount > 0" class="pop-clear" @click="clearFilter">Clear</button>
     </div>
-  </Teleport>
+    <label v-for="opt in STATUS_OPTIONS" :key="opt.key" class="pop-row">
+      <input type="checkbox" :checked="statusFilter.has(opt.key)" @change="toggleStatus(opt.key)" />
+      {{ opt.label }}
+    </label>
+  </VPopover>
 
   <!-- Manage columns popover -->
-  <Teleport to="body">
-    <div v-if="showColMenu && colMenuPos" class="pop col-pop" :style="{ top: `${colMenuPos.top}px`, left: `${colMenuPos.left}px` }" @click.stop>
-      <p class="pop-title">Manage columns</p>
-      <label v-for="c in COL_LABELS" :key="c.key" class="pop-row">
-        <input type="checkbox" v-model="cols[c.key]" />
-        {{ c.label }}
-      </label>
-    </div>
-  </Teleport>
-
-  <!-- Row actions popover -->
-  <Teleport to="body">
-    <div v-if="activeKebab && kebabPos" class="pop pop-actions" :style="{ top: `${kebabPos.top}px`, left: `${kebabPos.left}px` }" @click.stop>
-      <button class="pop-item" @click="openEdit(activeKebab)">
-        <VIcon name="pencil" :size="15" />
-        Edit schedule
-      </button>
-      <button class="pop-item" @click="toggleEnabled(activeKebab)">
-        <VIcon :name="activeKebab.enabled ? 'minus-circle' : 'play'" :size="15" />
-        {{ activeKebab.enabled ? 'Pause schedule' : 'Enable schedule' }}
-      </button>
-      <button class="pop-item danger" @click="onDelete(activeKebab)">
-        <VIcon name="trash-2" :size="15" />
-        Delete schedule
-      </button>
-    </div>
-  </Teleport>
+  <VPopover :open="showColMenu" :anchor="colBtnEl" @close="showColMenu = false">
+    <p class="pop-title">Manage columns</p>
+    <label v-for="c in COL_LABELS" :key="c.key" class="pop-row">
+      <input type="checkbox" v-model="cols[c.key]" />
+      {{ c.label }}
+    </label>
+  </VPopover>
 
   <!-- Create / edit drawer -->
   <VDrawer
@@ -553,10 +535,10 @@ async function submit() {
           </select>
         </span>
       </label>
-      <label v-if="form.frequency === 'WEEKLY'" class="ff">
+      <label class="ff" :class="{ 'ff-disabled': form.frequency !== 'WEEKLY' }">
         <span class="ff-label">Day of week <span style="color: var(--danger)">*</span></span>
         <span class="ff-input">
-          <select v-model="form.dayOfWeek">
+          <select v-model="form.dayOfWeek" :disabled="form.frequency !== 'WEEKLY'">
             <option v-for="d in DAYS" :key="d" :value="d">{{ dayLabel(d) }}</option>
           </select>
         </span>
@@ -593,6 +575,21 @@ async function submit() {
       </VButton>
     </template>
   </VDrawer>
+
+  <!-- Delete confirmation -->
+  <VModal
+    :open="!!deleteTarget"
+    tone="danger"
+    title="Delete sync schedule"
+    :subtitle="deleteTarget?.name ?? ''"
+    @close="closeDeleteConfirm"
+  >
+    <p>This cannot be undone. Are you sure you want to delete this sync schedule?</p>
+    <template #footer>
+      <VButton variant="ghost" @click="closeDeleteConfirm">Cancel</VButton>
+      <VButton variant="danger" @click="confirmDelete">Delete</VButton>
+    </template>
+  </VModal>
 </template>
 
 <style scoped>
@@ -632,7 +629,7 @@ async function submit() {
   color: var(--danger);
 }
 
-.pg-arrow:disabled {
+:deep(.pg-arrow:disabled) {
   opacity: 0.4;
   cursor: not-allowed;
 }
@@ -647,5 +644,16 @@ async function submit() {
   color: var(--text);
   background: transparent;
   min-width: 0;
+}
+
+/* Day-of-week field for a DAILY schedule: stays in the DOM (no layout jump), just greyed out. */
+.ff-disabled {
+  opacity: 0.5;
+}
+.ff-disabled .ff-input {
+  background: var(--bg-sunken);
+}
+.ff-input select:disabled {
+  cursor: not-allowed;
 }
 </style>

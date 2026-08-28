@@ -6,6 +6,9 @@ import { useToastStore } from '@/stores/toast'
 import type { BulkRowError } from '@/types/bulk.types'
 import VButton from '@/components/base/VButton.vue'
 import VIcon from '@/components/base/VIcon.vue'
+import { usePageTitle } from '@/composables/usePageTitle'
+
+usePageTitle('Upload Results')
 
 const router = useRouter()
 const toast = useToastStore()
