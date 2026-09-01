@@ -20,7 +20,9 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        // Overridable so an end-to-end run can point at its own isolated backend instead of the
+        // one a developer already has on 8080. Unset, the behaviour is exactly as before.
+        target: process.env.VITE_API_TARGET ?? 'http://localhost:8080',
         changeOrigin: true,
         cookieDomainRewrite: 'localhost',
       },
