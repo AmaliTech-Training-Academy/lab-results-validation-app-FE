@@ -18,7 +18,6 @@ import {
 const folder = uniqueFolder('conflict')
 let jobId: string
 let cohortId: string
-let cohortName: string
 
 /**
  * The run-review URL carries the cohort as a query parameter. Without it the page loads and the API
@@ -31,7 +30,6 @@ function runReviewUrl(): string {
 
 test.beforeAll(() => {
   const cohort = seedCohortForGrading(folder)
-  cohortName = cohort.name
   cohortId = cohort.cohortId
   const labId = seedLab(cohort.moduleId, 'Duplicate Lab')
   const learnerId = seedLearner(cohort.cohortId, cohort.specializationId, GRADING.learners[0])
