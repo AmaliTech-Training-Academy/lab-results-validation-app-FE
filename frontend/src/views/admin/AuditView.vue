@@ -305,9 +305,12 @@ function closeKebab() {
               </span>
             </td>
             <td><VPill :tone="RUN_STATUS_TONE[r.status]">{{ STATUS_LABEL[r.status] }}</VPill></td>
-            <td class="when-cell">
-              <span class="when-date">{{ (r.runAt ?? r.startedAt ?? '').slice(0, 10) || '—' }}</span>
-              <span v-if="(r.runAt ?? r.startedAt)" class="when-time">{{ (r.runAt ?? r.startedAt ?? '').slice(11, 16) }}</span>
+            <td>
+              <span v-if="!(r.runAt ?? r.startedAt)" class="muted">—</span>
+              <span v-else class="when-cell">
+                <span class="when-row"><VIcon name="calendar" :size="13" class="when-ic" />{{ fmtDate(r.runAt ?? r.startedAt) }}</span>
+                <span class="when-row muted"><VIcon name="clock" :size="13" class="when-ic" />{{ fmtTime(r.runAt ?? r.startedAt) }}</span>
+              </span>
             </td>
             <td class="col-actions">
               <VRowActions :active-id="activeKebabId" :row-id="r.id" @toggle="toggleKebab" @close="closeKebab">
@@ -401,7 +404,12 @@ function closeKebab() {
           </td>
           <td>{{ cohortLabel(e) }}</td>
           <td class="muted">{{ e.actorEmail ?? 'SYSTEM' }}</td>
-          <td class="mono muted">{{ fmtDate(e.occurredAt) }} {{ fmtTime(e.occurredAt) }}</td>
+          <td>
+            <span class="when-cell">
+              <span class="when-row"><VIcon name="calendar" :size="13" class="when-ic" />{{ fmtDate(e.occurredAt) }}</span>
+              <span class="when-row muted"><VIcon name="clock" :size="13" class="when-ic" />{{ fmtTime(e.occurredAt) }}</span>
+            </span>
+          </td>
           <td class="col-actions">
             <VRowActions :active-id="activeKebabId" :row-id="e.id" @toggle="toggleKebab" @close="closeKebab">
               <button class="pop-item" @click="openEvent(e.id)">
@@ -454,8 +462,8 @@ function closeKebab() {
 
 /* When (date over time) */
 .when-cell { display: flex; flex-direction: column; gap: 3px; }
-.when-date { font-size: 13px; color: var(--text); }
-.when-time { font-size: 13px; color: var(--text-secondary); }
+.when-row { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.when-ic { color: var(--text-muted); }
 
 .detail-row td { background: var(--bg); }
 .run-detail { display: flex; flex-direction: column; gap: 10px; padding: 6px 4px; }
