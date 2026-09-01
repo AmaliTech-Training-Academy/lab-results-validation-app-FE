@@ -8,6 +8,7 @@ import VModal from '@/components/base/VModal.vue'
 import VPill from '@/components/base/VPill.vue'
 import VTablePager from '@/components/base/VTablePager.vue'
 import VRowActions from '@/components/base/VRowActions.vue'
+import VSummaryStat from '@/components/base/VSummaryStat.vue'
 import { useRunReviewStore } from '@/stores/runReview'
 import { useRunsStore } from '@/stores/runs'
 import { useSyncRunStream } from '@/composables/useSyncRunStream'
@@ -135,13 +136,20 @@ const canSendAll = computed(() => {
 })
 
 const SUMMARY = [
-  { key: 'rowsRead', label: 'Rows read' },
-  { key: 'committedNew', label: 'New' },
-  { key: 'updated', label: 'Updated' },
-  { key: 'skippedInvalid', label: 'Skipped — invalid' },
-  { key: 'skippedUnchanged', label: 'Skipped — unchanged' },
-  { key: 'conflicts', label: 'Conflicts' },
+  { key: 'rowsRead', label: 'Rows read', tone: 'info' },
+  { key: 'committedNew', label: 'New', tone: 'success' },
+  { key: 'updated', label: 'Updated', tone: 'info' },
+  { key: 'skippedInvalid', label: 'Skipped — invalid', tone: 'warning' },
+  { key: 'skippedUnchanged', label: 'Skipped — unchanged', tone: 'neutral' },
+  { key: 'conflicts', label: 'Conflicts', tone: 'success' },
 ] as const
+
+/** `skippedInvalid`/`conflicts` escalate to a stronger tone once their count is non-zero — everything else keeps its base tone. */
+function summaryTone(key: (typeof SUMMARY)[number]['key'], base: (typeof SUMMARY)[number]['tone']): 'info' | 'success' | 'warning' | 'neutral' | 'danger' {
+  if (key === 'skippedInvalid' && (run.value?.counts?.skippedInvalid ?? 0) > 0) return 'danger'
+  if (key === 'conflicts' && (run.value?.counts?.conflicts ?? 0) > 0) return 'warning'
+  return base
+}
 
 const FILE_SUMMARY = [
   { key: 'rowsRead', label: 'Rows read' },
@@ -408,10 +416,13 @@ function recipientLabel(n: Notification): string {
         High failure rate — more than 50% of rows were rejected in this file.
       </div>
       <dl class="summary">
-        <div v-for="s in SUMMARY" :key="s.key" class="summary-cell" :class="{ bad: s.key === 'skippedInvalid' && (run?.counts?.skippedInvalid ?? 0) > 0, warn: s.key === 'conflicts' && (run?.counts?.conflicts ?? 0) > 0 }">
-          <dt>{{ s.label }}</dt>
-          <dd class="mono">{{ run?.counts?.[s.key] ?? 0 }}</dd>
-        </div>
+        <VSummaryStat
+          v-for="s in SUMMARY"
+          :key="s.key"
+          :label="s.label"
+          :value="run?.counts?.[s.key] ?? 0"
+          :tone="summaryTone(s.key, s.tone)"
+        />
       </dl>
       <details v-if="run?.errorReport?.length" class="err-details">
         <summary>{{ run.errorReport.length }} rejected row{{ run.errorReport.length === 1 ? '' : 's' }}</summary>
@@ -466,9 +477,12 @@ function recipientLabel(n: Notification): string {
     </section>
 
     <!-- Panel 2 — Conflict queue -->
-    <section class="block">
+    <section class="block block-card">
       <div class="conflicts-head">
-        <h2 class="block-title">Conflict queue <span class="count-badge mono">{{ store.conflictsPage?.totalElements ?? 0 }}</span></h2>
+        <h2 class="block-title">
+          Conflict queue
+          <VIcon name="info" :size="14" class="info-hint" title="In-file duplicates — same learner + lab appearing twice, held for manual resolution." />
+        </h2>
         <label class="fld">
           <span>Status</span>
           <select :value="store.conflictsStatusFilter" @change="onConflictStatusChange(($event.target as HTMLSelectElement).value as ConflictStatus | '')">
@@ -554,10 +568,14 @@ function recipientLabel(n: Notification): string {
     </section>
 
     <!-- Panel 3 — Notification moderation -->
-    <section class="block">
+    <section class="block block-card">
       <div class="notif-head">
         <div>
-          <h2 class="block-title" style="margin-bottom: 2px">Notifications <span class="count-badge mono">{{ pendingCount }} held on this page</span></h2>
+          <h2 class="block-title" style="margin-bottom: 2px">
+            Notifications
+            <VIcon name="info" :size="14" class="info-hint" title="Instructor digests are held for review. Auto alerts are already sent (shown for transparency)." />
+            <span class="count-badge mono">{{ pendingCount }} held on this page</span>
+          </h2>
           <p class="block-sub">Instructor digests are held for review. Auto alerts are already sent (shown for transparency).</p>
         </div>
         <div class="notif-head-actions">
@@ -822,16 +840,17 @@ function recipientLabel(n: Notification): string {
 .file-meta { font-size: 12px; color: var(--text-secondary); }
 
 .block { margin-bottom: 32px; }
+.block-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md, 6px); box-shadow: var(--shadow-card); padding: 20px 24px; }
 .block-title { font-family: var(--font-display); font-weight: 600; font-size: 16px; color: var(--text); margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
 .block-sub { color: var(--text-secondary); font-size: 13px; margin-bottom: 14px; }
 .count-badge { font-size: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; color: var(--text-secondary); font-weight: 400; }
 
-.summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
-.summary-cell { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md, 6px); padding: 14px 16px; box-shadow: var(--shadow-card); }
-.summary-cell.bad dd { color: var(--danger); }
-.summary-cell.warn dd { color: var(--warning, #b45309); }
+.summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+.summary-cell { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md, 6px); padding: 16px; box-shadow: var(--shadow-card); }
 .summary-cell dt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); }
 .summary-cell dd { font-size: 24px; font-weight: 600; color: var(--text); margin-top: 2px; }
+
+.info-hint { color: var(--text-secondary); cursor: help; }
 
 .hi-fail-banner { display: flex; align-items: center; gap: 8px; background: var(--danger-bg); color: var(--danger); border-radius: var(--r-sm, 4px); padding: 10px 14px; font-size: 14px; margin-bottom: 14px; }
 
