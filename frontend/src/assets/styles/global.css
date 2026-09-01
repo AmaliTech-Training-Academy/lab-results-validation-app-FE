@@ -114,7 +114,9 @@ table.tbl { width: 100%; border-collapse: collapse; font-family: var(--font-body
 .ff-row .ff { flex: 1; }
 .ff-label { font-size: 14px; font-weight: 500; color: var(--text-secondary); }
 .ff-input { height: 44px; border: 1px solid var(--border); border-radius: var(--r-sm); background: #fff; display: flex; align-items: center; padding: 0 14px; }
-.ff-input input { border: none; outline: none; flex: 1; font-family: inherit; font-size: 15px; color: var(--text); background: transparent; min-width: 0; }
+.ff-input input,
+.ff-input select,
+.ff-input textarea { border: none; outline: none; flex: 1; font-family: inherit; font-size: 15px; color: var(--text); background: transparent; min-width: 0; }
 .ff-input input.mono { font-family: var(--font-mono); font-size: 14px; }
 .ff-input:focus-within { border-color: var(--navy); box-shadow: var(--ring-focus); }
 .short-dur-warn { display: flex; align-items: flex-start; gap: 8px; padding: 12px 14px; background: var(--warning-bg); border: 1px solid var(--warning); border-radius: var(--r-sm); font-size: 14px; line-height: 1.5; color: var(--warning); margin-top: 4px; }

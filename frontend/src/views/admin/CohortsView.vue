@@ -522,7 +522,7 @@ async function submit() {
   margin-left: auto;
 }
 
-/* ── Table typography (neutral Inter face, matching the design system) ── */
+/* ── Table typography (matching the design system's body font) ── */
 .cohorts-tbl {
   width: 100%;
 }

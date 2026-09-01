@@ -76,8 +76,8 @@ defineEmits<{
   border: none;
   outline: none;
   flex: 1;
-  font-family: var(--font-mono);
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: 15px;
   color: var(--text);
   background: transparent;
   min-width: 0;

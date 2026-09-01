@@ -634,18 +634,6 @@ async function submit() {
   cursor: not-allowed;
 }
 
-.ff-input select {
-  border: none;
-  outline: none;
-  flex: 1;
-  height: 100%;
-  font-family: inherit;
-  font-size: 15px;
-  color: var(--text);
-  background: transparent;
-  min-width: 0;
-}
-
 /* Day-of-week field for a DAILY schedule: stays in the DOM (no layout jump), just greyed out. */
 .ff-disabled {
   opacity: 0.5;
