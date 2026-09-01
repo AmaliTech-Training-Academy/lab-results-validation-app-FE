@@ -49,3 +49,8 @@ Validata Design System/
 # Root-level npm artefacts (app lives in frontend/)
 /package.json
 /package-lock.json
+
+# End-to-end run artefacts
+/frontend/test-results/
+/frontend/playwright-report/
+/frontend/e2e/.drive/
