@@ -58,6 +58,11 @@ export function seedAdmin(mustChangePassword = false): { email: string; password
   const password = `E2e!${suffix}Aa1`
   const hash = bcrypt.hashSync(password, 10)
 
+  // Retire the previous run's admins first. Every stand-up or sync failure emails EVERY active
+  // admin, so a suite that leaves its admins active turns each failure into a fan-out of dozens of
+  // sends — which saturates the notification thread pool and stops the progress stream reaching the
+  // screen. That looked exactly like a product defect and was not one; see e2e/README.md.
+  sql(`UPDATE users SET is_active = false WHERE email LIKE 'e2e.admin.%'`)
   sql(
     `INSERT INTO users (email, password_hash, role, is_active, must_change_password)
      VALUES ('${email}', '${hash}', 'admin', true, ${mustChangePassword})`,

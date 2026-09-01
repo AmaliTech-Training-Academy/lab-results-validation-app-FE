@@ -49,6 +49,18 @@ before a request is sent. The backend has no such rule, so an admin seeded on a 
 authenticate perfectly over the API and still be unable to reach the sign-in screen. `seedAdmin()`
 already uses an allowed domain.
 
+**A real SMTP sink must be running, or the suite lies to you.** Every stand-up or sync failure emails
+*every active admin*. With nothing listening on the mail port each send blocks until the connection
+fails, and with a suite's worth of accumulated admins that saturates the notification thread pool and
+stops progress events reaching the screen — which looks exactly like a broken progress display. It
+cost a wrongly-raised finding. Start one:
+
+```bash
+docker run -d --name validata-e2e-mail -p 1025:1025 -p 8025:8025 mailhog/mailhog
+```
+
+`seedAdmin()` also retires the previous run's admins for the same reason, so the fan-out stays at one.
+
 **The browser needs no download.** The suite drives the Chrome already installed on the machine
 (`channel: 'chrome'`), so there is no 150MB Playwright browser fetch.
 
