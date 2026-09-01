@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import bcrypt from 'bcryptjs'
 
@@ -24,10 +24,18 @@ export const DRIVE_ROOT =
 /** The web address prefix the backend's fixture drive answers to. Gate 1 requires this shape. */
 export const WEB_BASE = 'https://fixtures.sharepoint.com/sites/validata'
 
+/**
+ * Runs one statement and returns what it selected, or an empty string.
+ *
+ * <p>`-q` matters: without it psql prints the command status too, so an `INSERT ... RETURNING id`
+ * comes back as the id AND a trailing "INSERT 0 1". Trimming that whole thing yields a two-line
+ * "id" that is silently invalid everywhere it is then used — the next insert fails with a message
+ * about the *second* table, which is a long way from the actual cause.
+ */
 export function sql(statement: string): string {
   return execFileSync(
     'docker',
-    ['exec', '-i', CONTAINER, 'psql', '-U', DB_USER, '-d', DB_NAME, '-t', '-A', '-c', statement],
+    ['exec', '-i', CONTAINER, 'psql', '-q', '-U', DB_USER, '-d', DB_NAME, '-t', '-A', '-c', statement],
     { encoding: 'utf8' },
   ).trim()
 }
@@ -111,21 +119,143 @@ export function seedLearner(cohortId: string, specializationId: string, fullName
 }
 
 /**
- * A reviewer. instructor_contacts is global with a unique email AND a unique name, so both carry a
- * per-run suffix — sharing either between journeys fails on the second insert.
+ * A reviewer, by an exact name.
+ *
+ * <p>Unlike the other helpers this one does **not** add a suffix, because the name has to match the
+ * `Reviewer` column of a committed spreadsheet fixture — and a fixture cannot know a random suffix.
+ * `instructor_contacts` is global with a unique email and a unique name, and the database persists
+ * between runs, so the insert is written to tolerate the row already being there. The assignment to
+ * this cohort's specialization is new every time, which is what actually scopes the reviewer.
  */
-export function seedInstructor(specializationId: string, baseName: string): string {
-  const suffix = Math.random().toString(36).slice(2, 8)
-  const fullName = `${baseName} ${suffix}`
-  const id = sql(
+export function seedInstructor(specializationId: string, fullName: string): string {
+  const email = `${fullName.toLowerCase().replace(/[^a-z]+/g, '.')}@amalitechtraining.org`
+  sql(
     `INSERT INTO instructor_contacts (email, full_name, is_active)
-     VALUES ('inst.${suffix}@example.test', '${fullName}', true) RETURNING id`,
+     VALUES ('${email}', '${fullName}', true) ON CONFLICT (email) DO NOTHING`,
   )
+  const id = sql(`SELECT id FROM instructor_contacts WHERE email = '${email}'`)
   sql(
     `INSERT INTO instructor_specialization_assignments (instructor_contact_id, specialization_id)
      VALUES ('${id}', '${specializationId}')`,
   )
   return fullName
+}
+
+// ── committed spreadsheet fixtures ────────────────────────────────────────
+
+/** Names inside the committed grading workbooks. A journey must seed these exact people. */
+export const GRADING = {
+  reviewer: 'Efua Danso-Mensah',
+  learners: ['Adwoa Frimpong-Baah', 'Yaw Oppong-Kyei'],
+  lab: 'Provisioning a Virtual Network',
+} as const
+
+const FIXTURES = join(process.cwd(), 'e2e', 'fixtures')
+
+/** Drops one of the committed grading workbooks into a cohort's Lab Scores folder. */
+export function putGradingWorkbook(folderName: string, which: 'clean' | 'rejections' | 'duplicate'): void {
+  const target = join(cohortFolder(folderName), 'Lab Scores', 'Module 1 Grading.xlsx')
+  cpSync(join(FIXTURES, 'grading', `${which}.xlsx`), target)
+}
+
+/** Copies the five reference workbooks Gate 3 validates into a cohort's Reference Data folder. */
+export function putReferenceBundle(folderName: string, options: { omit?: string } = {}): void {
+  const source = join(FIXTURES, 'reference-bundle')
+  const target = join(cohortFolder(folderName), 'Reference Data')
+  cpSync(source, target, { recursive: true })
+  if (options.omit) rmSync(join(target, options.omit), { force: true })
+}
+
+/** A cohort seeded to match the committed grading workbooks, ready for a sync. */
+export function seedCohortForGrading(folderName: string) {
+  const cohort = seedStoodUpCohort(folderName)
+  seedLab(cohort.moduleId, GRADING.lab)
+  for (const learner of GRADING.learners) {
+    seedLearner(cohort.cohortId, cohort.specializationId, learner)
+  }
+  seedInstructor(cohort.specializationId, GRADING.reviewer)
+  makeCohortFolder(folderName)
+  return cohort
+}
+
+/**
+ * A completed run with rejected rows, written straight into the audit tables.
+ *
+ * <p>**Why the outcome is seeded rather than produced by a real sync.** These journeys are about
+ * what the *screens* say about a run — that the list reports a rejection instead of a confident
+ * zero, and that the dashboard notices. Producing a real run here would also require S3, which this
+ * machine has no credentials for (see e2e/README.md), and would re-test ingestion rules that the
+ * backend suite already covers with better failure messages. What is under test is the rendering.
+ */
+function errorReport(): string {
+  // Built with JSON.stringify rather than written inline: an apostrophe in the message has to
+  // survive both a TypeScript template literal and a SQL string literal, and hand-escaping it wrong
+  // fails with a jsonb parse error that names neither of them.
+  return JSON.stringify([
+    {
+      file: 'Module 1 Grading.xlsx',
+      location: 'sheet Module-1 row 5',
+      rule: 'F2-INVALID-SCORE',
+      message: 'Total Score not-a-score is not numeric.',
+    },
+  ]).replace(/'/g, "''")
+}
+
+export function seedCompletedRunWithRejections(
+  cohortId: string,
+  opts: { rejected?: number; conflicts?: number } = {},
+) {
+  const rejected = opts.rejected ?? 1
+  // Counts must be right at INSERT: ingestion_runs is append-only once finalized (a trigger refuses
+  // any UPDATE unless status is still 'processing'), so there is no second chance to correct them.
+  const conflicts = opts.conflicts ?? 0
+  const jobId = sql(
+    `INSERT INTO cohort_sync_jobs (cohort_id, status, started_at, completed_at)
+     VALUES ('${cohortId}', 'COMPLETED', NOW(), NOW()) RETURNING id`,
+  )
+  const runId = sql(
+    `INSERT INTO ingestion_runs (cohort_id, sync_job_id, workbook_filename, trigger_type, status,
+                                 rows_read, committed_new, updated_count, skipped_invalid,
+                                 skipped_unchanged, conflicts_count, failure_rate_percent,
+                                 high_failure_rate, sharepoint_file_url, sharepoint_version_id,
+                                 quick_xor_hash, error_report_json)
+     VALUES ('${cohortId}', '${jobId}', 'Module 1 Grading.xlsx', 'MANUAL', 'partial',
+             2, 1, 0, ${rejected}, 0, ${conflicts}, ${rejected * 50}, ${rejected > 1},
+             '${WEB_BASE}/scores/Module 1 Grading.xlsx', 'c:e2e0000000000001', 'ZTJlLWhhc2g=',
+             '${errorReport()}'::jsonb)
+     RETURNING id`,
+  )
+  return { jobId, runId }
+}
+
+/** A pending duplicate held for a decision, with two candidate marks. */
+export function seedPendingConflict(
+  cohortId: string,
+  runId: string,
+  learnerId: string,
+  labId: string,
+) {
+  const candidates = JSON.stringify({
+    candidates: [
+      {
+        fileName: 'Module 1 Grading.xlsx', sheetName: 'Module-1', rowNum: 5,
+        nspName: GRADING.learners[0], submittedOn: '2026-03-02', score: '62.00',
+        instructorContactId: null,
+      },
+      {
+        fileName: 'Module 1 Grading.xlsx', sheetName: 'Module-1', rowNum: 6,
+        nspName: GRADING.learners[0], submittedOn: '2026-03-03', score: '91.00',
+        instructorContactId: null,
+      },
+    ],
+  })
+  return sql(
+    `INSERT INTO ingestion_conflicts (ingestion_run_id, learner_id, lab_id, conflict_kind,
+                                      incoming_payload_json, status)
+     VALUES ('${runId}', '${learnerId}', '${labId}', 'in_file_duplicate',
+             '${candidates.replace(/'/g, "''")}'::jsonb, 'PENDING')
+     RETURNING id`,
+  )
 }
 
 // ── the fixture drive ─────────────────────────────────────────────────────
