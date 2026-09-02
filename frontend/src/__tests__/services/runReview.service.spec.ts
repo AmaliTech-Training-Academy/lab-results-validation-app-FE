@@ -20,6 +20,7 @@ function overview(over: Partial<GradingSyncOverviewResponse> = {}): GradingSyncO
     jobStatus: 'COMPLETED',
     startedAt: '2026-08-04T14:10:36Z',
     completedAt: '2026-08-04T14:10:44Z',
+    previousRunCompletedAt: null,
     filesProcessed: 2,
     rowsRead: 60,
     committedNew: 0,
@@ -32,6 +33,8 @@ function overview(over: Partial<GradingSyncOverviewResponse> = {}): GradingSyncO
       {
         workbookFilename: 'BE Lab Grading.xlsx',
         status: 'partial',
+        sharepointVersionId: 'cTag-BE-v3',
+        quickXorHash: 'quickxor-BE-v3',
         rowsRead: 25,
         committedNew: 0,
         updatedCount: 0,
@@ -53,6 +56,8 @@ function overview(over: Partial<GradingSyncOverviewResponse> = {}): GradingSyncO
       {
         workbookFilename: 'FE Lab Grading.xlsx',
         status: 'completed',
+        sharepointVersionId: 'cTag-FE-v2',
+        quickXorHash: 'quickxor-FE-v2',
         rowsRead: 35,
         committedNew: 0,
         updatedCount: 0,
@@ -103,6 +108,34 @@ describe('getRunReview (overview mapping)', () => {
     const review = await getRunReview('c1', 'job-1')
 
     expect(review.run.errorReport).toEqual([{ message: 'Cohort folder not found.' }])
+  })
+
+  it('maps a SKIPPED job status and carries the previous run\'s completion time through', async () => {
+    vi.mocked(http.get).mockResolvedValue(
+      overview({ jobStatus: 'SKIPPED', previousRunCompletedAt: '2026-08-03T09:00:07Z' }),
+    )
+
+    const review = await getRunReview('c1', 'job-1')
+
+    expect(review.run.status).toBe('skipped')
+    expect(review.run.previousRunCompletedAt).toBe('2026-08-03T09:00:07Z')
+  })
+
+  it('leaves previousRunCompletedAt null for a cohort\'s first-ever run', async () => {
+    vi.mocked(http.get).mockResolvedValue(overview({ previousRunCompletedAt: null }))
+
+    const review = await getRunReview('c1', 'job-1')
+
+    expect(review.run.previousRunCompletedAt).toBeNull()
+  })
+
+  it('passes each file\'s SharePoint version and hash through unchanged', async () => {
+    vi.mocked(http.get).mockResolvedValue(overview())
+
+    const review = await getRunReview('c1', 'job-1')
+
+    expect(review.files?.[0]?.sharepointVersionId).toBe('cTag-BE-v3')
+    expect(review.files?.[0]?.quickXorHash).toBe('quickxor-BE-v3')
   })
 })
 

@@ -54,8 +54,8 @@ const run: IngestionRun = {
   highFailure: true, runAt: '2026-07-21T08:00:00Z', errorReport: [],
 }
 
-function review(): RunReview {
-  return { run, conflicts: [], notifications: [] }
+function review(over: Partial<RunReview> = {}): RunReview {
+  return { run, conflicts: [], notifications: [], ...over }
 }
 
 function conflictRow(over: Partial<IngestionConflictResponse> = {}): IngestionConflictResponse {
@@ -723,5 +723,50 @@ describe('RunReviewView', () => {
     const toast = useToastStore(pinia)
     expect(toast.toasts[toast.toasts.length - 1]?.title).toBe('Notification failed')
     expect(toast.toasts[toast.toasts.length - 1]?.body).toContain('Provider timed out')
+  })
+
+  describe('a run skipped because nothing changed', () => {
+    it('names why the counts are zero instead of just labelling the status', async () => {
+      vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
+      vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review({
+        run: { ...run, status: 'skipped', previousRunCompletedAt: '2026-07-14T08:00:05Z' },
+      }))
+      vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage({ content: [], totalElements: 0 }))
+      vi.mocked(reviewSvc.listNotifications).mockResolvedValue(notificationsPage({ content: [], totalElements: 0 }))
+      const { wrapper } = mountView()
+      await flushPromises()
+      await completeSync()
+
+      // Not just "Skipped" — an admin asking "did my edit get picked up?" needs the timestamp,
+      // not just a status word that reads the same whether it's good news or bad.
+      expect(wrapper.text()).toContain('Skipped')
+      expect(wrapper.text()).toContain('no changes since')
+    })
+
+    it("shows each file's SharePoint version on the per-workbook breakdown", async () => {
+      vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
+      vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review({
+        run: { ...run, status: 'skipped' },
+        files: [{
+          workbookFilename: 'FE Lab Grading.xlsx',
+          status: 'skipped',
+          sharepointVersionId: 'cTag-v7',
+          quickXorHash: 'quickxor-v7',
+          rowsRead: 0, committedNew: 0, updatedCount: 0, skippedInvalid: 0, skippedUnchanged: 0, conflictsCount: 0,
+          highFailureRate: false, failureRatePercent: 0, runAt: '2026-07-21T08:00:00Z',
+          issues: [], rejectionReasons: [],
+        }],
+      }))
+      vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage({ content: [], totalElements: 0 }))
+      vi.mocked(reviewSvc.listNotifications).mockResolvedValue(notificationsPage({ content: [], totalElements: 0 }))
+      const { wrapper } = mountView()
+      await flushPromises()
+      await completeSync()
+
+      expect(wrapper.text()).toContain('cTag-v7')
+      // The persisted per-file status reads "Unchanged" here — the same word the live-sync panel
+      // uses for the identical outcome — not the raw backend string "skipped".
+      expect(wrapper.text()).toContain('Unchanged')
+    })
   })
 })

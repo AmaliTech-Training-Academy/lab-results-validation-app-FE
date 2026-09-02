@@ -23,7 +23,11 @@ const NOTIFICATIONS_TTL_MS = 10_000
 const OVERVIEW_STATUS_MAP: Record<CohortSyncJobStatus, RunStatus> = {
   RUNNING: 'processing',
   COMPLETED: 'completed',
+  PARTIAL: 'partial',
   FAILED: 'failed',
+  // Reached every file and every one was unchanged since the previous run — distinct from
+  // COMPLETED so "nothing to do" doesn't read the same as a genuinely empty or all-failed run.
+  SKIPPED: 'skipped',
 }
 
 /** A blank Total Score cell is informational, not a rejected row — don't surface it as an ingestion error. */
@@ -58,6 +62,7 @@ function mapOverview(dto: GradingSyncOverviewResponse): RunReview {
       counts: overviewCounts(dto),
       startedAt: dto.startedAt ?? undefined,
       completedAt: dto.completedAt ?? undefined,
+      previousRunCompletedAt: dto.previousRunCompletedAt,
       errorReport,
     },
     files,

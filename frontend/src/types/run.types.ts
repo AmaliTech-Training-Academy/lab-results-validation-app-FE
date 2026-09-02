@@ -54,6 +54,9 @@ export interface IngestionRun {
   completedAt?: string
   /** Row-level detail from error_report_json (D5 AC2). */
   errorReport?: LocatedError[]
+  /** Only populated by the overview endpoint — when the cohort's previous run finished, if one
+   *  exists. Lets Run Review say "no changes since &lt;this&gt;" for a SKIPPED run. */
+  previousRunCompletedAt?: string | null
 }
 
 /** Manual sync trigger (B1 AC2) — optional narrowing to a specific file within the cohort. */
@@ -73,7 +76,7 @@ export interface SyncTriggerResponse {
 }
 
 /** schema: uppercase job status as returned by POST /cohorts/{id}/sync/runs. */
-export type SyncRunStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED'
+export type SyncRunStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'PARTIAL' | 'FAILED' | 'SKIPPED'
 
 /**
  * One row of the paged response from POST /cohorts/{id}/sync/runs (B1 AC2) —
@@ -91,7 +94,7 @@ export interface SyncRun {
 }
 
 /** backend: CohortSyncJobStatus enum — no PENDING (the job already exists by the time it's fetched by id). */
-export type CohortSyncJobStatus = 'RUNNING' | 'COMPLETED' | 'FAILED'
+export type CohortSyncJobStatus = 'RUNNING' | 'COMPLETED' | 'PARTIAL' | 'FAILED' | 'SKIPPED'
 
 /** GET /cohorts/{cohortId}/sync/runs/{jobId} response — backend: SyncRunResponse record. Same field set as `SyncRun`, narrower status. */
 export interface SyncRunResponse {
@@ -114,6 +117,11 @@ export interface RejectionReasonSummary {
 export interface FileIngestionSummary {
   workbookFilename: string
   status: string
+  /** SharePoint's cTag for the version this run read — lets an admin confirm an edited file was
+   *  actually re-fetched, not stale. Populated for every file, including skipped ones. */
+  sharepointVersionId: string | null
+  /** SharePoint's content hash for the same version — a real re-save, not just a metadata touch. */
+  quickXorHash: string | null
   rowsRead: number
   committedNew: number
   updatedCount: number
@@ -137,6 +145,9 @@ export interface GradingSyncOverviewResponse {
   jobStatus: CohortSyncJobStatus
   startedAt: string | null
   completedAt: string | null
+  /** When the cohort's previous sync run finished, if one exists — null for a cohort's first-ever
+   *  run. Lets the screen say "no changes since &lt;this&gt;" for a SKIPPED run. */
+  previousRunCompletedAt: string | null
   filesProcessed: number
   rowsRead: number
   committedNew: number

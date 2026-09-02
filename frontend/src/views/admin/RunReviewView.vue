@@ -17,7 +17,7 @@ import { useToastAction } from '@/composables/useToastAction'
 import { useToastStore } from '@/stores/toast'
 import { toErrorMessage } from '@/utils/errors'
 import { fmtDate, fmtTime } from '@/utils/datetime'
-import { RUN_STATUS_TONE, type SyncFileStatus } from '@/types/run.types'
+import { RUN_STATUS_TONE, type RunStatus, type SyncFileStatus } from '@/types/run.types'
 import {
   CONFLICT_STATUS_TONE,
   type ConflictResolutionAction,
@@ -81,6 +81,28 @@ const FILE_META: Record<SyncFileStatus, string> = {
   archive_failed: 'Archive failed',
 }
 
+const STATUS_LABEL: Record<RunStatus, string> = {
+  processing: 'Processing',
+  completed: 'Completed',
+  partial: 'Partial',
+  failed: 'Failed',
+  skipped: 'Skipped',
+}
+
+/** The persisted per-file status string (processing/completed/partial/failed/skipped) — "skipped"
+ *  reads as "Unchanged" here to match the live-sync panel's vocabulary for the same outcome
+ *  (`FILE_META.unchanged` above); anything unrecognized falls back to the raw string. */
+const FILE_STATUS_LABEL: Record<string, string> = {
+  processing: 'Processing',
+  completed: 'Completed',
+  partial: 'Partial',
+  failed: 'Failed',
+  skipped: 'Unchanged',
+}
+function fileStatusLabel(status: string): string {
+  return FILE_STATUS_LABEL[status] ?? status
+}
+
 onMounted(async () => {
   await runsStore.fetchRun(cohortId, runId)
   if (runsStore.current?.status === 'processing') {
@@ -96,6 +118,21 @@ const run = computed(() => store.review?.run ?? null)
 const files = computed(() => store.review?.files ?? [])
 /** Falls back to the lightweight run stub while the full review hasn't loaded yet. */
 const headerRun = computed(() => review.value?.run ?? runsStore.current)
+
+/**
+ * Names *why* a SKIPPED run has zero counts instead of just labelling the status — "no changes
+ * since <previous run>" is what actually answers "did my edit get picked up?". Falls back to the
+ * plain status word until the full review lands (`previousRunCompletedAt` is overview-only — the
+ * lightweight run stub `headerRun` can fall back to doesn't carry it).
+ */
+const statusPillText = computed(() => {
+  if (!headerRun.value) return ''
+  const label = STATUS_LABEL[headerRun.value.status]
+  if (headerRun.value.status === 'skipped' && headerRun.value.previousRunCompletedAt) {
+    return `${label} — no changes since ${formatRunAt(headerRun.value.previousRunCompletedAt)}`
+  }
+  return label
+})
 const conflictRows = computed(() => store.conflictsPage?.content ?? [])
 const notifications = computed(() => store.notificationsPage?.content ?? [])
 
@@ -324,7 +361,7 @@ function recipientLabel(n: Notification): string {
       <RouterLink :to="{ name: 'admin-runs' }" class="back-link"><VIcon name="chevron-left" :size="15" /> Grading runs</RouterLink>
       <h1 class="page-title">
         Run review
-        <VPill v-if="headerRun" :tone="RUN_STATUS_TONE[headerRun.status]">{{ headerRun.status }}</VPill>
+        <VPill v-if="headerRun" :tone="RUN_STATUS_TONE[headerRun.status]">{{ statusPillText }}</VPill>
       </h1>
       <p class="page-sub mono">{{ headerRun?.cohortName }}</p>
     </div>
@@ -384,6 +421,7 @@ function recipientLabel(n: Notification): string {
             <th>Status</th>
             <th style="text-align: center">Failure rate</th>
             <th v-for="s in FILE_SUMMARY" :key="s.key" style="text-align: center">{{ s.label }}</th>
+            <th>Version</th>
             <th>Run at</th>
           </tr>
         </thead>
@@ -393,6 +431,7 @@ function recipientLabel(n: Notification): string {
             <td><span class="skel" style="width: 55%" /></td>
             <td style="text-align: center"><span class="skel" style="width: 44px; display: inline-block" /></td>
             <td v-for="s in FILE_SUMMARY" :key="s.key" style="text-align: center"><span class="skel" style="width: 24px; display: inline-block" /></td>
+            <td><span class="skel" style="width: 70px" /></td>
             <td><span class="skel" style="width: 90px" /></td>
           </tr>
         </tbody>
@@ -442,17 +481,19 @@ function recipientLabel(n: Notification): string {
               <th>Status</th>
               <th style="text-align: center">Failure rate</th>
               <th v-for="s in FILE_SUMMARY" :key="s.key" style="text-align: center">{{ s.label }}</th>
+              <th>Version</th>
               <th>Run at</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="f in files" :key="f.workbookFilename">
               <td class="mono" style="font-weight: 500">{{ f.workbookFilename }}</td>
-              <td class="muted">{{ f.status }}</td>
+              <td class="muted">{{ fileStatusLabel(f.status) }}</td>
               <td style="text-align: center">
                 <VPill :tone="f.highFailureRate ? 'danger' : 'info'">{{ f.failureRatePercent.toFixed(1) }}%</VPill>
               </td>
               <td v-for="s in FILE_SUMMARY" :key="s.key" class="mono" style="text-align: center">{{ f[s.key] }}</td>
+              <td class="mono muted" :title="f.quickXorHash ? `hash ${f.quickXorHash}` : undefined">{{ f.sharepointVersionId ?? '—' }}</td>
               <td class="mono muted">{{ formatRunAt(f.runAt) }}</td>
             </tr>
           </tbody>
