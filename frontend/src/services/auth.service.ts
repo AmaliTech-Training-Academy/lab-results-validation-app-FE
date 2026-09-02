@@ -24,14 +24,6 @@ export async function loginApi(email: string, password: string): Promise<LoginRe
   return http.post<LoginResponse>('/auth/login', { email, password })
 }
 
-export async function refreshApi(): Promise<LoginResponse> {
-  if (USE_MOCKS) {
-    const { mockDelay } = await import('./mock/fixtures')
-    return mockDelay(mockLoginResponse('admin@amalitech.com'))
-  }
-  return http.post<LoginResponse>('/auth/refresh')
-}
-
 export async function logoutApi(): Promise<void> {
   if (USE_MOCKS) {
     const { mockDelay } = await import('./mock/fixtures')
