@@ -5,6 +5,8 @@ import type { StandupStatus } from '@/types/standup.types'
 import {
   attachSharePointLink,
   fetchStandupStatus,
+  hasStandupRun,
+  hasGate4Run,
   acceptCohortReference,
   discardCohortReference,
   triggerGate4,
@@ -37,6 +39,19 @@ export const useStandupStore = defineStore('standup', () => {
       busy.value = false
       busyAction.value = null
     }
+  }
+
+  /** FND-58: has a stand-up ever been run for this cohort? Used on mount to decide whether to
+   *  re-attach the live Gates 1-3 stream (which replays its full history) instead of always
+   *  falling back to the empty intake form. */
+  async function hasRun(cohortId: string): Promise<boolean> {
+    return hasStandupRun(cohortId)
+  }
+
+  /** FND-58: same idea as hasRun(), one step later — has Gate 4 ever been run for this cohort?
+   *  Used on mount for a REFERENCE_ACCEPTED cohort to decide whether to re-attach the Gate 4 stream. */
+  async function hasGate4(cohortId: string): Promise<boolean> {
+    return hasGate4Run(cohortId)
   }
 
   /** One status poll — returns the fresh status so callers (poller) can react. */
@@ -107,5 +122,5 @@ export const useStandupStore = defineStore('standup', () => {
     error.value = null
   }
 
-  return { status, error, busy, busyAction, errors, start, refresh, accept, runGate4, discard, reset }
+  return { status, error, busy, busyAction, errors, start, hasRun, hasGate4, refresh, accept, runGate4, discard, reset }
 })

@@ -28,6 +28,7 @@ function overview(over: Partial<GradingSyncOverviewResponse> = {}): GradingSyncO
     skippedInvalid: 5,
     skippedUnchanged: 0,
     conflictsCount: 0,
+    highFailureFileCount: 0,
     files: [
       {
         workbookFilename: 'BE Lab Grading.xlsx',

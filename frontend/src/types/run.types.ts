@@ -155,6 +155,7 @@ export interface GradingSyncOverviewResponse {
   skippedInvalid: number
   skippedUnchanged: number
   conflictsCount: number
+  highFailureFileCount: number
   files: FileIngestionSummary[]
   /** Only present on single-file jobs — multi-file jobs report issues per file under `files[].issues` instead. */
   issues?: LocatedError[]
