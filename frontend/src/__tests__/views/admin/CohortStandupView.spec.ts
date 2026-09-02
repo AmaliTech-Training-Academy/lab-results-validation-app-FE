@@ -13,6 +13,7 @@ vi.mock('@/services/cohorts.service', () => ({
   unlockCohort: vi.fn<() => Promise<unknown>>(),
   attachSharePointLink: vi.fn<() => Promise<unknown>>(),
   fetchStandupStatus: vi.fn<() => Promise<unknown>>(),
+  hasStandupRun: vi.fn<() => Promise<unknown>>(),
   acceptCohortReference: vi.fn<() => Promise<unknown>>(),
   discardCohortReference: vi.fn<() => Promise<unknown>>(),
   triggerGate4: vi.fn<() => Promise<unknown>>(),
@@ -59,6 +60,9 @@ beforeEach(async () => {
   // test that leaves getCohort resolving REFERENCE_ACCEPTED (post-accept) would otherwise leak into
   // the next test's initial onMounted fetch, before that test's own setup runs. Reset the default here.
   vi.mocked(cohortsSvc.getCohort).mockResolvedValue(cohort())
+  // Most tests start a fresh run themselves via "Run validation" — default the mount-time
+  // FND-58 existence check to false so it doesn't auto-attach a stream before they do.
+  vi.mocked(cohortsSvc.hasStandupRun).mockResolvedValue(false)
   FakeEventSource.instances = []
   vi.stubGlobal('EventSource', FakeEventSource)
   router = createRouter({
@@ -98,6 +102,41 @@ async function reachAwaitingAccept(wrapper: ReturnType<typeof mount>) {
   es.emit('pipeline.done', { status: 'COMPLETED', specs: 2, modules: 4, labs: 8, learners: 40, quizReferencePresent: true })
   await flushPromises()
 }
+
+describe('CohortStandupView — reload resumes an existing run (FND-58)', () => {
+  it('re-attaches the Gates 1-3 stream on mount and rebuilds the awaiting-accept panel from replay, without a "Run validation" click', async () => {
+    vi.mocked(cohortsSvc.hasStandupRun).mockResolvedValue(true)
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    // No "Run validation" click here — this is what a page reload mid/post-run looks like.
+    expect(cohortsSvc.hasStandupRun).toHaveBeenCalledWith('c1')
+    expect(FakeEventSource.instances).toHaveLength(1)
+
+    const es = FakeEventSource.instances[0]!
+    // The backend replays a job's full stored history on a fresh connection — simulate that replay.
+    es.emit('gate.passed', { gate: 1 })
+    es.emit('gate.passed', { gate: 2 })
+    es.emit('gate.passed', { gate: 3 })
+    es.emit('pipeline.done', { status: 'COMPLETED', specs: 2, modules: 4, labs: 8, learners: 40, quizReferencePresent: true })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('review and accept')
+    // Gates 1-3 all replayed to 'passed' — none is left stuck on the initial "Pending" placeholder
+    // (Accept/Gate 4 correctly still read Pending — they haven't happened yet).
+    const gateStates = wrapper.findAll('.step-state').map((s) => s.text()).slice(0, 3)
+    expect(gateStates).toEqual(['Passed', 'Passed', 'Passed'])
+  })
+
+  it('does not attach a stream for a cohort that has never been run — the intake form still shows', async () => {
+    vi.mocked(cohortsSvc.hasStandupRun).mockResolvedValue(false)
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    expect(FakeEventSource.instances).toHaveLength(0)
+    expect(wrapper.text()).toContain('SharePoint folder link')
+  })
+})
 
 describe('CohortStandupView — Accept error handling (§ FND-34)', () => {
   it('shows the backend\'s real error inline and re-enables Accept when accept fails, instead of going silent', async () => {

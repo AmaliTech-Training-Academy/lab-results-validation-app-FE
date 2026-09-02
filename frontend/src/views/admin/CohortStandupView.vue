@@ -80,6 +80,10 @@ onMounted(async () => {
     return
   }
   linkInput.value = cohort.value?.sharepointFolderUrl ?? ''
+
+  if (cohort.value?.lifecycleState === 'DRAFT' && (await standup.hasRun(cohortId))) {
+    stream.start()
+  }
 })
 
 async function runValidation() {
@@ -102,9 +106,6 @@ async function accept() {
   try {
     await standup.accept(cohortId)
   } catch {
-    // standup.errors.accept is already set by the store and rendered inline below — stop here rather
-    // than letting the rejection go unhandled (which would trigger the generic "Something went wrong"
-    // toast and swallow the backend's real explanation) or chaining into Gate 4 on a failed accept.
     return
   }
   acceptDone.value = true
@@ -112,9 +113,6 @@ async function accept() {
   try {
     await standup.runGate4(cohortId)
   } catch {
-    // The commit itself succeeded (acceptDone stays true) but triggering Gate 4 failed — same
-    // silent-failure shape as accept() above. standup.errors.gate4 is rendered inline in the
-    // "accepted" panel below; don't start a stream that was never actually kicked off on the backend.
     return
   }
   gate4.start() // drives Gate 4 over its own SSE

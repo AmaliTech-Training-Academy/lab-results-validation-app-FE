@@ -93,6 +93,18 @@ export function standupStreamUrl(id: string): string {
   return `${BASE_URL}/cohorts/${id}/standup/stream?token=${encodeURIComponent(token)}`
 }
 
+/**
+ * Cheap existence check (FND-58) used on mount to decide whether to re-attach the Gates 1-3 SSE
+ * stream — the backend replays a job's full event history to any fresh connection, so attaching is
+ * all that's needed to restore the steps/error state after a reload; this just avoids opening (and
+ * retry-looping on) a stream for a cohort that's never been run.
+ */
+export async function hasStandupRun(id: string): Promise<boolean> {
+  if (USE_MOCKS) return false // mocks hold no cross-reload job state (see mock/standupEngine.ts)
+  const page = await http.get<Paged<unknown>>(`/cohorts/${id}/standup/runs?size=1`)
+  return page.content.length > 0
+}
+
 /** Polled status endpoint (§9). Kept snappy in mocks so gates progress visibly; used as the mock-mode fallback for Gate 4 (no fake SSE server locally). */
 export async function fetchStandupStatus(id: string): Promise<StandupStatus> {
   if (USE_MOCKS) {
