@@ -1,5 +1,3 @@
-import { computed, type Ref } from 'vue'
-
 export interface PageItem {
   kind: 'page'
   page: number
@@ -35,24 +33,8 @@ export function pagerItems(page: number, totalPages: number): PagerItem[] {
   return items
 }
 
-/** Clamp a wanted page into [1, totalPages]; also usable to guard stale offsets. */
-export function clampPage(page: number, totalPages: number): number {
-  if (!Number.isFinite(page) || page < 1) return 1
-  return Math.min(page, Math.max(totalPages, 1))
-}
-
-/** The largest available page size that does not exceed `max`; used by export-all helpers. */
-export function maxPageSize(max: number, allowed: number[]): number {
-  const sorted = [...allowed].sort((a, b) => b - a)
-  return sorted.find((n) => n <= max) ?? Math.max(max, allowed[0] ?? max)
-}
-
 /**
  * Standard per-page options across all tables. Views were split between
  * [10,15,…40] and [10,25,50]; this is the single list.
  */
 export const PAGE_SIZE_OPTIONS = [10, 25, 50]
-
-export function useSafePage(pageRef: Ref<number>, totalPages: Ref<number>) {
-  return computed(() => clampPage(pageRef.value, totalPages.value))
-}

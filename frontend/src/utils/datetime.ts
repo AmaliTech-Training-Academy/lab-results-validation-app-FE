@@ -9,7 +9,7 @@
 /** Fallback when a value is missing or unparseable. */
 const DASH = '—'
 
-export function parseIso(iso: string | null | undefined): Date | null {
+function parseIso(iso: string | null | undefined): Date | null {
   if (!iso) return null
   const d = new Date(iso)
   return Number.isNaN(d.getTime()) ? null : d
