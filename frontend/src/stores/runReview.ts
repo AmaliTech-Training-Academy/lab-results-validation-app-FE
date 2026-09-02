@@ -21,8 +21,10 @@ import {
   dismissNotification as dismissNotificationApi,
 } from '@/services/runReview.service'
 
-const CONFLICTS_PAGE_SIZE = 20
-const NOTIFICATIONS_PAGE_SIZE = 20
+// Matches PAGE_SIZE_OPTIONS[0] (utils/pagination.ts) — the size selector's <select> shows the
+// wrong option selected if this default isn't one of the actual choices offered.
+const CONFLICTS_PAGE_SIZE = 10
+const NOTIFICATIONS_PAGE_SIZE = 10
 
 export const useRunReviewStore = defineStore('runReview', () => {
   const review = ref<RunReview | null>(null)
@@ -33,11 +35,18 @@ export const useRunReviewStore = defineStore('runReview', () => {
   const conflictsStatusFilter = ref<ConflictStatus | ''>('')
   const conflictsLoading = ref(false)
   const conflictsError = ref<string | null>(null)
+  /** Kept here (not view-local) so an internal refetch that doesn't pass `size` explicitly — there
+   *  isn't one today, but this mirrors `notificationsPageSize` below — still preserves whatever the
+   *  admin last chose in the pager's rows-per-page select. */
+  const conflictsPageSize = ref(CONFLICTS_PAGE_SIZE)
 
   const notificationsPage = ref<Paged<Notification> | null>(null)
   const notificationsStatusFilter = ref<NotificationStatus | ''>('')
   const notificationsLoading = ref(false)
   const notificationsError = ref<string | null>(null)
+  /** See `conflictsPageSize` above — `sendAll`'s own refetch relies on this default to not silently
+   *  reset the page size back to `NOTIFICATIONS_PAGE_SIZE`. */
+  const notificationsPageSize = ref(NOTIFICATIONS_PAGE_SIZE)
   /** Set when a live stream event lands for this run but the row it touches isn't on the currently displayed
    *  page/filter — e.g. a fresh auto-dispatched notification, or one sitting on page 2 while page 1 is shown.
    *  Cleared by the next `fetchNotifications`. Patched rows that *are* visible update in place instead. */
@@ -49,7 +58,8 @@ export const useRunReviewStore = defineStore('runReview', () => {
   let notificationsRequestId = 0
 
   /** Fetches one page of the real conflict list (B10) — independent of `review`, which still carries the speculative merge-view `conflicts` array. */
-  async function fetchConflicts(cohortId: string, runId: string, page = 0) {
+  async function fetchConflicts(cohortId: string, runId: string, page = 0, size = conflictsPageSize.value) {
+    conflictsPageSize.value = size
     const requestId = ++conflictsRequestId
     conflictsLoading.value = true
     conflictsError.value = null
@@ -57,7 +67,7 @@ export const useRunReviewStore = defineStore('runReview', () => {
       const result = await listConflictsApi(cohortId, runId, {
         status: conflictsStatusFilter.value || undefined,
         page,
-        size: CONFLICTS_PAGE_SIZE,
+        size,
       })
       if (requestId !== conflictsRequestId) return // a newer fetch already landed — don't overwrite it
       conflictsPage.value = result
@@ -75,7 +85,8 @@ export const useRunReviewStore = defineStore('runReview', () => {
   }
 
   /** Fetches one page of the real, paginated notification list (GET /notifications) — independent of `review.notifications`, which is mock-only. */
-  async function fetchNotifications(cohortId: string, runId: string, page = 0) {
+  async function fetchNotifications(cohortId: string, runId: string, page = 0, size = notificationsPageSize.value) {
+    notificationsPageSize.value = size
     const requestId = ++notificationsRequestId
     notificationsLoading.value = true
     notificationsError.value = null
@@ -85,7 +96,7 @@ export const useRunReviewStore = defineStore('runReview', () => {
         syncJobId: runId,
         status: notificationsStatusFilter.value || undefined,
         page,
-        size: NOTIFICATIONS_PAGE_SIZE,
+        size,
       })
       if (requestId !== notificationsRequestId) return // a newer fetch already landed — don't overwrite it
       notificationsPage.value = result
@@ -192,12 +203,14 @@ export const useRunReviewStore = defineStore('runReview', () => {
     error,
     fetchReview,
     conflictsPage,
+    conflictsPageSize,
     conflictsStatusFilter,
     conflictsLoading,
     conflictsError,
     fetchConflicts,
     setConflictsStatusFilter,
     notificationsPage,
+    notificationsPageSize,
     notificationsStatusFilter,
     notificationsLoading,
     notificationsError,

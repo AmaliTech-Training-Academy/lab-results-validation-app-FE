@@ -99,7 +99,7 @@ describe('useRunReviewStore', () => {
     vi.mocked(svc.listConflicts).mockResolvedValue(page())
     const store = useRunReviewStore()
     await store.fetchConflicts('c1', 'run-1')
-    expect(svc.listConflicts).toHaveBeenCalledWith('c1', 'run-1', { status: undefined, page: 0, size: 20 })
+    expect(svc.listConflicts).toHaveBeenCalledWith('c1', 'run-1', { status: undefined, page: 0, size: 10 })
     expect(store.conflictsPage?.content).toHaveLength(1)
   })
 
@@ -115,14 +115,14 @@ describe('useRunReviewStore', () => {
     const store = useRunReviewStore()
     await store.fetchConflicts('c1', 'run-1', 1)
     await store.setConflictsStatusFilter('c1', 'run-1', 'RESOLVED')
-    expect(svc.listConflicts).toHaveBeenLastCalledWith('c1', 'run-1', { status: 'RESOLVED', page: 0, size: 20 })
+    expect(svc.listConflicts).toHaveBeenLastCalledWith('c1', 'run-1', { status: 'RESOLVED', page: 0, size: 10 })
   })
 
   it('fetchNotifications loads a page scoped to the cohort + sync job', async () => {
     vi.mocked(svc.listNotifications).mockResolvedValue(notifPage())
     const store = useRunReviewStore()
     await store.fetchNotifications('c1', 'run-1')
-    expect(svc.listNotifications).toHaveBeenCalledWith({ cohortId: 'c1', syncJobId: 'run-1', status: undefined, page: 0, size: 20 })
+    expect(svc.listNotifications).toHaveBeenCalledWith({ cohortId: 'c1', syncJobId: 'run-1', status: undefined, page: 0, size: 10 })
     expect(store.notificationsPage?.content).toHaveLength(2)
   })
 
@@ -138,7 +138,7 @@ describe('useRunReviewStore', () => {
     const store = useRunReviewStore()
     await store.fetchNotifications('c1', 'run-1', 1)
     await store.setNotificationsStatusFilter('c1', 'run-1', 'PENDING')
-    expect(svc.listNotifications).toHaveBeenLastCalledWith({ cohortId: 'c1', syncJobId: 'run-1', status: 'PENDING', page: 0, size: 20 })
+    expect(svc.listNotifications).toHaveBeenLastCalledWith({ cohortId: 'c1', syncJobId: 'run-1', status: 'PENDING', page: 0, size: 10 })
   })
 
   it('sendNotification patches the matching row in the notifications page', async () => {

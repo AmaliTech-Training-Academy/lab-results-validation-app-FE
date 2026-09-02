@@ -80,9 +80,24 @@ function changeEventsPage(page: number) {
   audit.fetchEvents(page)
 }
 
+/**
+ * VTablePager's rows-per-page <select> always emits `update:pageSize` immediately followed by
+ * `update:page` (a recalculated page that keeps roughly the same rows in view under the new size) —
+ * so this only needs to record the new size; the guaranteed follow-up `update:page` event is what
+ * actually triggers the (single) refetch, via `changeEventsPage`, already reading the updated size.
+ */
+function changeEventsPageSize(size: number) {
+  audit.eventsPageSize = size
+}
+
 function changeRunsPage(page: number) {
   if (page < 0 || (audit.runsPage && page >= audit.runsPage.totalPages)) return
   audit.fetchRuns(page)
+}
+
+/** See `changeEventsPageSize` — same reasoning, mirrored for the runs pager. */
+function changeRunsPageSize(size: number) {
+  audit.runsPageSize = size
 }
 
 onMounted(async () => {
@@ -278,7 +293,7 @@ function closeKebab() {
         </tr>
       </thead>
 
-      <tbody v-if="audit.loading">
+      <tbody v-if="audit.loading && !audit.runsPage">
         <tr v-for="i in 4" :key="i" class="skel-row">
           <td><span class="skel" style="width: 60%" /></td>
           <td><span class="skel" style="width: 80%" /></td>
@@ -356,11 +371,13 @@ function closeKebab() {
     </table>
 
     <VTablePager
-      v-if="!audit.loading && audit.runsPage && sortedRuns.length > 0"
+      v-if="audit.runsPage && sortedRuns.length > 0"
       :total="audit.runsPage.totalElements"
       :page="audit.runsPage.number + 1"
-      :page-size="audit.runsPage.size"
+      :page-size="audit.runsPageSize"
+      :disabled="audit.loading"
       @update:page="(p) => changeRunsPage(p - 1)"
+      @update:pageSize="changeRunsPageSize"
     />
   </div>
 
@@ -384,7 +401,7 @@ function closeKebab() {
         </tr>
       </thead>
 
-      <tbody v-if="audit.eventsLoading">
+      <tbody v-if="audit.eventsLoading && !audit.eventsPage">
         <tr v-for="i in 4" :key="i" class="skel-row">
           <td><span class="skel" style="width: 70%" /></td>
           <td><span class="skel" style="width: 60%" /></td>
@@ -424,11 +441,13 @@ function closeKebab() {
     </table>
 
     <VTablePager
-      v-if="!audit.eventsLoading && audit.eventsPage && sortedEvents.length > 0"
+      v-if="audit.eventsPage && sortedEvents.length > 0"
       :total="audit.eventsPage.totalElements"
       :page="audit.eventsPage.number + 1"
-      :page-size="audit.eventsPage.size"
+      :page-size="audit.eventsPageSize"
+      :disabled="audit.eventsLoading"
       @update:page="(p) => changeEventsPage(p - 1)"
+      @update:pageSize="changeEventsPageSize"
     />
   </div>
 </template>

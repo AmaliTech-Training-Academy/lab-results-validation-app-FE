@@ -36,10 +36,6 @@ const toast = useToastStore()
 const runId = route.params.id as string
 const cohortId = route.query.cohortId as string
 
-// Matches the store's own hardcoded CONFLICTS_PAGE_SIZE/NOTIFICATIONS_PAGE_SIZE — neither the
-// conflicts nor the notifications endpoint currently take a caller-chosen size.
-const PAGE_SIZE = 20
-
 /** Loads the review + its two paged panels together — used once the sync stream completes, and by the "Try again" retry. */
 function retryReview() {
   return Promise.all([store.fetchReview(cohortId, runId), store.fetchConflicts(cohortId, runId), store.fetchNotifications(cohortId, runId)])
@@ -231,12 +227,27 @@ function changeConflictsPage(page: number) {
   store.fetchConflicts(cohortId, runId, page)
 }
 
+/**
+ * VTablePager's rows-per-page <select> always emits `update:pageSize` immediately followed by
+ * `update:page` (a recalculated page that keeps roughly the same rows in view under the new size) —
+ * so this only needs to record the new size; the guaranteed follow-up `update:page` event is what
+ * actually triggers the (single) refetch, via `changeConflictsPage`, already reading the updated size.
+ */
+function changeConflictsPageSize(size: number) {
+  store.conflictsPageSize = size
+}
+
 function onNotificationStatusChange(status: NotificationStatus | '') {
   store.setNotificationsStatusFilter(cohortId, runId, status)
 }
 
 function changeNotificationsPage(page: number) {
   store.fetchNotifications(cohortId, runId, page)
+}
+
+/** See `changeConflictsPageSize` — same reasoning, mirrored for the notifications pager. */
+function changeNotificationsPageSize(size: number) {
+  store.notificationsPageSize = size
 }
 
 /** Re-fetches the page currently shown — used by the "new activity" banner once a live event lands off-page. */
@@ -536,7 +547,7 @@ function recipientLabel(n: Notification): string {
       </div>
       <p class="block-sub">In-file duplicates — same learner + lab appearing twice, held for manual resolution.</p>
 
-      <div v-if="store.conflictsLoading" class="tbl-wrap">
+      <div v-if="store.conflictsLoading && !store.conflictsPage" class="tbl-wrap">
         <table class="tbl">
           <thead>
             <tr>
@@ -601,8 +612,10 @@ function recipientLabel(n: Notification): string {
             v-if="store.conflictsPage && conflictRows.length > 0"
             :total="store.conflictsPage.totalElements"
             :page="store.conflictsPage.number + 1"
-            :page-size="PAGE_SIZE"
+            :page-size="store.conflictsPageSize"
+            :disabled="store.conflictsLoading"
             @update:page="(p) => changeConflictsPage(p - 1)"
+            @update:pageSize="changeConflictsPageSize"
           />
         </div>
       </template>
@@ -643,7 +656,7 @@ function recipientLabel(n: Notification): string {
         <button v-if="notifStream.disconnected.value" type="button" class="link-btn" @click="notifStream.start()">Reconnect</button>
       </p>
 
-      <div v-if="store.notificationsLoading" class="tbl-wrap">
+      <div v-if="store.notificationsLoading && !store.notificationsPage" class="tbl-wrap">
         <table class="tbl">
           <thead>
             <tr>
@@ -741,8 +754,10 @@ function recipientLabel(n: Notification): string {
             v-if="store.notificationsPage && notifications.length > 0"
             :total="store.notificationsPage.totalElements"
             :page="store.notificationsPage.number + 1"
-            :page-size="PAGE_SIZE"
+            :page-size="store.notificationsPageSize"
+            :disabled="store.notificationsLoading"
             @update:page="(p) => changeNotificationsPage(p - 1)"
+            @update:pageSize="changeNotificationsPageSize"
           />
         </div>
       </template>
