@@ -13,16 +13,13 @@ vi.mock('@/services/cohorts.service', () => ({
 vi.mock('@/services/runs.service', () => ({
   listRuns: vi.fn<() => Promise<unknown>>(),
 }))
-vi.mock('@/services/audit.service', () => ({
-  listAuditRuns: vi.fn<() => Promise<unknown>>(),
-}))
 vi.mock('@/services/runReview.service', () => ({
+  getRunCounts: vi.fn<() => Promise<unknown>>(),
   listCohortConflicts: vi.fn<() => Promise<unknown>>(),
   listConflicts: vi.fn<() => Promise<unknown>>(),
 }))
 import * as cohortsSvc from '@/services/cohorts.service'
 import * as runsSvc from '@/services/runs.service'
-import * as auditSvc from '@/services/audit.service'
 import * as runReviewSvc from '@/services/runReview.service'
 
 function conflictsPage(totalElements: number) {
@@ -43,12 +40,12 @@ function shallowRun(over: Partial<IngestionRun> = {}): IngestionRun {
   return { id: 'job-1', cohortId: 'c1', cohortName: 'Cohort 7', status: 'completed', runAt: '2026-07-21T08:00:00Z', ...over }
 }
 
-/** Shape of an `/audit-log/ingestion-runs` row — has the real failure-rate/conflict/rejected-row signal. */
-function auditRun(over: Partial<IngestionRun> = {}): IngestionRun {
+/** The real per-run signal (§ FND-46, § FND-55) — has the failure-rate/conflict/rejected-row data. */
+function runCounts(over: Partial<Record<string, number | boolean>> = {}) {
   return {
-    id: 'ir-1', cohortId: 'c1', syncJobId: 'job-1', status: 'completed', runAt: '2026-07-21T08:00:00Z',
     counts: { rowsRead: 10, committedNew: 10, updated: 0, skippedInvalid: 0, skippedUnchanged: 0, conflicts: 0 },
     highFailure: false,
+    failed: false,
     ...over,
   }
 }
@@ -83,13 +80,15 @@ function mountView() {
   return { wrapper, pinia }
 }
 
-describe('AdminHomeView — Attention required (§ FND-46)', () => {
+describe('AdminHomeView — Attention required (§ FND-46, § FND-55)', () => {
   it('surfaces a run with a high failure rate that the shallow job endpoint reports as merely "completed"', async () => {
     vi.mocked(cohortsSvc.listCohorts).mockResolvedValue([cohort()])
     vi.mocked(runsSvc.listRuns).mockResolvedValue([shallowRun()]) // status: completed, no counts/highFailure at all
-    vi.mocked(auditSvc.listAuditRuns).mockResolvedValue(paged([
-      auditRun({ highFailure: true, counts: { rowsRead: 20, committedNew: 8, updated: 0, skippedInvalid: 12, skippedUnchanged: 0, conflicts: 0 } }),
-    ]))
+    vi.mocked(runReviewSvc.getRunCounts).mockResolvedValue({
+      counts: { rowsRead: 20, committedNew: 8, updated: 0, skippedInvalid: 12, skippedUnchanged: 0, conflicts: 0 },
+      highFailure: true,
+      failed: false,
+    })
     const { wrapper } = mountView()
     await flushPromises()
 
@@ -102,9 +101,11 @@ describe('AdminHomeView — Attention required (§ FND-46)', () => {
   it('surfaces a run with unresolved conflicts that the shallow job endpoint has no conflict count for', async () => {
     vi.mocked(cohortsSvc.listCohorts).mockResolvedValue([cohort()])
     vi.mocked(runsSvc.listRuns).mockResolvedValue([shallowRun()])
-    vi.mocked(auditSvc.listAuditRuns).mockResolvedValue(paged([
-      auditRun({ counts: { rowsRead: 10, committedNew: 8, updated: 0, skippedInvalid: 0, skippedUnchanged: 0, conflicts: 3 } }),
-    ]))
+    vi.mocked(runReviewSvc.getRunCounts).mockResolvedValue({
+      counts: { rowsRead: 10, committedNew: 8, updated: 0, skippedInvalid: 0, skippedUnchanged: 0, conflicts: 3 },
+      highFailure: false,
+      failed: false,
+    })
     vi.mocked(runReviewSvc.listConflicts).mockResolvedValue(conflictsPage(3)) // still PENDING, none resolved yet
     const { wrapper } = mountView()
     await flushPromises()
@@ -115,11 +116,13 @@ describe('AdminHomeView — Attention required (§ FND-46)', () => {
   it('drops a run from Attention once every one of its conflicts has been resolved or rejected', async () => {
     vi.mocked(cohortsSvc.listCohorts).mockResolvedValue([cohort()])
     vi.mocked(runsSvc.listRuns).mockResolvedValue([shallowRun()])
-    // The historical snapshot still says 3 (never decremented server-side) — but every one has since
+    // The overview snapshot still says 3 (never decremented server-side) — but every one has since
     // been resolved/rejected, so the live PENDING count is 0.
-    vi.mocked(auditSvc.listAuditRuns).mockResolvedValue(paged([
-      auditRun({ counts: { rowsRead: 10, committedNew: 8, updated: 0, skippedInvalid: 0, skippedUnchanged: 0, conflicts: 3 } }),
-    ]))
+    vi.mocked(runReviewSvc.getRunCounts).mockResolvedValue({
+      counts: { rowsRead: 10, committedNew: 8, updated: 0, skippedInvalid: 0, skippedUnchanged: 0, conflicts: 3 },
+      highFailure: false,
+      failed: false,
+    })
     vi.mocked(runReviewSvc.listConflicts).mockResolvedValue(conflictsPage(0))
     const { wrapper } = mountView()
     await flushPromises()
@@ -132,19 +135,21 @@ describe('AdminHomeView — Attention required (§ FND-46)', () => {
   it('surfaces a run that rejected rows without qualifying as a high failure rate', async () => {
     vi.mocked(cohortsSvc.listCohorts).mockResolvedValue([cohort()])
     vi.mocked(runsSvc.listRuns).mockResolvedValue([shallowRun()])
-    vi.mocked(auditSvc.listAuditRuns).mockResolvedValue(paged([
-      auditRun({ highFailure: false, counts: { rowsRead: 40, committedNew: 38, updated: 0, skippedInvalid: 2, skippedUnchanged: 0, conflicts: 0 } }),
-    ]))
+    vi.mocked(runReviewSvc.getRunCounts).mockResolvedValue({
+      counts: { rowsRead: 40, committedNew: 38, updated: 0, skippedInvalid: 2, skippedUnchanged: 0, conflicts: 0 },
+      highFailure: false,
+      failed: false,
+    })
     const { wrapper } = mountView()
     await flushPromises()
 
     expect(wrapper.text()).toContain('2 rows rejected')
   })
 
-  it('still flags a run the job endpoint reports as outright failed, even with no audit data', async () => {
+  it('still flags a run the job endpoint reports as outright failed, even with no per-run stats fetched', async () => {
     vi.mocked(cohortsSvc.listCohorts).mockResolvedValue([cohort()])
     vi.mocked(runsSvc.listRuns).mockResolvedValue([shallowRun({ status: 'failed' })])
-    vi.mocked(auditSvc.listAuditRuns).mockResolvedValue(paged([]))
+    vi.mocked(runReviewSvc.getRunCounts).mockRejectedValue(new Error('boom'))
     const { wrapper } = mountView()
     await flushPromises()
 
@@ -154,21 +159,39 @@ describe('AdminHomeView — Attention required (§ FND-46)', () => {
   it('reports nothing needs attention when every run is genuinely clean', async () => {
     vi.mocked(cohortsSvc.listCohorts).mockResolvedValue([cohort()])
     vi.mocked(runsSvc.listRuns).mockResolvedValue([shallowRun()])
-    vi.mocked(auditSvc.listAuditRuns).mockResolvedValue(paged([auditRun()]))
+    vi.mocked(runReviewSvc.getRunCounts).mockResolvedValue(runCounts())
     const { wrapper } = mountView()
     await flushPromises()
 
     expect(wrapper.text()).toContain('Nothing needs attention')
   })
 
-  it('only fans the attention fetch out to STOOD_UP cohorts', async () => {
+  it('covers every loaded run, not just the 5 shown in "Recent grading runs" (§ FND-55)', async () => {
+    vi.mocked(cohortsSvc.listCohorts).mockResolvedValue([cohort()])
+    const sixRuns = Array.from({ length: 6 }, (_, i) => shallowRun({ id: `job-${i}`, runAt: `2026-07-2${i}T08:00:00Z` }))
+    vi.mocked(runsSvc.listRuns).mockResolvedValue(sixRuns)
+    vi.mocked(runReviewSvc.getRunCounts).mockImplementation(async (_cohortId, jobId) =>
+      jobId === 'job-5' // the 6th run — outside the "Recent" table's top-5 slice
+        ? { counts: { rowsRead: 10, committedNew: 8, updated: 0, skippedInvalid: 5, skippedUnchanged: 0, conflicts: 0 }, highFailure: false, failed: false }
+        : runCounts(),
+    )
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    expect(runReviewSvc.getRunCounts).toHaveBeenCalledTimes(6)
+    expect(wrapper.text()).toContain('5 rows rejected')
+  })
+
+  it('only fetches runs (and their stats) for STOOD_UP cohorts', async () => {
     vi.mocked(cohortsSvc.listCohorts).mockResolvedValue([cohort(), cohort({ id: 'c2', lifecycleState: 'DRAFT' })])
     vi.mocked(runsSvc.listRuns).mockResolvedValue([shallowRun()])
-    vi.mocked(auditSvc.listAuditRuns).mockResolvedValue(paged([]))
+    vi.mocked(runReviewSvc.getRunCounts).mockResolvedValue(runCounts())
     mountView()
     await flushPromises()
 
-    expect(auditSvc.listAuditRuns).toHaveBeenCalledTimes(1)
-    expect(auditSvc.listAuditRuns).toHaveBeenCalledWith({ cohortId: 'c1', size: 20 })
+    // listRuns is only called once — fetchList() itself already narrows to STOOD_UP cohorts.
+    expect(runsSvc.listRuns).toHaveBeenCalledTimes(1)
+    expect(runsSvc.listRuns).toHaveBeenCalledWith('c1')
+    expect(runReviewSvc.getRunCounts).toHaveBeenCalledWith('c1', 'job-1')
   })
 })
