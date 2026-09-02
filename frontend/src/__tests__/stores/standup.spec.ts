@@ -6,6 +6,8 @@ import type { StandupStatus } from '@/types/standup.types'
 vi.mock('@/services/cohorts.service', () => ({
   attachSharePointLink: vi.fn<() => Promise<unknown>>(),
   fetchStandupStatus: vi.fn<() => Promise<unknown>>(),
+  hasStandupRun: vi.fn<() => Promise<unknown>>(),
+  hasGate4Run: vi.fn<() => Promise<unknown>>(),
   acceptCohortReference: vi.fn<() => Promise<unknown>>(),
   discardCohortReference: vi.fn<() => Promise<unknown>>(),
 }))
@@ -27,6 +29,20 @@ describe('useStandupStore', () => {
     const store = useStandupStore()
     await store.start('c1', 'https://sp/Cohort1')
     expect(svc.attachSharePointLink).toHaveBeenCalledWith('c1', { folderUrl: 'https://sp/Cohort1' })
+  })
+
+  it('hasRun() delegates to the existence-check service (FND-58)', async () => {
+    vi.mocked(svc.hasStandupRun).mockResolvedValue(true)
+    const store = useStandupStore()
+    expect(await store.hasRun('c1')).toBe(true)
+    expect(svc.hasStandupRun).toHaveBeenCalledWith('c1')
+  })
+
+  it('hasGate4() delegates to the existence-check service (FND-58)', async () => {
+    vi.mocked(svc.hasGate4Run).mockResolvedValue(true)
+    const store = useStandupStore()
+    expect(await store.hasGate4('c1')).toBe(true)
+    expect(svc.hasGate4Run).toHaveBeenCalledWith('c1')
   })
 
   it('refresh() stores and returns the latest status', async () => {
