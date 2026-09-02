@@ -3,18 +3,13 @@ import { ref } from 'vue'
 import { toErrorMessage } from '@/utils/errors'
 import type { IngestionRun, RunCounts, SyncTriggerPayload } from '@/types/run.types'
 import { listRuns, getRun, triggerSync, triggerSyncAll } from '@/services/runs.service'
-import { listAuditRuns } from '@/services/audit.service'
-import { listConflicts } from '@/services/runReview.service'
+import { getRunCounts, listConflicts } from '@/services/runReview.service'
 import { useCohortsStore } from '@/stores/cohorts'
-
-function emptyCounts(): RunCounts {
-  return { rowsRead: 0, committedNew: 0, updated: 0, skippedInvalid: 0, skippedUnchanged: 0, conflicts: 0 }
-}
 
 /**
  * Real per-run counts + failure signal for one sync job, keyed by `IngestionRun.id` in `list`.
  * `list` itself (from the shallow `/cohorts/{id}/sync/runs` job endpoint) never carries this data
- * (§ FND-46, § FND-39) — it's sourced separately from the audit log instead, see `fetchStats`.
+ * (§ FND-46, § FND-39) — it's sourced separately, per run, see `fetchStats`.
  */
 export interface RunStats {
   counts: RunCounts
@@ -110,57 +105,60 @@ export const useRunsStore = defineStore('runs', () => {
   }
 
   /**
-   * `list` has no counts/failure-rate/conflict signal (see `stats` above) — the audit log's
-   * ingestion-runs endpoint has it, but per file (one row per workbook), keyed back to the parent sync
-   * job via `syncJobId`. Fan out per eligible cohort (same page-0/size-20 recency window as `fetchList`,
-   * mirroring `conflicts.fetchTotalOpen`'s per-cohort pattern) and reduce each job's files into one signal.
+   * `list` has no counts/failure-rate/conflict signal (see `stats` above). An earlier fix (§ FND-39,
+   * § FND-46) sourced it from the audit log's ingestion-runs feed instead — but that feed is one row
+   * per FILE (workbook), not per run, fetched as one fixed page-0/size-20 window per cohort. With
+   * several spreadsheets per cohort, that window only ever covered the ~3 most recent runs; anything
+   * older silently rendered as all zeros — indistinguishable from a run where nothing happened
+   * (§ FND-55). Fetch per run instead, scoped to exactly the runs the caller passes in (typically
+   * whatever's on screen) — this can never under-cover what's actually visible. A run already in
+   * `stats` is skipped unless it's still `processing` (its counts can still be climbing).
    *
-   * The audit log's `conflictsCount` is a historical snapshot — the backend writes it once at ingestion
+   * The overview's `conflictsCount` is a historical snapshot — the backend writes it once at ingestion
    * time and never decrements it when a conflict is later resolved or rejected, so a run whose conflicts
    * are all cleared would otherwise show a phantom count forever. A second pass replaces it with a live
    * PENDING-only count per job (via the same run-scoped conflicts endpoint the Run Review conflict queue
    * uses), but only for jobs the snapshot says had conflicts at all — most runs never did, so this stays cheap.
    */
-  async function fetchStats(cohortIds: string[]) {
-    if (cohortIds.length === 0) {
-      stats.value = new Map()
-      return
-    }
+  async function fetchStats(runsToFetch: IngestionRun[]) {
+    const targets = runsToFetch.filter((r) => r.status === 'processing' || !stats.value.has(r.id))
+    if (targets.length === 0) return
     statsLoading.value = true
     statsError.value = null
     try {
-      const pages = await Promise.all(cohortIds.map((id) => listAuditRuns({ cohortId: id, size: 20 })))
-      const byJob = new Map<string, RunStats>()
-      const cohortByJob = new Map<string, string>()
-      for (const page of pages) {
-        for (const r of page.content) {
-          const jobId = r.syncJobId ?? r.id
-          cohortByJob.set(jobId, r.cohortId)
-          const prev = byJob.get(jobId) ?? { counts: emptyCounts(), highFailure: false, failed: false }
-          const c = r.counts
-          byJob.set(jobId, {
-            counts: {
-              rowsRead: prev.counts.rowsRead + (c?.rowsRead ?? 0),
-              committedNew: prev.counts.committedNew + (c?.committedNew ?? 0),
-              updated: prev.counts.updated + (c?.updated ?? 0),
-              skippedInvalid: prev.counts.skippedInvalid + (c?.skippedInvalid ?? 0),
-              skippedUnchanged: prev.counts.skippedUnchanged + (c?.skippedUnchanged ?? 0),
-              conflicts: prev.counts.conflicts + (c?.conflicts ?? 0),
-            },
-            highFailure: prev.highFailure || !!r.highFailure,
-            failed: prev.failed || r.status === 'failed',
-          })
-        }
+      const fetched = (
+        await Promise.all(
+          targets.map(async (r) => {
+            const jobId = r.syncJobId ?? r.id
+            try {
+              return { id: r.id, cohortId: r.cohortId, jobId, stats: await getRunCounts(r.cohortId, jobId) }
+            } catch {
+              // Leave this one unfetched rather than fail the whole batch over one run's lookup — the
+              // view shows a dash for it, not a false zero (§ FND-55's actual defect).
+              return null
+            }
+          }),
+        )
+      ).filter((f): f is { id: string; cohortId: string; jobId: string; stats: RunStats } => f !== null)
+
+      if (fetched.length === 0) {
+        // Best-effort enrichment: a run's own `status` (whatever `list`'s own endpoint reports) remains
+        // the fallback, so a failure here shouldn't block the rest of the page — but it IS surfaced so
+        // the "needs attention"/Results-column data isn't silently shown as all-zero.
+        statsError.value = 'Failed to load run statistics'
+        return
       }
 
-      const jobsWithConflicts = [...byJob.entries()].filter(([, s]) => s.counts.conflicts > 0)
+      const next = new Map(stats.value)
+      for (const f of fetched) next.set(f.id, f.stats)
+
+      const jobsWithConflicts = fetched.filter((f) => f.stats.counts.conflicts > 0)
       await Promise.all(
-        jobsWithConflicts.map(async ([jobId, s]) => {
-          const cohortId = cohortByJob.get(jobId)
-          if (!cohortId) return
+        jobsWithConflicts.map(async (f) => {
           try {
-            const openPage = await listConflicts(cohortId, jobId, { status: 'PENDING', size: 1 })
-            byJob.set(jobId, { ...s, counts: { ...s.counts, conflicts: openPage.totalElements } })
+            const openPage = await listConflicts(f.cohortId, f.jobId, { status: 'PENDING', size: 1 })
+            const current = next.get(f.id)
+            if (current) next.set(f.id, { ...current, counts: { ...current.counts, conflicts: openPage.totalElements } })
           } catch {
             // Leave the historical snapshot count in place for this one job rather than fail the
             // whole enrichment pass over an unrelated job's live-count lookup.
@@ -168,13 +166,7 @@ export const useRunsStore = defineStore('runs', () => {
         }),
       )
 
-      stats.value = byJob
-    } catch (e) {
-      // Best-effort enrichment: a run's own `status`/`counts` (whatever `list`'s own endpoint does
-      // report) remain the fallback, so a failure here shouldn't block the rest of the page — but it
-      // IS surfaced so the "needs attention"/Results-column data isn't silently shown as all-zero.
-      stats.value = new Map()
-      statsError.value = e instanceof Error ? e.message : 'Failed to load run statistics'
+      stats.value = next
     } finally {
       statsLoading.value = false
     }

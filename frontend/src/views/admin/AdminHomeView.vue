@@ -23,14 +23,15 @@ const loading = computed(() => cohorts.loading || runs.loading || runs.statsLoad
 const error = computed(() => cohorts.error || runs.error || conflicts.error)
 
 /**
- * Cohort/run lists load in parallel; the cohort-scoped conflicts totals and run stats both need
- * cohort ids first, so they fetch once that list lands — narrowed to STOOD_UP cohorts, since
- * draft/reference-accepted cohorts have no ingestion runs yet, so querying them would just be wasted requests.
+ * Cohort/run lists load in parallel; the cohort-scoped conflicts total needs cohort ids (narrowed to
+ * STOOD_UP, since draft/reference-accepted cohorts have no ingestion runs yet — querying them would
+ * just be wasted requests), and "Attention required" needs real per-run stats for every loaded run,
+ * not just the 5 shown in "Recent grading runs" — both fetch once the lists they depend on have landed.
  */
 async function loadDashboard() {
   await Promise.all([cohorts.fetchList(), runs.fetchList()])
   const eligibleIds = cohorts.list.filter((c) => c.lifecycleState === 'STOOD_UP').map((c) => c.id)
-  await Promise.all([conflicts.fetchTotalOpen(eligibleIds), runs.fetchStats(eligibleIds)])
+  await Promise.all([conflicts.fetchTotalOpen(eligibleIds), runs.fetchStats(runs.list)])
 }
 
 onMounted(loadDashboard)

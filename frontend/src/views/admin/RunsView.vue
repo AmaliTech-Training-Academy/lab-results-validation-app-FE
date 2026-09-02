@@ -34,12 +34,12 @@ const selectedCohortId = ref('')
 
 /**
  * `runs.list` (the shallow per-cohort job endpoint) never carries counts/failure data (§ FND-39) —
- * that comes from `runs.fetchStats`, which needs the STOOD_UP cohort ids first, so it fetches once
- * both lists have landed.
+ * that comes from `runs.fetchStats`, scoped to exactly the runs on screen (§ FND-55: the previous
+ * cohort-wide audit-log fetch had a fixed recency window that under-covered older runs). `paged` is
+ * declared further down, but this function only reads it when actually called, well after setup runs.
  */
 async function refreshStats() {
-  const eligibleIds = cohorts.list.filter((c) => c.lifecycleState === 'STOOD_UP').map((c) => c.id)
-  await runs.fetchStats(eligibleIds)
+  await runs.fetchStats(paged.value)
 }
 
 async function loadRuns() {
@@ -268,6 +268,14 @@ const paged = computed(() => {
   return sorted.value.slice(start, start + pageSize.value)
 })
 
+// § FND-55: `loadRuns`/the poll tick/`runSync` already call `refreshStats()` explicitly after they
+// change `runs.list`, but paging/sorting/filtering/searching changes what's on screen without going
+// through any of those — this covers that case too. `fetchStats` skips runs it already has (unless
+// still processing), so this is a no-op whenever the visible set hasn't actually changed.
+watch(paged, (p) => {
+  runs.fetchStats(p)
+})
+
 // pageSize itself isn't listed here — VTablePager recomputes the landing page
 // on a rows-per-page change so the visible range stays roughly stable instead
 // of always snapping back to page 1.
@@ -323,9 +331,15 @@ function triggerWho(r: IngestionRun): string {
 }
 
 /** Real counts for a run (§ FND-39) — `r.counts` itself is never populated by `runs.list`'s own
- *  endpoint; `runs.stats` (from the audit log, fetched in `loadRuns`) has it. */
+ *  endpoint; `runs.stats` (fetched per run, scoped to what's on screen — § FND-55) has it. */
 function resultsFor(r: IngestionRun) {
   return runs.stats.get(r.id)?.counts
+}
+
+/** Distinguishes "not fetched yet" from "fetched, and it's genuinely zero" (§ FND-55) — the Results
+ *  cell must show a dash for the former, never the same digit a real zero-result run would show. */
+function hasResults(r: IngestionRun): boolean {
+  return runs.stats.has(r.id)
 }
 
 // ── Row actions ───────────────────────────────────────────────────────────────
@@ -488,7 +502,7 @@ async function runSync() {
 
             <!-- Results -->
             <td v-if="cols.results">
-              <span class="counts">
+              <span v-if="hasResults(r)" class="counts">
                 <span class="c-new">{{ resultsFor(r)?.committedNew ?? 0 }} new</span>
                 <span class="sep">·</span>
                 <span>{{ resultsFor(r)?.updated ?? 0 }} upd</span>
@@ -497,6 +511,8 @@ async function runSync() {
                 <span class="sep">·</span>
                 <span :class="{ 'c-conflict': (resultsFor(r)?.conflicts ?? 0) > 0 }">{{ resultsFor(r)?.conflicts ?? 0 }} conflict</span>
               </span>
+              <!-- § FND-55: not-yet-fetched is not the same as zero. -->
+              <span v-else class="counts muted" title="Statistics not loaded for this run">—</span>
             </td>
 
             <!-- When -->

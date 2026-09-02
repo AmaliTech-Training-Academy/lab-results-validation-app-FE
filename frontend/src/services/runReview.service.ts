@@ -66,6 +66,41 @@ function mapOverview(dto: GradingSyncOverviewResponse): RunReview {
   }
 }
 
+export interface RunCountsResult {
+  counts: RunCounts
+  highFailure: boolean
+  failed: boolean
+}
+
+/**
+ * Real counts + failure signal for one run (FND-55) — the Grading runs list's Results column source,
+ * scoped per run instead of the audit log's fixed page-0/size-20 file feed (which, being one row per
+ * spreadsheet rather than per run, only ever covered the ~3 most recent runs for a cohort with
+ * several spreadsheets — any older run silently rendered as all zeros). Same overview endpoint
+ * `getRunReview()` uses, without building the files/conflicts/notifications the list doesn't need.
+ */
+export async function getRunCounts(cohortId: string, runId: string): Promise<RunCountsResult> {
+  if (USE_MOCKS) {
+    const { mockDelay, runs } = await import('./mock/fixtures')
+    const run = runs.find((r) => r.id === runId)
+    if (!run) throw new Error('Run not found')
+    return mockDelay({
+      counts: run.counts ?? { rowsRead: 0, committedNew: 0, updated: 0, skippedInvalid: 0, skippedUnchanged: 0, conflicts: 0 },
+      highFailure: run.highFailure ?? false,
+      failed: run.status === 'failed',
+    })
+  }
+  const dto = await http.get<GradingSyncOverviewResponse>(
+    `/cohorts/${cohortId}/sync/runs/${runId}/overview`,
+    { ttl: CONFLICTS_TTL_MS },
+  )
+  return {
+    counts: overviewCounts(dto),
+    highFailure: dto.highFailureFileCount > 0,
+    failed: (OVERVIEW_STATUS_MAP[dto.jobStatus] ?? 'processing') === 'failed',
+  }
+}
+
 export async function getRunReview(cohortId: string, runId: string): Promise<RunReview> {
   if (USE_MOCKS) {
     const { mockDelay, runs, conflicts, notifications } = await import('./mock/fixtures')

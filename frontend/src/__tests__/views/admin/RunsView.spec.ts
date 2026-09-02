@@ -5,7 +5,6 @@ import { createPinia, setActivePinia } from 'pinia'
 import RunsView from '@/views/admin/RunsView.vue'
 import type { Cohort } from '@/types/domain.types'
 import type { IngestionRun } from '@/types/run.types'
-import type { Paged } from '@/types/common.types'
 
 vi.mock('@/services/cohorts.service', () => ({
   listCohorts: vi.fn<() => Promise<unknown>>(),
@@ -15,15 +14,12 @@ vi.mock('@/services/runs.service', () => ({
   triggerSync: vi.fn<() => Promise<unknown>>(),
   triggerSyncAll: vi.fn<() => Promise<unknown>>(),
 }))
-vi.mock('@/services/audit.service', () => ({
-  listAuditRuns: vi.fn<() => Promise<unknown>>(),
-}))
 vi.mock('@/services/runReview.service', () => ({
+  getRunCounts: vi.fn<() => Promise<unknown>>(),
   listConflicts: vi.fn<() => Promise<unknown>>(),
 }))
 import * as cohortsSvc from '@/services/cohorts.service'
 import * as runsSvc from '@/services/runs.service'
-import * as auditSvc from '@/services/audit.service'
 import * as runReviewSvc from '@/services/runReview.service'
 
 function conflictsPage(totalElements: number) {
@@ -44,24 +40,19 @@ function shallowRun(over: Partial<IngestionRun> = {}): IngestionRun {
   return { id: 'job-1', cohortId: 'c1', cohortName: 'Cohort 7', status: 'completed', runAt: '2026-07-21T08:00:00Z', ...over }
 }
 
-function auditRun(over: Partial<IngestionRun> = {}): IngestionRun {
+function runCounts(over: Partial<Record<string, number>> = {}) {
   return {
-    id: 'ir-1', cohortId: 'c1', syncJobId: 'job-1', status: 'completed', runAt: '2026-07-21T08:00:00Z',
-    counts: { rowsRead: 30, committedNew: 12, updated: 2, skippedInvalid: 14, skippedUnchanged: 2, conflicts: 1 },
+    counts: { rowsRead: 30, committedNew: 12, updated: 2, skippedInvalid: 14, skippedUnchanged: 2, conflicts: 1, ...over },
     highFailure: false,
-    ...over,
+    failed: false,
   }
-}
-
-function paged<T>(content: T[]): Paged<T> {
-  return { content, number: 0, size: 20, totalElements: content.length, totalPages: 1, last: true }
 }
 
 let router: Router
 beforeEach(async () => {
   vi.clearAllMocks()
-  // Default: whatever a run's historical conflicts snapshot says, treat it all as still PENDING —
-  // individual tests override this to prove the "resolved conflicts drop off" behavior.
+  // Default: whatever a run's overview snapshot says, treat it all as still PENDING — individual
+  // tests override this to prove the "resolved conflicts drop off" behavior.
   vi.mocked(runReviewSvc.listConflicts).mockImplementation(async () => conflictsPage(1))
   router = createRouter({
     history: createMemoryHistory(),
@@ -91,14 +82,15 @@ function mountView() {
   return { wrapper, pinia }
 }
 
-describe('RunsView — Results column (§ FND-39)', () => {
-  it('shows real counts from the audit log, not the zeros the shallow job endpoint reports', async () => {
+describe('RunsView — Results column (§ FND-39, § FND-55)', () => {
+  it('shows real counts fetched per run, not the zeros the shallow job endpoint reports', async () => {
     vi.mocked(cohortsSvc.listCohorts).mockResolvedValue([cohort()])
     vi.mocked(runsSvc.listRuns).mockResolvedValue([shallowRun()]) // no counts at all
-    vi.mocked(auditSvc.listAuditRuns).mockResolvedValue(paged([auditRun()]))
+    vi.mocked(runReviewSvc.getRunCounts).mockResolvedValue(runCounts())
     const { wrapper } = mountView()
     await flushPromises()
 
+    expect(runReviewSvc.getRunCounts).toHaveBeenCalledWith('c1', 'job-1')
     const text = wrapper.text()
     expect(text).toContain('12 new')
     expect(text).toContain('2 upd')
@@ -106,37 +98,35 @@ describe('RunsView — Results column (§ FND-39)', () => {
     expect(text).toContain('1 conflict')
   })
 
-  it('sums counts across every file in a multi-workbook sync job', async () => {
+  it('shows a dash, not zero, for a run whose stats have not been fetched yet (§ FND-55)', async () => {
     vi.mocked(cohortsSvc.listCohorts).mockResolvedValue([cohort()])
-    vi.mocked(runsSvc.listRuns).mockResolvedValue([shallowRun()])
-    vi.mocked(auditSvc.listAuditRuns).mockResolvedValue(paged([
-      auditRun({ id: 'ir-1', counts: { rowsRead: 10, committedNew: 5, updated: 1, skippedInvalid: 2, skippedUnchanged: 2, conflicts: 0 } }),
-      auditRun({ id: 'ir-2', counts: { rowsRead: 8, committedNew: 3, updated: 0, skippedInvalid: 1, skippedUnchanged: 4, conflicts: 1 } }),
-    ]))
+    vi.mocked(runsSvc.listRuns).mockResolvedValue([shallowRun({ id: 'job-slow' })])
+    // Never resolves within this test — stats are permanently "not yet fetched" from the view's POV.
+    vi.mocked(runReviewSvc.getRunCounts).mockReturnValue(new Promise(() => {}))
     const { wrapper } = mountView()
     await flushPromises()
 
-    const text = wrapper.text()
-    expect(text).toContain('8 new') // 5 + 3
-    expect(text).toContain('1 upd')
-    expect(text).toContain('3 invalid') // 2 + 1
-    expect(text).toContain('1 conflict')
+    expect(wrapper.text()).toContain('—')
+    expect(wrapper.text()).not.toContain('0 new')
   })
 
-  it('falls back to zero, not a crash, for a run the audit log has no data for yet', async () => {
+  it('covers a run well outside any old fixed-page recency window, as long as it is in the visible list', async () => {
     vi.mocked(cohortsSvc.listCohorts).mockResolvedValue([cohort()])
-    vi.mocked(runsSvc.listRuns).mockResolvedValue([shallowRun({ id: 'job-brand-new', status: 'processing' })])
-    vi.mocked(auditSvc.listAuditRuns).mockResolvedValue(paged([]))
+    // Simulates an old run on a cohort with many spreadsheets/runs — the kind of row a fixed
+    // page-0/size-20 file-level fetch would never reach.
+    vi.mocked(runsSvc.listRuns).mockResolvedValue([shallowRun({ id: 'job-ancient', runAt: '2025-01-01T00:00:00Z' })])
+    vi.mocked(runReviewSvc.getRunCounts).mockResolvedValue(runCounts({ committedNew: 7 }))
     const { wrapper } = mountView()
     await flushPromises()
 
-    expect(wrapper.text()).toContain('0 new')
+    expect(runReviewSvc.getRunCounts).toHaveBeenCalledWith('c1', 'job-ancient')
+    expect(wrapper.text()).toContain('7 new')
   })
 
   it('"Try again" reloads both the run list and its stats', async () => {
     vi.mocked(cohortsSvc.listCohorts).mockResolvedValue([cohort()])
     vi.mocked(runsSvc.listRuns).mockRejectedValueOnce(new Error('Network error'))
-    vi.mocked(auditSvc.listAuditRuns).mockResolvedValue(paged([auditRun()]))
+    vi.mocked(runReviewSvc.getRunCounts).mockResolvedValue(runCounts())
     const { wrapper } = mountView()
     await flushPromises()
     expect(wrapper.text()).toContain('Could not load runs')
@@ -148,10 +138,10 @@ describe('RunsView — Results column (§ FND-39)', () => {
     expect(wrapper.text()).toContain('12 new')
   })
 
-  it('shows 0 conflicts once every conflict on the run has been resolved or rejected, even though the historical snapshot still says otherwise', async () => {
+  it('shows 0 conflicts once every conflict on the run has been resolved or rejected, even though the overview snapshot still says otherwise', async () => {
     vi.mocked(cohortsSvc.listCohorts).mockResolvedValue([cohort()])
     vi.mocked(runsSvc.listRuns).mockResolvedValue([shallowRun()])
-    vi.mocked(auditSvc.listAuditRuns).mockResolvedValue(paged([auditRun({ counts: { rowsRead: 30, committedNew: 12, updated: 2, skippedInvalid: 14, skippedUnchanged: 2, conflicts: 2 } })]))
+    vi.mocked(runReviewSvc.getRunCounts).mockResolvedValue(runCounts({ conflicts: 2 }))
     vi.mocked(runReviewSvc.listConflicts).mockResolvedValue(conflictsPage(0))
     const { wrapper } = mountView()
     await flushPromises()
@@ -167,7 +157,7 @@ describe('RunsView — live status polling while a run is processing (§ FND-38)
     vi.useFakeTimers()
     vi.mocked(cohortsSvc.listCohorts).mockResolvedValue([cohort()])
     vi.mocked(runsSvc.listRuns).mockResolvedValueOnce([shallowRun({ status: 'processing' })])
-    vi.mocked(auditSvc.listAuditRuns).mockResolvedValue(paged([]))
+    vi.mocked(runReviewSvc.getRunCounts).mockResolvedValue(runCounts())
     const { wrapper } = mountView()
     await flushPromises()
     expect(wrapper.text()).toContain('Processing')
@@ -189,7 +179,7 @@ describe('RunsView — live status polling while a run is processing (§ FND-38)
     vi.useFakeTimers()
     vi.mocked(cohortsSvc.listCohorts).mockResolvedValue([cohort()])
     vi.mocked(runsSvc.listRuns).mockResolvedValue([shallowRun({ status: 'processing' })])
-    vi.mocked(auditSvc.listAuditRuns).mockResolvedValue(paged([]))
+    vi.mocked(runReviewSvc.getRunCounts).mockResolvedValue(runCounts())
     const { wrapper } = mountView()
     await flushPromises()
 
@@ -204,7 +194,7 @@ describe('RunsView — live status polling while a run is processing (§ FND-38)
     vi.useFakeTimers()
     vi.mocked(cohortsSvc.listCohorts).mockResolvedValue([cohort()])
     vi.mocked(runsSvc.listRuns).mockResolvedValue([shallowRun({ status: 'completed' })])
-    vi.mocked(auditSvc.listAuditRuns).mockResolvedValue(paged([]))
+    vi.mocked(runReviewSvc.getRunCounts).mockResolvedValue(runCounts())
     mountView()
     await flushPromises()
 
@@ -217,7 +207,7 @@ describe('RunsView — live status polling while a run is processing (§ FND-38)
     vi.useFakeTimers()
     vi.mocked(cohortsSvc.listCohorts).mockResolvedValue([cohort()])
     vi.mocked(runsSvc.listRuns).mockResolvedValue([shallowRun({ status: 'processing' })])
-    vi.mocked(auditSvc.listAuditRuns).mockResolvedValue(paged([]))
+    vi.mocked(runReviewSvc.getRunCounts).mockResolvedValue(runCounts())
     const { wrapper } = mountView()
     await flushPromises()
 
@@ -232,7 +222,7 @@ describe('RunsView — live status polling while a run is processing (§ FND-38)
     vi.useFakeTimers()
     vi.mocked(cohortsSvc.listCohorts).mockResolvedValue([cohort()])
     vi.mocked(runsSvc.listRuns).mockResolvedValue([]) // nothing yet — no polling on initial load
-    vi.mocked(auditSvc.listAuditRuns).mockResolvedValue(paged([]))
+    vi.mocked(runReviewSvc.getRunCounts).mockResolvedValue(runCounts())
     vi.mocked(runsSvc.triggerSync).mockResolvedValue({ triggered: 1, skipped: 0, triggeredCohortIds: ['c1'] })
     const { wrapper } = mountView()
     await flushPromises()
