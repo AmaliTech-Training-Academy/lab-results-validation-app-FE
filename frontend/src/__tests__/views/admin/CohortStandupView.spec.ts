@@ -14,6 +14,7 @@ vi.mock('@/services/cohorts.service', () => ({
   attachSharePointLink: vi.fn<() => Promise<unknown>>(),
   fetchStandupStatus: vi.fn<() => Promise<unknown>>(),
   hasStandupRun: vi.fn<() => Promise<unknown>>(),
+  hasGate4Run: vi.fn<() => Promise<unknown>>(),
   acceptCohortReference: vi.fn<() => Promise<unknown>>(),
   discardCohortReference: vi.fn<() => Promise<unknown>>(),
   triggerGate4: vi.fn<() => Promise<unknown>>(),
@@ -63,6 +64,7 @@ beforeEach(async () => {
   // Most tests start a fresh run themselves via "Run validation" — default the mount-time
   // FND-58 existence check to false so it doesn't auto-attach a stream before they do.
   vi.mocked(cohortsSvc.hasStandupRun).mockResolvedValue(false)
+  vi.mocked(cohortsSvc.hasGate4Run).mockResolvedValue(false)
   FakeEventSource.instances = []
   vi.stubGlobal('EventSource', FakeEventSource)
   router = createRouter({
@@ -135,6 +137,72 @@ describe('CohortStandupView — reload resumes an existing run (FND-58)', () => 
 
     expect(FakeEventSource.instances).toHaveLength(0)
     expect(wrapper.text()).toContain('SharePoint folder link')
+  })
+
+  it('re-attaches both streams for a REFERENCE_ACCEPTED cohort and rebuilds an in-progress Gate 4 panel from replay', async () => {
+    vi.mocked(cohortsSvc.getCohort).mockResolvedValue(cohort({ lifecycleState: 'REFERENCE_ACCEPTED' }))
+    vi.mocked(cohortsSvc.hasStandupRun).mockResolvedValue(true)
+    vi.mocked(cohortsSvc.hasGate4Run).mockResolvedValue(true)
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    // Gates 1-3 stream first, Gate 4 stream second — no button clicks, this is a reload.
+    expect(FakeEventSource.instances).toHaveLength(2)
+    const standupEs = FakeEventSource.instances[0]!
+    standupEs.emit('gate.passed', { gate: 1 })
+    standupEs.emit('gate.passed', { gate: 2 })
+    standupEs.emit('gate.passed', { gate: 3 })
+    standupEs.emit('pipeline.done', { status: 'COMPLETED', specs: 2, modules: 4, labs: 8, learners: 40, quizReferencePresent: true })
+
+    const gate4Es = FakeEventSource.instances[1]!
+    gate4Es.emit('file.processing', { file: 'Backend_Scores.xlsx', scenario: 'Scenario 1' })
+    gate4Es.emit('file.passed', { file: 'Backend_Scores.xlsx', rows: 40 })
+    gate4Es.emit('file.processing', { file: 'Frontend_Scores.xlsx', scenario: 'Scenario 2' })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Validating score sheets')
+    expect(wrapper.text()).toContain('Backend_Scores.xlsx')
+    expect(wrapper.text()).toContain('Frontend_Scores.xlsx')
+  })
+
+  it('rebuilds a Gate 4 failure panel from replay after a reload', async () => {
+    vi.mocked(cohortsSvc.getCohort).mockResolvedValue(cohort({ lifecycleState: 'REFERENCE_ACCEPTED' }))
+    vi.mocked(cohortsSvc.hasStandupRun).mockResolvedValue(true)
+    vi.mocked(cohortsSvc.hasGate4Run).mockResolvedValue(true)
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    const standupEs = FakeEventSource.instances[0]!
+    standupEs.emit('gate.passed', { gate: 1 })
+    standupEs.emit('gate.passed', { gate: 2 })
+    standupEs.emit('gate.passed', { gate: 3 })
+    standupEs.emit('pipeline.done', { status: 'COMPLETED', specs: 2, modules: 4, labs: 8, learners: 40, quizReferencePresent: true })
+
+    const gate4Es = FakeEventSource.instances[1]!
+    gate4Es.emit('file.failed', { file: 'Backend_Scores.xlsx', errors: ['Row 3 has a score outside 0-100.'] })
+    gate4Es.emit('gate4.done', { status: 'FAILED' })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Gate 4 failed')
+    expect(wrapper.text()).toContain('Row 3 has a score outside 0-100.')
+  })
+
+  it('falls back to the accepted panel, without crashing, for a REFERENCE_ACCEPTED cohort where Gate 4 was never triggered', async () => {
+    vi.mocked(cohortsSvc.getCohort).mockResolvedValue(cohort({ lifecycleState: 'REFERENCE_ACCEPTED' }))
+    vi.mocked(cohortsSvc.hasStandupRun).mockResolvedValue(true)
+    vi.mocked(cohortsSvc.hasGate4Run).mockResolvedValue(false)
+    const { wrapper } = mountView()
+    await flushPromises()
+
+    expect(FakeEventSource.instances).toHaveLength(1) // standup only — no Gate 4 stream to attach to
+    const standupEs = FakeEventSource.instances[0]!
+    standupEs.emit('gate.passed', { gate: 1 })
+    standupEs.emit('gate.passed', { gate: 2 })
+    standupEs.emit('gate.passed', { gate: 3 })
+    standupEs.emit('pipeline.done', { status: 'COMPLETED', specs: 2, modules: 4, labs: 8, learners: 40, quizReferencePresent: true })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Reference data accepted')
   })
 })
 

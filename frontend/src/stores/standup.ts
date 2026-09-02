@@ -6,6 +6,7 @@ import {
   attachSharePointLink,
   fetchStandupStatus,
   hasStandupRun,
+  hasGate4Run,
   acceptCohortReference,
   discardCohortReference,
   triggerGate4,
@@ -45,6 +46,12 @@ export const useStandupStore = defineStore('standup', () => {
    *  falling back to the empty intake form. */
   async function hasRun(cohortId: string): Promise<boolean> {
     return hasStandupRun(cohortId)
+  }
+
+  /** FND-58: same idea as hasRun(), one step later — has Gate 4 ever been run for this cohort?
+   *  Used on mount for a REFERENCE_ACCEPTED cohort to decide whether to re-attach the Gate 4 stream. */
+  async function hasGate4(cohortId: string): Promise<boolean> {
+    return hasGate4Run(cohortId)
   }
 
   /** One status poll — returns the fresh status so callers (poller) can react. */
@@ -115,5 +122,5 @@ export const useStandupStore = defineStore('standup', () => {
     error.value = null
   }
 
-  return { status, error, busy, busyAction, errors, start, hasRun, refresh, accept, runGate4, discard, reset }
+  return { status, error, busy, busyAction, errors, start, hasRun, hasGate4, refresh, accept, runGate4, discard, reset }
 })

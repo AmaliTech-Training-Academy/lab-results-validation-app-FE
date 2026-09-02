@@ -134,6 +134,17 @@ export function gate4StreamUrl(id: string): string {
   return `${BASE_URL}/cohorts/${id}/gate4/stream?token=${encodeURIComponent(token)}`
 }
 
+/**
+ * Cheap existence check (FND-58) used on mount to decide whether to re-attach the Gate 4 SSE
+ * stream — same reload-loss gap as the Gates 1-3 stream, one step later: Accept already happened,
+ * but the score-sheet validation progress/failure was still lost on a reload.
+ */
+export async function hasGate4Run(id: string): Promise<boolean> {
+  if (USE_MOCKS) return false // mocks hold no cross-reload job state (see mock/standupEngine.ts)
+  const page = await http.get<Paged<unknown>>(`/cohorts/${id}/gate4/runs?size=1`)
+  return page.content.length > 0
+}
+
 export async function acceptCohortReference(id: string): Promise<void> {
   if (USE_MOCKS) {
     const { mockDelay } = await import('./mock/fixtures')

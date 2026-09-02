@@ -83,6 +83,14 @@ onMounted(async () => {
 
   if (cohort.value?.lifecycleState === 'DRAFT' && (await standup.hasRun(cohortId))) {
     stream.start()
+  } else if (cohort.value?.lifecycleState === 'REFERENCE_ACCEPTED') {
+    // FND-58, same gap one step later: Accept already went through, so rebuild the Gates 1-3
+    // stepper from its replay too (for the stepper/summary), mark Accept itself as done (it's a
+    // plain REST call with no stream of its own, so there's no event to replay it from), then
+    // resume Gate 4 if it was ever triggered — mid-run or failed, its stream replays the same way.
+    if (await standup.hasRun(cohortId)) stream.start()
+    acceptDone.value = true
+    if (await standup.hasGate4(cohortId)) gate4.start()
   }
 })
 
