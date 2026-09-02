@@ -11,7 +11,11 @@ const SYNC_STATUS_MAP: Record<SyncRunStatus, RunStatus> = {
   PENDING: 'processing',
   RUNNING: 'processing',
   COMPLETED: 'completed',
+  PARTIAL: 'partial',
   FAILED: 'failed',
+  // Reached every file and every one was unchanged since the previous run — distinct from
+  // COMPLETED so "nothing to do" doesn't read the same as a genuinely empty or all-failed run.
+  SKIPPED: 'skipped',
 }
 
 /**
