@@ -70,31 +70,7 @@ test('A3 AC2 — a Gate 1 failure is recorded and the cohort is left alone', asy
   // FND-58.
 })
 
-test('FND-58 — a completed stand-up does not survive a reload (pins current behaviour)', async ({ page }) => {
-  const folder = uniqueFolder('standup-reload')
-  const cohort = seedDraftCohort(folder)
-  makeCohortFolder(folder)
-  putReferenceBundle(folder)
-
-  await signInAsAdmin(page)
-  await openStandup(page, cohort.cohortId)
-  await runValidation(page, `${WEB_BASE}/${folder}`)
-  await expect(page.locator('.panel--accept')).toBeVisible({ timeout: 45_000 })
-
-  await page.reload()
-  await page.waitForTimeout(6_000)
-
-  // Backwards on purpose: this pins the defect so the suite stays green and so the day it is fixed,
-  // this test fails and says so. A9 AC4 asks for the state to persist; it does not.
-  await expect(page.locator('.panel--accept')).toHaveCount(0)
-  expect(await page.locator('.step-state').count()).toBe(0)
-
-  // The cohort's own state is correct throughout — this is a screen problem, not a data one.
-  expect(sql(`SELECT lifecycle_state FROM cohorts WHERE id = '${cohort.cohortId}'`)).toBe('DRAFT')
-})
-
-test.fixme('A9 AC4 — a completed stand-up is still on screen after a reload', async ({ page }) => {
-  // Enable when FND-58 is fixed, and delete the pin above.
+test('A9 AC4 — a completed stand-up is still on screen after a reload', async ({ page }) => {
   const folder = uniqueFolder('standup-reload-fixed')
   const cohort = seedDraftCohort(folder)
   makeCohortFolder(folder)

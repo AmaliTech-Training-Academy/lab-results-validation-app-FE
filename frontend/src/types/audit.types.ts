@@ -15,6 +15,10 @@ export type AuditEventType =
   | 'CONFLICT_RESOLVED'
   /** CohortSyncService.resolveConflict records this instead of CONFLICT_RESOLVED when the action is REJECT. Same payload shape. */
   | 'CONFLICT_DISMISSED'
+  /** NotificationDispatchService.sendNow records this for a manual (actor-initiated) send from Run Review, regardless of delivery outcome — see payload's `resultStatus`. Never written for system auto-dispatch (no actor). Payload: `{ notificationId, type, recipientKind, subject, resultStatus }`. */
+  | 'NOTIFICATION_SENT'
+  /** NotificationDispatchService.dismiss records this. Same payload shape as NOTIFICATION_SENT. */
+  | 'NOTIFICATION_DISMISSED'
 
 /** Tone per known event type, shared across the audit list and detail views. Falls back to 'info' for anything outside `AuditEventType` (the backend field isn't a closed enum on our side). */
 export const EVENT_TYPE_TONE: Record<AuditEventType, 'success' | 'warning' | 'danger' | 'info'> = {
@@ -28,6 +32,8 @@ export const EVENT_TYPE_TONE: Record<AuditEventType, 'success' | 'warning' | 'da
   STOOD_UP: 'success',
   CONFLICT_RESOLVED: 'info',
   CONFLICT_DISMISSED: 'warning',
+  NOTIFICATION_SENT: 'success',
+  NOTIFICATION_DISMISSED: 'warning',
 }
 
 /** Icon per known event type, shared across the audit list and detail views. Falls back to 'circle'. */
@@ -42,6 +48,8 @@ export const EVENT_TYPE_ICON: Record<AuditEventType, string> = {
   STOOD_UP: 'flag',
   CONFLICT_RESOLVED: 'git-merge',
   CONFLICT_DISMISSED: 'trash-2',
+  NOTIFICATION_SENT: 'send',
+  NOTIFICATION_DISMISSED: 'trash-2',
 }
 
 /** bg/fg pair per pill tone — matches the `.pill-*` colors in global.css — for coloring an icon chip alongside a tone-carrying label (VStatCard's `.stat-chip` pattern). */
