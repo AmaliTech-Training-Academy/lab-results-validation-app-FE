@@ -317,6 +317,25 @@ describe('AuditView', () => {
     expect(auditSvc.listAuditRuns).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1 }))
   })
 
+  it('changes the runs page size and refetches exactly once, at a recalculated page, with the new size', async () => {
+    vi.mocked(cohortsSvc.listCohorts).mockResolvedValue([cohort()])
+    vi.mocked(auditSvc.listAuditRuns).mockResolvedValue(runsPage({ last: false, totalPages: 3, totalElements: 21 }))
+    vi.mocked(auditSvc.listAuditEvents).mockResolvedValue(eventsPage({ content: [] }))
+
+    const wrapper = mountView()
+    await flushPromises()
+    vi.mocked(auditSvc.listAuditRuns).mockClear()
+
+    // VTablePager's size <select> always fires update:pageSize immediately followed by update:page —
+    // picking a new size must resolve to exactly one refetch carrying that size, not a stray/garbled
+    // page jump computed against the old size.
+    await wrapper.find('select[aria-label="Rows per page"]').setValue('25')
+    await flushPromises()
+
+    expect(auditSvc.listAuditRuns).toHaveBeenCalledTimes(1)
+    expect(auditSvc.listAuditRuns).toHaveBeenCalledWith(expect.objectContaining({ page: 0, size: 25 }))
+  })
+
   it('flags a high-failure run in the expanded detail row', async () => {
     vi.mocked(cohortsSvc.listCohorts).mockResolvedValue([cohort()])
     vi.mocked(auditSvc.listAuditRuns).mockResolvedValue(runsPage({

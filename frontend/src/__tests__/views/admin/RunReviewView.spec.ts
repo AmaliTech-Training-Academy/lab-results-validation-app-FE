@@ -227,12 +227,59 @@ describe('RunReviewView', () => {
     await flushPromises()
     await completeSync()
 
-    expect(reviewSvc.listConflicts).toHaveBeenCalledWith('c1', 'run-1', { status: undefined, page: 0, size: 20 })
+    expect(reviewSvc.listConflicts).toHaveBeenCalledWith('c1', 'run-1', { status: undefined, page: 0, size: 10 })
 
     const conflictsNext = wrapper.findAll('[aria-label="Next page"]').find((b) => b.attributes('disabled') === undefined)
     await conflictsNext!.trigger('click')
     await flushPromises()
-    expect(reviewSvc.listConflicts).toHaveBeenCalledWith('c1', 'run-1', { status: undefined, page: 1, size: 20 })
+    expect(reviewSvc.listConflicts).toHaveBeenCalledWith('c1', 'run-1', { status: undefined, page: 1, size: 10 })
+  })
+
+  it('changes the conflicts page size and refetches exactly once, at a recalculated page, with the new size', async () => {
+    vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
+    vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
+    vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage({ last: false, totalPages: 3, totalElements: 21 }))
+    vi.mocked(reviewSvc.listNotifications).mockResolvedValue(notificationsPage())
+    const { wrapper } = mountView()
+    await flushPromises()
+    await completeSync()
+    vi.mocked(reviewSvc.listConflicts).mockClear()
+
+    // VTablePager's size <select> always fires update:pageSize immediately followed by update:page —
+    // picking a new size must resolve to exactly one refetch carrying that size, not a stray/garbled
+    // page jump computed against the old size (the bug: the page-jump fired even though nothing
+    // applied the new size, since the view never listened for update:pageSize at all).
+    const sizeSelect = wrapper.findAll('select[aria-label="Rows per page"]')[0]!
+    await sizeSelect.setValue('25')
+    await flushPromises()
+
+    expect(reviewSvc.listConflicts).toHaveBeenCalledTimes(1)
+    expect(reviewSvc.listConflicts).toHaveBeenCalledWith('c1', 'run-1', { status: undefined, page: 0, size: 25 })
+  })
+
+  it('keeps the conflicts pager visible (disabled, not unmounted behind a full skeleton) while a page change is in flight', async () => {
+    vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
+    vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review())
+    vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage({ last: false, totalPages: 2, totalElements: 21 }))
+    vi.mocked(reviewSvc.listNotifications).mockResolvedValue(notificationsPage())
+    const { wrapper } = mountView()
+    await flushPromises()
+    await completeSync()
+
+    let resolveNext!: (value: Paged<IngestionConflictResponse>) => void
+    vi.mocked(reviewSvc.listConflicts).mockReturnValue(new Promise((resolve) => { resolveNext = resolve }))
+    const conflictsNext = wrapper.findAll('[aria-label="Next page"]').find((b) => b.attributes('disabled') === undefined)
+    await conflictsNext!.trigger('click')
+    await flushPromises()
+
+    // The click must not swap the whole table+pager out for a loading skeleton — the pager the admin
+    // just clicked should still be right there, just disabled until the new page lands.
+    expect(wrapper.find('[aria-label="Next page"]').exists()).toBe(true)
+    expect(wrapper.find('[aria-label="Next page"]').attributes('disabled')).toBeDefined()
+
+    resolveNext(conflictsPage({ number: 1, last: false, totalPages: 2, totalElements: 21 }))
+    await flushPromises()
+    expect(wrapper.find('[aria-label="Next page"]').attributes('disabled')).toBeUndefined()
   })
 
   it('re-fetches conflicts when the status filter changes', async () => {
@@ -246,7 +293,7 @@ describe('RunReviewView', () => {
 
     await wrapper.find('select').setValue('RESOLVED')
     await flushPromises()
-    expect(reviewSvc.listConflicts).toHaveBeenCalledWith('c1', 'run-1', { status: 'RESOLVED', page: 0, size: 20 })
+    expect(reviewSvc.listConflicts).toHaveBeenCalledWith('c1', 'run-1', { status: 'RESOLVED', page: 0, size: 10 })
   })
 
   it('resolves a pending conflict via the Keep incoming button', async () => {
@@ -445,12 +492,12 @@ describe('RunReviewView', () => {
     await flushPromises()
     await completeSync()
 
-    expect(reviewSvc.listNotifications).toHaveBeenCalledWith({ cohortId: 'c1', syncJobId: 'run-1', status: undefined, page: 0, size: 20 })
+    expect(reviewSvc.listNotifications).toHaveBeenCalledWith({ cohortId: 'c1', syncJobId: 'run-1', status: undefined, page: 0, size: 10 })
 
     const notificationsNext = wrapper.findAll('[aria-label="Next page"]').find((b) => b.attributes('disabled') === undefined)
     await notificationsNext!.trigger('click')
     await flushPromises()
-    expect(reviewSvc.listNotifications).toHaveBeenCalledWith({ cohortId: 'c1', syncJobId: 'run-1', status: undefined, page: 1, size: 20 })
+    expect(reviewSvc.listNotifications).toHaveBeenCalledWith({ cohortId: 'c1', syncJobId: 'run-1', status: undefined, page: 1, size: 10 })
   })
 
   it('surfaces per-notification issues in a details drill-down', async () => {
