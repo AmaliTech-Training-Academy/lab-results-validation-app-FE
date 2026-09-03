@@ -3,7 +3,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useToastStore } from '@/stores/toast'
 
 const { push, currentRoute } = vi.hoisted(() => ({
-  push: vi.fn(),
+  push: vi.fn<(to: unknown) => Promise<unknown>>(),
   currentRoute: { value: { name: 'admin-runs', fullPath: '/admin/runs?q=foo' } },
 }))
 vi.mock('@/router', () => ({
