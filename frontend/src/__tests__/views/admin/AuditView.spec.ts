@@ -145,6 +145,35 @@ describe('AuditView', () => {
     expect(wrapper.findAll('button').some((b) => b.text() === 'Open run review')).toBe(false)
   })
 
+  it("shows a run's SharePoint version as a clean 'v89', not the raw cTag, in the expanded row detail", async () => {
+    vi.mocked(cohortsSvc.listCohorts).mockResolvedValue([cohort()])
+    vi.mocked(auditSvc.listAuditRuns).mockResolvedValue(runsPage({
+      content: [run({ sharepointVersionId: 'c:{6B0CF5FB-13F3-4368-AF03-84091F227C3E},89', quickXorHash: 'h', sharepointRevision: 89 })],
+    }))
+    vi.mocked(auditSvc.listAuditEvents).mockResolvedValue(eventsPage({ content: [] }))
+
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.find('tbody tr.row-click').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('v89')
+    expect(wrapper.text()).not.toContain('6B0CF5FB')
+  })
+
+  it('does not render the version line at all when a run has no SharePoint version', async () => {
+    vi.mocked(cohortsSvc.listCohorts).mockResolvedValue([cohort()])
+    vi.mocked(auditSvc.listAuditRuns).mockResolvedValue(runsPage({ content: [run({ sharepointVersionId: null })] }))
+    vi.mocked(auditSvc.listAuditEvents).mockResolvedValue(eventsPage({ content: [] }))
+
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.find('tbody tr.row-click').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.rd-meta').exists()).toBe(false)
+  })
+
   it('re-fetches both tabs with the chosen cohortId when the cohort filter changes', async () => {
     vi.mocked(cohortsSvc.listCohorts).mockResolvedValue([cohort()])
     vi.mocked(auditSvc.listAuditRuns).mockResolvedValue(runsPage({ content: [], totalElements: 0 }))

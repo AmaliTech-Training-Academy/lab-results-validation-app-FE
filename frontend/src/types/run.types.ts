@@ -36,6 +36,9 @@ export interface IngestionRun {
   sharepointFileUrl?: string | null
   sharepointVersionId?: string | null
   quickXorHash?: string | null
+  /** The numeric revision parsed out of `sharepointVersionId` server-side, or null/undefined if
+   *  unavailable or it didn't match the expected shape. Display-only. */
+  sharepointRevision?: number | null
   /** null = SYSTEM (scheduled run). */
   triggeredByEmail?: string | null
   /** Raw user id — some backend endpoints don't resolve this to an email yet. */
@@ -118,10 +121,14 @@ export interface FileIngestionSummary {
   workbookFilename: string
   status: string
   /** SharePoint's cTag for the version this run read — lets an admin confirm an edited file was
-   *  actually re-fetched, not stale. Populated for every file, including skipped ones. */
+   *  actually re-fetched, not stale. Populated for every file, including skipped ones. Opaque;
+   *  kept for audit/troubleshooting — prefer `sharepointRevision` for display (see utils/sharepoint). */
   sharepointVersionId: string | null
   /** SharePoint's content hash for the same version — a real re-save, not just a metadata touch. */
   quickXorHash: string | null
+  /** The numeric revision parsed out of `sharepointVersionId` server-side, or null if it didn't
+   *  match the expected "c:{GUID},N" shape. Display-only. */
+  sharepointRevision: number | null
   rowsRead: number
   committedNew: number
   updatedCount: number

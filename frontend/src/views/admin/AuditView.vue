@@ -13,6 +13,7 @@ import { getCohortReference } from '@/services/cohorts.service'
 import { usePageTitle } from '@/composables/usePageTitle'
 import { useQueryParam } from '@/composables/useQueryParam'
 import { fmtDate, fmtTime } from '@/utils/datetime'
+import { formatFileVersion } from '@/utils/sharepoint'
 import { RUN_STATUS_TONE, type IngestionRun, type RunStatus } from '@/types/run.types'
 import { EVENT_TYPE_TONE, EVENT_TYPE_ICON, TONE_CHIP_STYLE, type AuditEventType, type AuditEvent } from '@/types/audit.types'
 import type { InstructorContact } from '@/types/domain.types'
@@ -350,7 +351,13 @@ function closeKebab() {
                 <div v-if="r.highFailure" class="rd-hi-fail mono">
                   <VIcon name="alert-triangle" :size="13" /> High failure — {{ r.failureRatePercent?.toFixed(1) }}% rejected
                 </div>
-                <div v-if="r.sharepointVersionId" class="rd-meta mono muted">version {{ r.sharepointVersionId }} · hash {{ r.quickXorHash }}</div>
+                <div
+                  v-if="r.sharepointVersionId"
+                  class="rd-meta mono muted"
+                  :title="r.quickXorHash ? `hash ${r.quickXorHash}` : undefined"
+                >
+                  version {{ formatFileVersion(r.sharepointRevision, r.sharepointVersionId) }}
+                </div>
                 <div v-if="r.errorReport?.length" class="rd-errors">
                   <p class="rd-errors-title">Rejected rows</p>
                   <ul class="err-list">

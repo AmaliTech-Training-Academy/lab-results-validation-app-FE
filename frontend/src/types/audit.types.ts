@@ -107,6 +107,14 @@ export interface IngestionRunAuditResponse {
   highFailureRate: boolean
   failureRatePercent: number
   runAt: string
+  /** SharePoint's cTag for the version this run read. Opaque; kept for audit/troubleshooting —
+   *  prefer `sharepointRevision` for display (see utils/sharepoint). */
+  sharepointVersionId: string | null
+  /** SharePoint's content hash for the same version. */
+  quickXorHash: string | null
+  /** The numeric revision parsed out of `sharepointVersionId` server-side, or null if it didn't
+   *  match the expected "c:{GUID},N" shape. Display-only. */
+  sharepointRevision: number | null
 }
 
 /** Filters for the historical audit-log view (D5 AC1). */
