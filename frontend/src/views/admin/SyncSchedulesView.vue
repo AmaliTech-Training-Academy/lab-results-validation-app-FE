@@ -10,6 +10,7 @@ import VToggle from '@/components/base/VToggle.vue'
 import VTablePager from '@/components/base/VTablePager.vue'
 import VRowActions from '@/components/base/VRowActions.vue'
 import VPopover from '@/components/base/VPopover.vue'
+import VCombobox from '@/components/base/VCombobox.vue'
 import { useSyncSchedulesStore } from '@/stores/syncSchedules'
 import { useCohortsStore } from '@/stores/cohorts'
 import { useToastStore } from '@/stores/toast'
@@ -262,7 +263,7 @@ const editingId = ref<string | null>(null)
 const formError = ref('')
 const form = ref({
   name: '',
-  cohortId: '',
+  cohortId: null as string | null,
   frequency: 'WEEKLY' as ScheduleFrequency,
   dayOfWeek: 'MONDAY' as DayOfWeekName,
   timeOfDay: '08:00',
@@ -274,7 +275,7 @@ const drawerTitle = computed(() => (editingId.value ? 'Edit sync schedule' : 'Ne
 
 function openCreate() {
   editingId.value = null
-  form.value = { name: '', cohortId: '', frequency: 'WEEKLY', dayOfWeek: 'MONDAY', timeOfDay: '08:00', timezone: '', enabled: true }
+  form.value = { name: '', cohortId: null, frequency: 'WEEKLY', dayOfWeek: 'MONDAY', timeOfDay: '08:00', timezone: '', enabled: true }
   formError.value = ''
   showDrawer.value = true
 }
@@ -284,7 +285,7 @@ function openEdit(s: SyncScheduleResponse) {
   editingId.value = s.id
   form.value = {
     name: s.name,
-    cohortId: s.cohortId ?? '',
+    cohortId: s.cohortId,
     frequency: s.frequency,
     dayOfWeek: s.dayOfWeek ?? 'MONDAY',
     timeOfDay: s.timeOfDay.slice(0, 5),
@@ -312,7 +313,7 @@ async function submit() {
 
   const payload: SyncSchedulePayload = {
     name: form.value.name.trim(),
-    cohortId: form.value.cohortId || undefined,
+    cohortId: form.value.cohortId,
     frequency: form.value.frequency,
     timeOfDay: form.value.timeOfDay,
     dayOfWeek: form.value.frequency === 'WEEKLY' ? form.value.dayOfWeek : undefined,
@@ -516,15 +517,14 @@ async function submit() {
       </span>
     </label>
 
-    <label class="ff">
-      <span class="ff-label">Cohort</span>
-      <span class="ff-input">
-        <select v-model="form.cohortId">
-          <option value="">All eligible cohorts</option>
-          <option v-for="c in cohorts.list" :key="c.id" :value="c.id">{{ c.name }}</option>
-        </select>
-      </span>
-    </label>
+    <VCombobox
+      v-model="form.cohortId"
+      label="Cohort"
+      placeholder="Search cohorts…"
+      all-label="All eligible cohorts"
+      :options="cohorts.list.map((c) => ({ id: c.id, label: c.name }))"
+      empty-text="No cohorts match"
+    />
 
     <div class="ff-row">
       <label class="ff">
