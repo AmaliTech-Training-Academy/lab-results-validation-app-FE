@@ -32,6 +32,9 @@ async function mapIngestionRunAudit(dto: IngestionRunAuditResponse): Promise<Ing
     triggerType: dto.triggerType as TriggerType,
     triggeredBy: dto.triggeredBy,
     triggeredByEmail,
+    sharepointVersionId: dto.sharepointVersionId,
+    quickXorHash: dto.quickXorHash,
+    sharepointRevision: dto.sharepointRevision,
     counts: {
       rowsRead: dto.rowsRead,
       committedNew: dto.committedNew,

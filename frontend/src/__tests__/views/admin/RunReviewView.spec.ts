@@ -790,15 +790,16 @@ describe('RunReviewView', () => {
       expect(wrapper.text()).toContain('no changes since')
     })
 
-    it("shows each file's SharePoint version on the per-workbook breakdown", async () => {
+    it("shows each file's SharePoint version as a clean 'v7', not the raw cTag, on the per-workbook breakdown", async () => {
       vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
       vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review({
         run: { ...run, status: 'skipped' },
         files: [{
           workbookFilename: 'FE Lab Grading.xlsx',
           status: 'skipped',
-          sharepointVersionId: 'cTag-v7',
+          sharepointVersionId: 'c:{6B0CF5FB-13F3-4368-AF03-84091F227C3E},7',
           quickXorHash: 'quickxor-v7',
+          sharepointRevision: 7,
           rowsRead: 0, committedNew: 0, updatedCount: 0, skippedInvalid: 0, skippedUnchanged: 0, conflictsCount: 0,
           highFailureRate: false, failureRatePercent: 0, runAt: '2026-07-21T08:00:00Z',
           issues: [], rejectionReasons: [],
@@ -810,10 +811,38 @@ describe('RunReviewView', () => {
       await flushPromises()
       await completeSync()
 
-      expect(wrapper.text()).toContain('cTag-v7')
+      expect(wrapper.text()).toContain('v7')
+      expect(wrapper.text()).not.toContain('6B0CF5FB')
+      // The raw cTag is still available, just moved to the hover tooltip for anyone who needs the
+      // exact audit token (e.g. cross-checking against SharePoint version history).
+      expect(wrapper.find('[title*="6B0CF5FB"]').exists()).toBe(true)
       // The persisted per-file status reads "Unchanged" here — the same word the live-sync panel
       // uses for the identical outcome — not the raw backend string "skipped".
       expect(wrapper.text()).toContain('Unchanged')
+    })
+
+    it("falls back to the raw cTag when the backend couldn't parse a revision out of it", async () => {
+      vi.mocked(runsSvc.getRun).mockResolvedValue(processingRun)
+      vi.mocked(reviewSvc.getRunReview).mockResolvedValue(review({
+        run: { ...run, status: 'skipped' },
+        files: [{
+          workbookFilename: 'FE Lab Grading.xlsx',
+          status: 'skipped',
+          sharepointVersionId: 'unrecognized-shape',
+          quickXorHash: 'quickxor-v7',
+          sharepointRevision: null,
+          rowsRead: 0, committedNew: 0, updatedCount: 0, skippedInvalid: 0, skippedUnchanged: 0, conflictsCount: 0,
+          highFailureRate: false, failureRatePercent: 0, runAt: '2026-07-21T08:00:00Z',
+          issues: [], rejectionReasons: [],
+        }],
+      }))
+      vi.mocked(reviewSvc.listConflicts).mockResolvedValue(conflictsPage({ content: [], totalElements: 0 }))
+      vi.mocked(reviewSvc.listNotifications).mockResolvedValue(notificationsPage({ content: [], totalElements: 0 }))
+      const { wrapper } = mountView()
+      await flushPromises()
+      await completeSync()
+
+      expect(wrapper.text()).toContain('unrecognized-shape')
     })
   })
 })

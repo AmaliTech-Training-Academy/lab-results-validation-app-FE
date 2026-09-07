@@ -17,7 +17,8 @@ import { useToastAction } from '@/composables/useToastAction'
 import { useToastStore } from '@/stores/toast'
 import { toErrorMessage } from '@/utils/errors'
 import { fmtDate, fmtTime } from '@/utils/datetime'
-import { RUN_STATUS_TONE, type RunStatus, type SyncFileStatus } from '@/types/run.types'
+import { formatFileVersion } from '@/utils/sharepoint'
+import { RUN_STATUS_TONE, type RunStatus, type SyncFileStatus, type FileIngestionSummary } from '@/types/run.types'
 import {
   CONFLICT_STATUS_TONE,
   type ConflictResolutionAction,
@@ -197,6 +198,15 @@ const FILE_SUMMARY = [
 function formatRunAt(iso: string | null | undefined): string {
   const time = fmtTime(iso)
   return time ? `${fmtDate(iso)} ${time}` : fmtDate(iso)
+}
+
+/** The "v89" cell hides the raw cTag + hash — surface both on hover for anyone who needs the exact
+ *  audit token (e.g. cross-checking against SharePoint version history). */
+function versionTooltip(f: FileIngestionSummary): string | undefined {
+  const parts = [f.sharepointVersionId ? `cTag ${f.sharepointVersionId}` : null, f.quickXorHash ? `hash ${f.quickXorHash}` : null].filter(
+    (p): p is string => p !== null,
+  )
+  return parts.length ? parts.join(' · ') : undefined
 }
 
 const NOTIF_TONE: Record<NotificationStatus, 'success' | 'warning' | 'danger' | 'info'> = {
@@ -504,7 +514,7 @@ function recipientLabel(n: Notification): string {
                 <VPill :tone="f.highFailureRate ? 'danger' : 'info'">{{ f.failureRatePercent.toFixed(1) }}%</VPill>
               </td>
               <td v-for="s in FILE_SUMMARY" :key="s.key" class="mono" style="text-align: center">{{ f[s.key] }}</td>
-              <td class="mono muted" :title="f.quickXorHash ? `hash ${f.quickXorHash}` : undefined">{{ f.sharepointVersionId ?? '—' }}</td>
+              <td class="mono muted" :title="versionTooltip(f)">{{ formatFileVersion(f.sharepointRevision, f.sharepointVersionId) }}</td>
               <td class="mono muted">{{ formatRunAt(f.runAt) }}</td>
             </tr>
           </tbody>

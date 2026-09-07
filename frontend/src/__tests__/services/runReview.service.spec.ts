@@ -35,6 +35,7 @@ function overview(over: Partial<GradingSyncOverviewResponse> = {}): GradingSyncO
         status: 'partial',
         sharepointVersionId: 'cTag-BE-v3',
         quickXorHash: 'quickxor-BE-v3',
+        sharepointRevision: null,
         rowsRead: 25,
         committedNew: 0,
         updatedCount: 0,
@@ -58,6 +59,7 @@ function overview(over: Partial<GradingSyncOverviewResponse> = {}): GradingSyncO
         status: 'completed',
         sharepointVersionId: 'cTag-FE-v2',
         quickXorHash: 'quickxor-FE-v2',
+        sharepointRevision: null,
         rowsRead: 35,
         committedNew: 0,
         updatedCount: 0,
@@ -129,13 +131,14 @@ describe('getRunReview (overview mapping)', () => {
     expect(review.run.previousRunCompletedAt).toBeNull()
   })
 
-  it('passes each file\'s SharePoint version and hash through unchanged', async () => {
+  it('passes each file\'s SharePoint version, hash, and parsed revision through unchanged', async () => {
     vi.mocked(http.get).mockResolvedValue(overview())
 
     const review = await getRunReview('c1', 'job-1')
 
     expect(review.files?.[0]?.sharepointVersionId).toBe('cTag-BE-v3')
     expect(review.files?.[0]?.quickXorHash).toBe('quickxor-BE-v3')
+    expect(review.files?.[0]?.sharepointRevision).toBeNull()
   })
 })
 
