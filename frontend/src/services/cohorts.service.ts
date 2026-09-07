@@ -11,13 +11,27 @@ import { USE_MOCKS } from './mock/useMocks'
 const COHORT_LIST_TTL_MS = 20_000
 const COHORT_REFERENCE_TTL_MS = 60_000 // frozen once a cohort is stood up — changes far less often than the list
 
+/**
+ * Every caller (the Cohorts table's own client-side paging, cohort dropdowns, sync-schedule/manual-
+ * sync cohort pickers, dashboards) wants the *complete* roster, not one page — the backend defaults
+ * `GET /cohorts` to size=20, which silently hid every cohort older than the 20 most recently created
+ * ones from all of them at once. Walk pages until the backend says there's no more, rather than
+ * trusting any single page size to stay ahead of however many cohorts an org ends up with.
+ */
 export async function listCohorts(): Promise<Cohort[]> {
   if (USE_MOCKS) {
     const { mockDelay, cohorts } = await import('./mock/fixtures')
     return mockDelay(cohorts)
   }
-  const page = await http.get<Paged<Cohort>>('/cohorts', { ttl: COHORT_LIST_TTL_MS })
-  return page.content
+  const all: Cohort[] = []
+  let pageNum = 0
+  for (;;) {
+    const page = await http.get<Paged<Cohort>>(`/cohorts?page=${pageNum}&size=100`, { ttl: COHORT_LIST_TTL_MS })
+    all.push(...page.content)
+    if (page.last || page.content.length === 0) break
+    pageNum += 1
+  }
+  return all
 }
 
 export async function getCohort(id: string): Promise<Cohort> {

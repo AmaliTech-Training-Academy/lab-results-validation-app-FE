@@ -8,6 +8,7 @@ import VPill from '@/components/base/VPill.vue'
 import VTablePager from '@/components/base/VTablePager.vue'
 import VRowActions from '@/components/base/VRowActions.vue'
 import VPopover from '@/components/base/VPopover.vue'
+import VCombobox from '@/components/base/VCombobox.vue'
 import { useRunsStore } from '@/stores/runs'
 import { useCohortsStore } from '@/stores/cohorts'
 import { useToastStore } from '@/stores/toast'
@@ -30,7 +31,7 @@ const COLS_KEY = 'validata.runs.columns'
 const cols = ref(loadColumns(COLS_KEY, { cohort: true, trigger: true, status: true, results: true, when: true }))
 watch(cols, (v) => saveColumns(COLS_KEY, v), { deep: true })
 
-const selectedCohortId = ref('')
+const selectedCohortId = ref<string | null>(null)
 
 /**
  * `runs.list` (the shallow per-cohort job endpoint) never carries counts/failure data (§ FND-39) —
@@ -157,7 +158,7 @@ function toggleStatusFilter(k: RunStatus) {
   statusFilter.value = next
 }
 function clearFilter() {
-  selectedCohortId.value = ''
+  selectedCohortId.value = null
   statusFilter.value = new Set()
 }
 function toggleFilterMenu(event: MouseEvent) {
@@ -571,10 +572,13 @@ async function runSync() {
     </div>
     <div class="pop-field">
       <span class="pop-flabel">Cohort</span>
-      <select v-model="selectedCohortId" class="pop-select">
-        <option value="">All cohorts</option>
-        <option v-for="c in eligibleCohorts" :key="c.id" :value="c.id">{{ c.name }}</option>
-      </select>
+      <VCombobox
+        v-model="selectedCohortId"
+        placeholder="Search cohorts…"
+        all-label="All cohorts"
+        :options="eligibleCohorts.map((c) => ({ id: c.id, label: c.name }))"
+        empty-text="No cohorts match"
+      />
     </div>
     <p class="pop-flabel" style="margin: 8px 0 2px; padding: 0 8px">Status</p>
     <label v-for="opt in STATUS_FILTER_OPTIONS" :key="opt.key" class="pop-row">
@@ -905,21 +909,5 @@ async function runSync() {
   letter-spacing: 0.6px;
   text-transform: uppercase;
   color: var(--text-secondary);
-}
-.pop-select {
-  height: 36px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  background: #fff;
-  padding: 0 10px;
-  font-family: inherit;
-  font-size: 14px;
-  color: var(--text);
-  cursor: pointer;
-}
-.pop-select:focus-visible {
-  outline: none;
-  border-color: var(--navy);
-  box-shadow: var(--ring-focus);
 }
 </style>
