@@ -84,6 +84,11 @@ async function performRefresh(): Promise<string> {
   return token
 }
 
+// Unauthenticated endpoints — a 401 here means bad credentials/token, not an expired session,
+// so it must never trigger the refresh-and-retry path (that always fails with no session to
+// refresh, masking the real error behind "Session expired. Please log in again.").
+const NO_REFRESH_PATHS = ['/auth/login', '/auth/refresh', '/auth/forgot-password', '/auth/reset-password']
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     method,
@@ -92,8 +97,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
 
-  // Don't attempt refresh for non-401s or for the refresh endpoint itself
-  if (res.status !== 401 || path === '/auth/refresh') {
+  // Don't attempt refresh for non-401s or for endpoints that don't require an existing session
+  if (res.status !== 401 || NO_REFRESH_PATHS.includes(path)) {
     return handleResponse<T>(res)
   }
 
